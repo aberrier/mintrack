@@ -5,19 +5,22 @@ import uuid
 import httpx
 import procrastinate
 import psycopg
+import sqlalchemy as sa
 from procrastinate import builtin_tasks
 from procrastinate.exceptions import AlreadyEnqueued
 from procrastinate.tasks import Task
+from procrastinate.types import JSONValue
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import mintrack.worker
 from mintrack.core.catalog.managers import CatalogManager, is_airing
+from mintrack.core.jellyfin.managers import JellyfinManager
 from mintrack.core.push.managers import PushManager
 from mintrack.core.push.webpush import get_vapid_key
 from mintrack.core.tracking.managers import TrackingManager
 from mintrack.core.upcoming.air_times import refresh_air_times, refresh_show_air_times
 from mintrack.db.database import get_database
-from mintrack.db.models import Media
+from mintrack.db.models import JellyfinAccount, Media
 from mintrack.integrations.tmdb.client import TMDBNotFoundError, get_tmdb_client
 from mintrack.integrations.tvmaze import tvmaze_client
 from mintrack.observability.logging import logger
@@ -96,6 +99,25 @@ async def notify_aired_episodes(timestamp: int) -> None:
         logger.info("episode notifications sent", episodes=count)
 
 
+@blueprint.task(name="jellyfin.sync_account")
+async def sync_jellyfin_account(account_id: str, *, full: bool = False) -> None:
+    async with get_database().session() as session:
+        account = await session.get(JellyfinAccount, uuid.UUID(account_id))
+        if account is not None:
+            await JellyfinManager(session).sync(account, get_tmdb_client(), dt.datetime.now(dt.UTC), full=full)
+
+
+@blueprint.periodic(cron="*/15 * * * *")
+@blueprint.task(name="jellyfin.sync_accounts", queueing_lock="jellyfin.sync_accounts")
+async def sync_jellyfin_accounts(timestamp: int) -> None:  # noqa: ARG001
+    async with get_database().session() as session:
+        for account_id, user_id in (
+            await session.execute(sa.select(JellyfinAccount.id, JellyfinAccount.user_id))
+        ).all():
+            await defer_jellyfin_sync(session, account_id, user_id)
+        await session.commit()
+
+
 async def defer_refresh(session: AsyncSession, media_id: uuid.UUID) -> None:
     """Defer a refresh in the session's transaction: it runs only if the transaction commits, at most once queued."""
     await _defer_for_media(session, refresh_media, f"refresh_media:{media_id}", media_id)
@@ -106,16 +128,36 @@ async def defer_air_times_refresh(session: AsyncSession, media_id: uuid.UUID) ->
     await _defer_for_media(session, refresh_show_air_times_task, f"refresh_show_air_times:{media_id}", media_id)
 
 
+async def defer_jellyfin_sync(
+    session: AsyncSession, account_id: uuid.UUID, user_id: uuid.UUID, *, full: bool = False
+) -> None:
+    """Defer a sync of the account like `defer_refresh`; one user's accounts sync one at a time."""
+    kind = "full" if full else "new"
+    # The same user's accounts may mark the same episodes.
+    await _defer(
+        session,
+        sync_jellyfin_account,
+        f"jellyfin_sync:{account_id}:{kind}",
+        f"jellyfin_user:{user_id}",
+        account_id=str(account_id),
+        full=full,
+    )
+
+
 async def _defer_for_media(session: AsyncSession, task: Task, queueing_lock: str, media_id: uuid.UUID) -> None:
+    # One job per media at a time: refreshes and air times both write its episodes.
+    await _defer(session, task, queueing_lock, f"media:{media_id}", media_id=str(media_id))
+
+
+async def _defer(session: AsyncSession, task: Task, queueing_lock: str, lock: str, **arguments: JSONValue) -> None:
     # Binds the tasks to the app, whose import imports this module.
     mintrack.worker.get_worker_app()
     raw = await (await session.connection()).get_raw_connection()
     connection = typing.cast("psycopg.AsyncConnection", raw.driver_connection)
-    # One job per media at a time: refreshes and air times both write its episodes.
-    deferrer = task.configure(connection=connection, queueing_lock=queueing_lock, lock=f"media:{media_id}")
+    deferrer = task.configure(connection=connection, queueing_lock=queueing_lock, lock=lock)
     try:
         # A savepoint: the queueing lock's unique violation must not abort the transaction.
         async with connection.transaction():
-            await deferrer.defer_async(media_id=str(media_id))
+            await deferrer.defer_async(**arguments)
     except AlreadyEnqueued:
         pass
