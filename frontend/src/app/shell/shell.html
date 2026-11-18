@@ -3,16 +3,18 @@
   <router-outlet />
 </main>
 
-<nav class="bottom-nav" [attr.aria-label]="translate('app.nav.label')" data-testid="bottom-nav">
-  @for (item of navItems; track item.route) {
-    <a
-      class="nav-item"
-      [routerLink]="item.route"
-      routerLinkActive="active"
-      [routerLinkActiveOptions]="{ exact: true }"
-      ariaCurrentWhenActive="page">
-      <span class="indicator"><mat-icon [svgIcon]="item.icon" aria-hidden="true" /></span>
-      <span class="label">{{ translate(item.label) }}</span>
-    </a>
-  }
-</nav>
+@if ($user()) {
+  <nav class="bottom-nav" [attr.aria-label]="translate('app.nav.label')" data-testid="bottom-nav">
+    @for (item of navItems; track item.route) {
+      <a
+        class="nav-item"
+        [routerLink]="item.route"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        ariaCurrentWhenActive="page">
+        <span class="indicator"><mat-icon [svgIcon]="item.icon" aria-hidden="true" /></span>
+        <span class="label">{{ translate(item.label) }}</span>
+      </a>
+    }
+  </nav>
+}

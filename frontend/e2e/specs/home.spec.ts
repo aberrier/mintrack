@@ -1,15 +1,12 @@
-import { expect, test } from './fixtures';
+import { expect, test } from '../dsl/fixtures';
 
-test('someone opening MinTrack sees the app shell and that it is online', async ({ page }) => {
-  await page.goto('/');
-
+test('a signed-in user sees the app shell and that it is online', async ({ admin: { page } }) => {
   await expect(page.getByTestId('server-status')).toHaveText('Online');
   await expect(page.getByRole('navigation', { name: 'Main navigation' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Home' })).toHaveAttribute('aria-current', 'page');
 });
 
-test('the bottom navigation stays on screen, with tap targets of at least 48px', async ({ page }) => {
-  await page.goto('/');
+test('the bottom navigation stays on screen, with tap targets of at least 48px', async ({ admin: { page } }) => {
   const viewport = page.viewportSize()!;
 
   const nav = await page.getByTestId('bottom-nav').boundingBox();
@@ -22,7 +19,7 @@ test('the bottom navigation stays on screen, with tap targets of at least 48px',
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
 });
 
-test('client routes load the app', async ({ page }) => {
+test('client routes load the app', async ({ admin: { page } }) => {
   await page.goto('/shows/42');
 
   await expect(page.getByTestId('server-status')).toHaveText('Online');

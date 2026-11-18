@@ -41,20 +41,22 @@ Always run Python tools through `uv run`. Run `just` (check and test) before com
 ```
 src/mintrack/
   __main__.py      # config errors -> readable message; logging, Sentry, CLI
-  cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | db | healthcheck
+  cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | db | healthcheck | users
   config/          # Config(BaseSettings): MINTRACK__SECTION__FIELD variables, *_FILE variants, .env
-  db/              # DatabaseModel, DatabaseManager, Alembic config built in code, migrations/
+  core/<domain>/   # business logic: managers.py (core/accounts: users, sessions, password links, login limit)
+  db/              # DatabaseModel, DatabaseManager, Alembic config built in code, migrations/, models/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)
-  server/          # build_app(): /api router, middlewares (proxy headers, security headers, generic 500)
+  server/          # build_app(): /api router (public and session-protected), middlewares
 tests/             # mirrors src/; conftest.py holds the opt-in database fixtures
 frontend/src/app/
   core/api/        # ApiService: one group of endpoints per domain, relative /api URLs
+  core/auth/       # AuthStore ($user), signedIn and admin guards, the 401 interceptor
   core/i18n/       # injectTranslator, English only, paths such as app.home.title
   core/icons/      # Material Symbols SVGs registered by name; import only the icons used
   shell/           # the phone frame: scrolling content and the bottom navigation
   pages/<page>/    # one lazy-loaded standalone component per route (app.routes.ts)
 frontend/src/types/ # global namespaces (Model for API shapes)
-frontend/e2e/      # Playwright specs, phone and desktop projects
+frontend/e2e/      # Playwright acceptance suite: specs/ (domain language), dsl/ (actors, fixtures), drivers/ (pages, CLI)
 Dockerfile, docker-compose.yml, .env.example  # the image and the install; README "Install" repeats docker-compose.yml
 ```
 
@@ -76,6 +78,9 @@ dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAl
 - **Logs:** never pass secrets or personal data as log values: structlog fields end up in the message Sentry receives.
 - **Comments** only for the non-obvious why.
 - **No CORS middleware:** the API is only called by the app it serves, from the same origin.
+- **Access:** every `/api` route needs a session (and an XSRF header on unsafe methods) unless it is on the public
+  router in `server/api/asgi.py`; `tests/server/api/test_access.py` checks every route of the schema. Admin routers
+  depend on `get_admin_user`. Endpoints take the request's session with `DbSessionDepType` and commit explicitly.
 
 ## Tests
 
@@ -84,7 +89,8 @@ dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAl
   `db_session` (rolled back after the test). Other tests run without PostgreSQL.
 - Sockets are disabled except to localhost; mark a test `@pytest.mark.allow_hosts([...])` when it must reach another
   address.
-- ASGI tests use `https://mintrack.test`, the test `public_url`.
+- ASGI tests use `https://mintrack.test`, the test `public_url`. API tests use the `api` client of
+  `tests/server/api/conftest.py`, whose requests run on the test's rolled-back session.
 
 ## Frontend
 
@@ -98,8 +104,8 @@ npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, de
 ```
 
 - **Angular:** standalone components, zoneless, `OnPush` everywhere, lazy routes declared in `app.routes.ts` with
-  their URL builders in `appRoutes`. Signals for state, RxJS for asynchronous flows, `toSignal` / `toObservable` at
-  the boundary. No NgRx.
+  their URL builders in `appRoutes` (`app.paths.ts`, which imports nothing). Signals for state, RxJS for
+  asynchronous flows, `toSignal` / `toObservable` at the boundary. No NgRx.
 - **State, so one tap feels instant:** each domain gets a store service holding private writable signals and exposing
   read-only ones. A tap updates the store first, then queues the API call. Writes to the same item are serialised
   (`concatMap`), with errors caught inside each queued call so one failure never stops the queue. Each success
