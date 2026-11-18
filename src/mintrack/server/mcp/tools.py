@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager
 from mintrack.core.tracking.managers import TrackingManager
-from mintrack.core.upcoming.managers import UpcomingManager
+from mintrack.core.upcoming.managers import UpcomingManager, WatchListSection
 from mintrack.db.database import get_database
 from mintrack.db.models import Episode, Media, MediaType, TrackingStatus, User
 from mintrack.integrations.tmdb.client import TMDBError, TMDBNotFoundError, get_tmdb_client
@@ -21,6 +21,7 @@ from mintrack.integrations.tmdb.client import TMDBError, TMDBNotFoundError, get_
 
 class ShowStatusChoice(enum.StrEnum):
     WATCHING = enum.auto()
+    WATCH_LATER = enum.auto()
     STOPPED = enum.auto()
 
 
@@ -70,6 +71,14 @@ class UpcomingEpisode(Schema):
     title: str
     airstamp: dt.datetime | None
     day: dt.date | None
+
+
+class UpNextEpisode(UpcomingEpisode):
+    # Aired regular episodes after this one that the user has not watched.
+    remaining: int
+    last_watched_at: dt.datetime | None
+    # "next" when watched in the last 30 days, else "dormant".
+    section: WatchListSection
 
 
 class UpcomingDay(Schema):
@@ -230,12 +239,15 @@ async def unmark_movie_watched(tmdb_id: int) -> MovieStatus:
 
 
 async def set_show_status(tmdb_id: int, status: ShowStatusChoice) -> ShowStatus:
-    """Stop following a TV show, or resume it; MinTrack derives the other statuses from the episodes watched."""
+    """Stop following a TV show, put it aside to watch later, or resume it; MinTrack derives the other statuses
+    from the episodes watched. Marking an episode resumes a show put aside or stopped."""
     async with user_session() as (session, user):
         media = await get_media(session, MediaType.TV, tmdb_id)
-        tracking = await TrackingManager(session).track_show(
-            user, media, stopped=status is ShowStatusChoice.STOPPED, now=dt.datetime.now(dt.UTC)
-        )
+        manager, now = TrackingManager(session), dt.datetime.now(dt.UTC)
+        if status is ShowStatusChoice.WATCH_LATER:
+            tracking = await manager.watch_later(user, media, now)
+        else:
+            tracking = await manager.track_show(user, media, stopped=status is ShowStatusChoice.STOPPED, now=now)
     return ShowStatus(title=media.title, status=tracking.status)
 
 
@@ -247,8 +259,8 @@ async def list_upcoming() -> Upcoming:
     return Upcoming.model_validate(upcoming)
 
 
-async def list_up_next() -> list[UpcomingEpisode]:
-    """The next episode to watch of each show the user is watching."""
+async def list_up_next() -> list[UpNextEpisode]:
+    """The next episode to watch of each show the user is watching, most recently watched first."""
     async with user_session() as (session, user):
         episodes = await UpcomingManager(session).up_next(user, now=dt.datetime.now(dt.UTC))
-    return [UpcomingEpisode.model_validate(episode) for episode in episodes]
+    return [UpNextEpisode.model_validate(episode) for episode in episodes]

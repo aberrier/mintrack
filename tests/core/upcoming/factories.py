@@ -57,8 +57,11 @@ async def add_show(
     return show, episodes
 
 
-async def follow(session: AsyncSession, user: User, show: Media, status: TrackingStatus) -> None:
-    session.add(UserMedia(user_id=user.id, media_id=show.id, status=status, updated_at=dt.datetime.now(dt.UTC)))
+async def follow(
+    session: AsyncSession, user: User, show: Media, status: TrackingStatus, *, at: dt.datetime | None = None
+) -> None:
+    at = at or dt.datetime.now(dt.UTC)
+    session.add(UserMedia(user_id=user.id, media_id=show.id, status=status, added_at=at, updated_at=at))
     await session.flush()
 
 

@@ -1,5 +1,7 @@
+import collections.abc
 import dataclasses
 import datetime as dt
+import enum
 import itertools
 import uuid
 import zoneinfo
@@ -15,6 +17,7 @@ from .air_times import FOLLOWED_STATUSES
 
 UPCOMING_DAYS = 28
 IN_PROGRESS_STATUSES = (TrackingStatus.WATCHING, TrackingStatus.UP_TO_DATE)
+DORMANT_AFTER = dt.timedelta(days=30)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -30,6 +33,24 @@ class UpcomingEpisode:
     airstamp: dt.datetime | None
     # The air day in the user's time zone; None when unknown.
     day: dt.date | None
+
+
+class WatchListSection(enum.StrEnum):
+    NEXT = enum.auto()
+    # Not watched for DORMANT_AFTER.
+    DORMANT = enum.auto()
+
+
+@dataclasses.dataclass(frozen=True)
+class UpNextEpisode(UpcomingEpisode):
+    # Aired regular episodes after this one that the user has not watched.
+    remaining: int
+    last_watched_at: dt.datetime | None
+    dormant: bool
+
+    @property
+    def section(self) -> WatchListSection:
+        return WatchListSection.DORMANT if self.dormant else WatchListSection.NEXT
 
 
 @dataclasses.dataclass(frozen=True)
@@ -59,15 +80,17 @@ class UpcomingManager:
         last = _last_watched(user)
 
         coming = await self._episodes(
+            UpcomingEpisode,
             user,
-            FOLLOWED_STATUSES,
+            UserMedia.status.in_(FOLLOWED_STATUSES),
             day.between(today, today + dt.timedelta(days=UPCOMING_DAYS - 1)),
             ~_watched(user, Episode),
             order_by=(moment, Media.title, Episode.season_number, Episode.episode_number),
         )
         new = await self._episodes(
+            UpcomingEpisode,
             user,
-            IN_PROGRESS_STATUSES,
+            UserMedia.status.in_(IN_PROGRESS_STATUSES),
             day < today,
             Episode.season_number > 0,
             sa.tuple_(Episode.season_number, Episode.episode_number) > sa.tuple_(last.c.season_number, last.c.number),
@@ -83,8 +106,8 @@ class UpcomingManager:
         ]
         return Upcoming(new=new, days=days)
 
-    async def up_next(self, user: User, *, now: dt.datetime) -> list[UpcomingEpisode]:
-        """Per show in progress, the episode after the last one watched, once aired; most recently active first.
+    async def up_next(self, user: User, *, now: dt.datetime) -> list[UpNextEpisode]:
+        """Per show in progress, the episode after the last one watched, once aired; most recently watched first.
 
         An episode with no date counts as aired when a later one of its season has.
         """
@@ -109,24 +132,43 @@ class UpcomingManager:
             later.episode_number > Episode.episode_number,
             _air_moment(user.timezone, later) <= now,
         )
+        rest = aliased(Episode)
+        remaining = (
+            sa.select(sa.func.count())
+            .where(
+                rest.media_id == Episode.media_id,
+                rest.season_number > 0,
+                sa.tuple_(rest.season_number, rest.episode_number)
+                > sa.tuple_(Episode.season_number, Episode.episode_number),
+                _air_moment(user.timezone, rest) <= now,
+                ~_watched(user, rest),
+            )
+            .scalar_subquery()
+        )
+        last_watched_at = _last_watched_at(user)
+        dormant = sa.func.coalesce(last_watched_at < now - DORMANT_AFTER, sa.true())
         moment = _air_moment(user.timezone)
         return await self._episodes(
+            UpNextEpisode,
             user,
-            IN_PROGRESS_STATUSES,
+            UserMedia.status.in_(IN_PROGRESS_STATUSES),
             Episode.id == following,
             sa.or_(moment <= now, sa.and_(moment.is_(None), later_aired)),
             join_last=last,
-            order_by=(UserMedia.updated_at.desc(), Media.title),
+            columns=(remaining, last_watched_at, dormant),
+            order_by=(last_watched_at.desc().nulls_last(), UserMedia.updated_at.desc(), Media.title),
         )
 
-    async def _episodes(
+    async def _episodes[E: UpcomingEpisode](
         self,
+        make: collections.abc.Callable[..., E],
         user: User,
-        statuses: tuple[TrackingStatus, ...],
         *conditions: sa.ColumnElement[bool],
         order_by: tuple[sa.ColumnExpressionArgument[object], ...],
         join_last: LateralFromClause | None = None,
-    ) -> list[UpcomingEpisode]:
+        columns: tuple[sa.ColumnExpressionArgument[object], ...] = (),
+    ) -> list[E]:
+        """`make` takes the fields of `UpcomingEpisode`, then the values of `columns`."""
         query = (
             sa.select(
                 Episode.id,
@@ -138,6 +180,7 @@ class UpcomingManager:
                 Episode.title,
                 Episode.airstamp,
                 _air_day(user.timezone),
+                *columns,
             )
             .select_from(UserMedia)
             .join(Media, Media.id == UserMedia.media_id)
@@ -146,10 +189,10 @@ class UpcomingManager:
             query = query.outerjoin(join_last, sa.true())
         query = (
             query.join(Episode, Episode.media_id == Media.id)
-            .where(UserMedia.user_id == user.id, UserMedia.status.in_(statuses), *conditions)
+            .where(UserMedia.user_id == user.id, *conditions)
             .order_by(*order_by)
         )
-        return [UpcomingEpisode(*row) for row in await self.session.execute(query)]
+        return [make(*row) for row in await self.session.execute(query)]
 
 
 def _air_moment(timezone: str, episode: type[Episode] = Episode) -> sa.ColumnElement[dt.datetime]:

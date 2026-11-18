@@ -60,9 +60,14 @@ async def test_someone_sees_what_to_watch_next(alice: User, db_session: AsyncSes
     await follow(db_session, alice, show, TrackingStatus.WATCHING)
     await watch(db_session, alice, episodes[1, 1], dt.datetime.now(dt.UTC))
 
-    response = await api.get("/api/up-next")
+    up_next = await api.get("/api/up-next")
+    watch_list = await api.get("/api/watch-list")
 
-    assert response.status_code == fastapi.status.HTTP_200_OK
-    assert [(episode["show_title"], episode["episode_number"]) for episode in response.json()["episodes"]] == [
+    assert up_next.status_code == watch_list.status_code == fastapi.status.HTTP_200_OK
+    assert [(episode["show_title"], episode["episode_number"]) for episode in up_next.json()["episodes"]] == [
         ("Andor", 2)
     ]
+    assert [
+        (episode["show_title"], episode["episode_number"], episode["remaining"], episode["section"])
+        for episode in watch_list.json()["episodes"]
+    ] == [("Andor", 2, 0, "next")]

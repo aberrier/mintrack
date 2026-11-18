@@ -1,6 +1,7 @@
 import collections.abc
 import dataclasses
 import datetime as dt
+import enum
 import uuid
 import zoneinfo
 
@@ -39,6 +40,24 @@ class MovieTracking:
     watched_at: dt.datetime | None
 
 
+class LibrarySort(enum.StrEnum):
+    LAST_WATCHED = enum.auto()
+    LAST_ADDED = enum.auto()
+    TITLE = enum.auto()
+
+
+class LibraryStatus(enum.StrEnum):
+    """A tracking status, or not started: in the library with nothing watched."""
+
+    WATCH_LATER = enum.auto()
+    WATCHING = enum.auto()
+    UP_TO_DATE = enum.auto()
+    FINISHED = enum.auto()
+    STOPPED = enum.auto()
+    WATCHED = enum.auto()
+    NOT_STARTED = enum.auto()
+
+
 @dataclasses.dataclass(frozen=True)
 class LibraryItem:
     media: Media
@@ -46,6 +65,23 @@ class LibraryItem:
     watched_count: int
     aired_count: int
     updated_at: dt.datetime
+    added_at: dt.datetime
+    last_watched_at: dt.datetime | None
+
+
+@dataclasses.dataclass(frozen=True)
+class HistoryEntry:
+    # The episode's id, or the movie's media id.
+    id: uuid.UUID
+    media_type: MediaType
+    tmdb_id: int
+    title: str
+    poster_path: str | None
+    # None for movies.
+    season_number: int | None
+    episode_number: int | None
+    episode_title: str | None
+    watched_at: dt.datetime
 
 
 class TrackingManager:
@@ -65,7 +101,7 @@ class TrackingManager:
     async def mark_episodes(
         self, user: User, media: Media, episode_ids: collections.abc.Collection[uuid.UUID], at: dt.datetime
     ) -> ShowTracking:
-        """Mark episodes watched at `at`; the show joins the library and leaves stopped."""
+        """Mark episodes watched at `at`; the show joins the library and leaves stopped or watch later."""
         await self._check_episodes(media, episode_ids)
         await self.session.execute(
             insert(WatchedEpisode)
@@ -73,7 +109,7 @@ class TrackingManager:
             .on_conflict_do_nothing()
         )
         user_media = await self._track(user, media, at)
-        if user_media.status is TrackingStatus.STOPPED:
+        if user_media.status in (TrackingStatus.STOPPED, TrackingStatus.WATCH_LATER):
             user_media.status = TrackingStatus.WATCHING
         return await self._update_show_status(user, media, user_media, at)
 
@@ -94,6 +130,12 @@ class TrackingManager:
         """Add the show to the library, stop it or resume it."""
         user_media = await self._track(user, media, now)
         user_media.status = TrackingStatus.STOPPED if stopped else TrackingStatus.WATCHING
+        return await self._update_show_status(user, media, user_media, now)
+
+    async def watch_later(self, user: User, media: Media, now: dt.datetime) -> ShowTracking:
+        """Put the show aside, out of the watch list, until an episode is marked or the show is resumed."""
+        user_media = await self._track(user, media, now)
+        user_media.status = TrackingStatus.WATCH_LATER
         return await self._update_show_status(user, media, user_media, now)
 
     async def set_movie_watched(self, user: User, media: Media, *, watched: bool, now: dt.datetime) -> MovieTracking:
@@ -147,7 +189,15 @@ class TrackingManager:
         for user, user_media in rows:
             await self._update_show_status(user, media, user_media, now, touch=False)
 
-    async def library(self, user: User, media_type: MediaType, now: dt.datetime) -> list[LibraryItem]:
+    async def library(
+        self,
+        user: User,
+        media_type: MediaType,
+        now: dt.datetime,
+        *,
+        sort: LibrarySort = LibrarySort.LAST_WATCHED,
+        status: LibraryStatus | None = None,
+    ) -> list[LibraryItem]:
         today = now.astimezone(zoneinfo.ZoneInfo(user.timezone)).date()
         regular = sa.and_(Episode.media_id == Media.id, Episode.season_number != SPECIALS_SEASON)
         aired = sa.case((Episode.airstamp.is_not(None), Episode.airstamp <= now), else_=Episode.air_date <= today)
@@ -159,18 +209,93 @@ class TrackingManager:
             .where(regular, aired, WatchedEpisode.user_id == user.id)
             .scalar_subquery()
         )
-        rows = await self.session.execute(
-            sa.select(Media, UserMedia.status, watched_count, aired_count, UserMedia.updated_at)
+        if media_type is MediaType.MOVIE:
+            last_watched_at = (
+                sa.select(WatchedMovie.watched_at)
+                .where(WatchedMovie.user_id == user.id, WatchedMovie.media_id == Media.id)
+                .scalar_subquery()
+            )
+        else:
+            last_watched_at = (
+                sa.select(sa.func.max(WatchedEpisode.watched_at))
+                .join(Episode, Episode.id == WatchedEpisode.episode_id)
+                .where(WatchedEpisode.user_id == user.id, Episode.media_id == Media.id)
+                .scalar_subquery()
+            )
+        query = (
+            sa.select(
+                Media,
+                UserMedia.status,
+                watched_count,
+                aired_count,
+                UserMedia.updated_at,
+                UserMedia.added_at,
+                last_watched_at,
+            )
             .join(UserMedia, UserMedia.media_id == Media.id)
             .where(UserMedia.user_id == user.id, Media.media_type == media_type)
-            .order_by(UserMedia.updated_at.desc())
         )
+        if status is LibraryStatus.NOT_STARTED:
+            query = query.where(last_watched_at.is_(None))
+        elif status is not None:
+            query = query.where(UserMedia.status == TrackingStatus(status))
+        order_by = {
+            LibrarySort.LAST_WATCHED: (last_watched_at.desc().nulls_last(), UserMedia.updated_at.desc()),
+            LibrarySort.LAST_ADDED: (UserMedia.added_at.desc(),),
+            LibrarySort.TITLE: (sa.func.lower(Media.title), Media.title),
+        }[sort]
+        rows = await self.session.execute(query.order_by(*order_by, Media.id))
         return [LibraryItem(*row) for row in rows]
+
+    async def history(
+        self, user: User, *, before: tuple[dt.datetime, uuid.UUID] | None, limit: int
+    ) -> list[HistoryEntry]:
+        """The episodes and movies the user watched, newest first, from strictly before `before` (watched at, id)."""
+        episodes = (
+            sa.select(
+                WatchedEpisode.episode_id.label("id"),
+                Media.media_type,
+                Media.tmdb_id,
+                Media.title,
+                Media.poster_path,
+                Episode.season_number,
+                Episode.episode_number,
+                Episode.title.label("episode_title"),
+                WatchedEpisode.watched_at,
+            )
+            .join(Episode, Episode.id == WatchedEpisode.episode_id)
+            .join(Media, Media.id == Episode.media_id)
+            .where(WatchedEpisode.user_id == user.id)
+        )
+        movies = (
+            sa.select(
+                WatchedMovie.media_id,
+                Media.media_type,
+                Media.tmdb_id,
+                Media.title,
+                Media.poster_path,
+                sa.cast(sa.null(), sa.Integer),
+                sa.cast(sa.null(), sa.Integer),
+                sa.cast(sa.null(), sa.TEXT),
+                WatchedMovie.watched_at,
+            )
+            .join(Media, Media.id == WatchedMovie.media_id)
+            .where(WatchedMovie.user_id == user.id)
+        )
+        if before is not None:
+            cursor = sa.tuple_(sa.literal(before[0], sa.TIMESTAMP(timezone=True)), sa.literal(before[1], sa.Uuid))
+            episodes = episodes.where(sa.tuple_(WatchedEpisode.watched_at, WatchedEpisode.episode_id) < cursor)
+            movies = movies.where(sa.tuple_(WatchedMovie.watched_at, WatchedMovie.media_id) < cursor)
+        watched = sa.union_all(episodes, movies).subquery()
+        rows = await self.session.execute(
+            sa.select(watched).order_by(watched.c.watched_at.desc(), watched.c.id.desc()).limit(limit)
+        )
+        return [HistoryEntry(*row) for row in rows]
 
     async def _track(self, user: User, media: Media, now: dt.datetime) -> UserMedia:
         """The library row, created when missing and locked like `_locked`."""
         statement = insert(UserMedia).values(
-            user_id=user.id, media_id=media.id, status=TrackingStatus.WATCH_LATER, updated_at=now
+            user_id=user.id, media_id=media.id, status=TrackingStatus.WATCH_LATER, added_at=now, updated_at=now
         )
         result = await self.session.scalars(
             # An update that changes nothing, so the row is returned and locked whether it existed or not.

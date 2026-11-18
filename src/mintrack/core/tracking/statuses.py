@@ -30,8 +30,9 @@ def is_aired(
 
 
 def show_status(current: TrackingStatus | None, episodes: list[EpisodeProgress], *, ended: bool) -> TrackingStatus:
-    if current is TrackingStatus.STOPPED:
-        return TrackingStatus.STOPPED
+    # Stopped and put aside (watch later) shows keep their status until an episode is marked or they are resumed.
+    if current in (TrackingStatus.STOPPED, TrackingStatus.WATCH_LATER):
+        return current
     if not any(episode.watched for episode in episodes):
         return TrackingStatus.WATCH_LATER
     if any(episode.aired and not episode.watched for episode in episodes):

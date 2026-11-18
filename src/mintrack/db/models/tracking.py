@@ -31,6 +31,7 @@ class UserMedia(DatabaseModel):
         sa.ForeignKey("media.id", ondelete="CASCADE"), primary_key=True, index=True
     )
     status: Mapped[TrackingStatus] = mapped_column(text_enum(TrackingStatus))
+    added_at: Mapped[dt.datetime]
     updated_at: Mapped[dt.datetime]
 
 

@@ -10,7 +10,7 @@ import pydantic
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.catalog.managers import CatalogManager, is_stale
+from mintrack.core.catalog.managers import CatalogManager, SearchHit, is_stale
 from mintrack.core.tracking.managers import MovieTracking, ShowTracking, TrackingManager
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import Episode, Media, MediaType, Season, TrackingStatus, User
@@ -21,6 +21,7 @@ from mintrack.worker.tasks import defer_refresh
 router = fastapi.APIRouter(tags=["catalog"])
 
 TMDBId = typing.Annotated[int, fastapi.Path(ge=1)]
+MediaTypeQuery = typing.Annotated[MediaType, fastapi.Query(alias="type")]
 
 
 class SearchResult(pydantic.BaseModel):
@@ -30,6 +31,17 @@ class SearchResult(pydantic.BaseModel):
     year: int | None
     poster_path: str | None
     tracking_status: TrackingStatus | None
+
+    @classmethod
+    def of(cls, hit: SearchHit) -> typing.Self:
+        return cls(
+            tmdb_id=hit.result.id,
+            media_type=hit.result.media_type,
+            title=hit.result.title,
+            year=hit.result.release_date.year if hit.result.release_date else None,
+            poster_path=hit.result.poster_path,
+            tracking_status=hit.tracking_status,
+        )
 
 
 class EpisodeResponse(pydantic.BaseModel):
@@ -75,6 +87,9 @@ class MediaResponse(pydantic.BaseModel):
     title: str
     overview: str
     poster_path: str | None
+    backdrop_path: str | None
+    network: str | None
+    runtime: int | None
     release_date: dt.date | None
     tmdb_status: str | None
 
@@ -134,21 +149,22 @@ async def search(
     user: CurrentUserDepType,
     session: DbSessionDepType,
     tmdb: TMDBClientDepType,
+    media_type: MediaTypeQuery = MediaType.TV,
 ) -> list[SearchResult]:
-    """TMDB's first page of shows (anime included) and movies."""
+    """TMDB's first page of shows (anime included) or movies."""
     with tmdb_errors():
-        hits = await CatalogManager(session, tmdb).search(user, query)
-    return [
-        SearchResult(
-            tmdb_id=hit.result.id,
-            media_type=hit.result.media_type,
-            title=hit.result.title,
-            year=hit.result.release_date.year if hit.result.release_date else None,
-            poster_path=hit.result.poster_path,
-            tracking_status=hit.tracking_status,
-        )
-        for hit in hits
-    ]
+        hits = await CatalogManager(session, tmdb).search(user, query, media_type)
+    return [SearchResult.of(hit) for hit in hits]
+
+
+@router.get("/discover/trending")
+async def trending(
+    media_type: MediaTypeQuery, user: CurrentUserDepType, session: DbSessionDepType, tmdb: TMDBClientDepType
+) -> list[SearchResult]:
+    """The week's trending shows or movies on TMDB."""
+    with tmdb_errors():
+        hits = await CatalogManager(session, tmdb).trending(user, media_type, dt.datetime.now(dt.UTC))
+    return [SearchResult.of(hit) for hit in hits]
 
 
 async def show_response(session: AsyncSession, user: User, media: Media) -> ShowResponse:

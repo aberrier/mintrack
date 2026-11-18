@@ -1,3 +1,5 @@
+import collections.abc
+import datetime as dt
 import enum
 import functools
 import itertools
@@ -17,6 +19,7 @@ TIMEOUT_SECONDS = 10
 CONNECT_RETRIES = 3
 # TMDB's limit of append_to_response items per request.
 MAX_APPENDS = 20
+TRENDING_MAX_AGE = dt.timedelta(hours=1)
 SEARCHED_TYPES = frozenset(MediaType)
 
 
@@ -50,6 +53,8 @@ class TMDBClient:
             timeout=TIMEOUT_SECONDS,
             transport=transport or httpx.AsyncHTTPTransport(retries=CONNECT_RETRIES),
         )
+        # One client per configuration, so per language: media type -> (fetched at, results).
+        self._trending: dict[MediaType, tuple[dt.datetime, list[TMDBSearchResult]]] = {}
 
     async def _get(self, path: str, **params: str | int) -> dict[str, typing.Any]:
         if not self.configured:
@@ -71,14 +76,21 @@ class TMDBClient:
             raise TMDBError(msg)
         return response.json()
 
-    async def search(self, query: str) -> list[TMDBSearchResult]:
-        """Shows and movies of TMDB's first page of results."""
-        data = await self._get("search/multi", query=query, include_adult="false")
-        return [
-            TMDBSearchResult.model_validate(result)
-            for result in data["results"]
-            if result.get("media_type") in SEARCHED_TYPES
-        ]
+    async def search(self, query: str, media_type: MediaType | None = None) -> list[TMDBSearchResult]:
+        """TMDB's first page of results of that type, or of shows and movies."""
+        if media_type is None:
+            data = await self._get("search/multi", query=query, include_adult="false")
+            return _results(data, SEARCHED_TYPES)
+        data = await self._get(f"search/{media_type}", query=query, include_adult="false")
+        return _results(data, {media_type}, media_type)
+
+    async def trending(self, media_type: MediaType, now: dt.datetime) -> list[TMDBSearchResult]:
+        """TMDB's first page of the week's trending shows or movies, kept for an hour."""
+        if (cached := self._trending.get(media_type)) and now - cached[0] < TRENDING_MAX_AGE:
+            return cached[1]
+        results = _results(await self._get(f"trending/{media_type}/week"), {media_type}, media_type)
+        self._trending[media_type] = (now, results)
+        return results
 
     async def movie(self, tmdb_id: int) -> TMDBMovie:
         return TMDBMovie.model_validate(await self._get(f"movie/{tmdb_id}"))
@@ -102,6 +114,14 @@ class TMDBClient:
     async def find(self, external_id: str, source: ExternalSource) -> dict[str, typing.Any]:
         """TMDB ids of what has this external id: `movie_results`, `tv_results` and `tv_episode_results`."""
         return await self._get(f"find/{urllib.parse.quote(external_id, safe='')}", external_source=source)
+
+
+def _results(
+    data: dict[str, typing.Any], types: collections.abc.Set[MediaType], media_type: MediaType | None = None
+) -> list[TMDBSearchResult]:
+    """The results of those types; `media_type` is set where TMDB leaves it out, as in typed searches."""
+    results = [result if media_type is None else {"media_type": media_type, **result} for result in data["results"]]
+    return [TMDBSearchResult.model_validate(result) for result in results if result.get("media_type") in types]
 
 
 @functools.cache

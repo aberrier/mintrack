@@ -37,6 +37,11 @@ class Media(DatabaseModel):
     title: Mapped[str]
     overview: Mapped[str] = mapped_column(default="")
     poster_path: Mapped[str | None]
+    backdrop_path: Mapped[str | None]
+    # The show's first network; None for movies.
+    network: Mapped[str | None]
+    # The movie's length in minutes; None for shows.
+    runtime: Mapped[int | None]
     # The movie's release date or the show's first air date.
     release_date: Mapped[dt.date | None]
     # TMDB's status: "Returning Series", "Ended", "Released"...

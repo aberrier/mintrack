@@ -104,6 +104,7 @@ async def test_mark_movie_watched_defaults_to_now(mcp_app: fastapi.FastAPI, toke
         ("unmark_movie_watched", {"tmdb_id": MOVIE_ID}, "watch_later"),
         ("set_show_status", {"tmdb_id": SHOW_ID, "status": "stopped"}, "stopped"),
         ("set_show_status", {"tmdb_id": SHOW_ID, "status": "watching"}, "watching"),
+        ("set_show_status", {"tmdb_id": SHOW_ID, "status": "watch_later"}, "watch_later"),
     ],
 )
 async def test_each_write_tool_updates_the_tokens_users_tracking(
@@ -137,7 +138,8 @@ async def test_upcoming_and_up_next_follow_the_users_progress(mcp_app: fastapi.F
 
     in_a_week = days_from_today(7)
     assert upcoming == {"new": [], "days": [{"day": in_a_week, "episodes": [episode(2, 3, in_a_week)]}]}
-    assert up_next == {"result": [episode(1, 2, days_from_today(-29))]}
+    assert up_next["result"][0].pop("last_watched_at") is not None
+    assert up_next == {"result": [episode(1, 2, days_from_today(-29)) | {"remaining": 3, "section": "next"}]}
 
 
 async def test_another_users_tracking_is_not_shown(
