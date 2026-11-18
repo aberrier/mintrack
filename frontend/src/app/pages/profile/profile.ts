@@ -13,6 +13,7 @@ import { ApiService } from '../../core/api/api.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { injectTranslator } from '../../core/i18n';
 import { PushStore } from '../../core/push/push.store';
+import { ImportCard } from './import-card/import-card';
 import { JellyfinAccounts } from './jellyfin-accounts/jellyfin-accounts';
 import { PushSettings } from './push-settings/push-settings';
 
@@ -33,6 +34,7 @@ const TIMEZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) =>
     MatOption,
     PushSettings,
     JellyfinAccounts,
+    ImportCard,
   ],
   templateUrl: './profile.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

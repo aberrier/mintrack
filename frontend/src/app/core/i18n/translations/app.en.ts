@@ -105,6 +105,36 @@ export default {
         unknown: 'Linking failed, try again',
       },
     },
+    imports: {
+      title: 'Import your history',
+      source: 'Import from',
+      yamtrack: 'Yamtrack',
+      tvtime: 'TV Time',
+      help: {
+        yamtrack: 'The CSV file from Yamtrack’s Settings, Export.',
+        tvtime:
+          'The .zip of your TV Time data export, or its tracking-prod-records-v2.csv or tracking-prod-records.csv file.',
+      },
+      choose: 'Choose a file and import',
+      limit: 'Up to 20 MB. The file is deleted once imported.',
+      uploadFailed: 'The file could not be sent. Try again.',
+      progress: 'Importing…',
+      waiting: 'Waiting to start…',
+      failed: 'The import failed. Try again.',
+      report: {
+        title: 'Import finished',
+        imported: 'Added',
+        alreadyPresent: 'Already there',
+        unmatched: 'Not matched',
+        more: 'more not listed',
+      },
+      reasons: {
+        unsupported: 'not a movie or show on TMDB',
+        not_found: 'not found on TMDB',
+        episode_not_found: 'episode not found on TMDB',
+        tmdb_unavailable: 'TMDB did not answer',
+      },
+    },
   },
   adminUsers: {
     title: 'Users',

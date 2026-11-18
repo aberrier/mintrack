@@ -77,4 +77,14 @@ export class ApiService {
     unlink: (id: string) => this.http.delete<void>(`/api/jellyfin/accounts/${id}`),
     sync: (id: string) => this.http.post<void>(`/api/jellyfin/accounts/${id}/sync`, null),
   };
+
+  readonly imports = {
+    latest: () => this.http.get<Model.Http.ImportJob | null>('/api/imports/latest'),
+    create: (source: Model.Http.ImportSource, file: File) => {
+      const body = new FormData();
+      body.append('source', source);
+      body.append('file', file);
+      return this.http.post<Model.Http.ImportJob>('/api/imports', body);
+    },
+  };
 }
