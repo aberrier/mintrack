@@ -13,10 +13,14 @@ import zoneinfo
 MAX_IMPORT_BYTES = 20 * 1024 * 1024
 
 MAX_IMPORT_ROWS = 200_000
+# Dates before this year are placeholders.
+MIN_YEAR = 1800
 
 # The files of a TV Time GDPR export that hold the tracking history.
 TVTIME_FILES = ("tracking-prod-records-v2.csv", "tracking-prod-records.csv")
 
+# A TV Time show row: followed, archived (stopped), or put aside for later.
+TVTIME_SHOW_FLAGS = ("is_followed", "is_archived", "is_for_later")
 # A TV Time tracking file has at least one of these columns.
 TVTIME_COLUMNS = {"key", "episode_id", "movie_name"}
 YAMTRACK_COLUMNS = {
@@ -44,6 +48,8 @@ class UnmatchedReason(enum.StrEnum):
     NOT_FOUND = enum.auto()
     EPISODE_NOT_FOUND = enum.auto()
     TMDB_UNAVAILABLE = enum.auto()
+    # A per-season anime entry matched to a show another season's entry already matched: left to the user.
+    TO_CHECK = enum.auto()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -59,9 +65,13 @@ class ShowRow:
     title: str
     ids: ExternalIds
     stopped: bool = False
+    # Put aside to watch later.
+    watch_later: bool = False
     # Episodes watched, in airing order, for sources without episode rows.
     progress: int | None = None
     watched_at: dt.datetime | None = None
+    # One season of a show, as MyAnimeList and AniList list anime, matched by title.
+    season_entry: bool = False
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -110,7 +120,16 @@ def parse_yamtrack(data: bytes, tz: zoneinfo.ZoneInfo) -> list[ImportRow]:
             stopped = row["status"] in YAMTRACK_STOPPED
             if media_type == "anime":
                 progress = _int(row.get("progress", "")) or None
-                rows.append(ShowRow(title=title, ids=ids, stopped=stopped, progress=progress, watched_at=watched_at))
+                rows.append(
+                    ShowRow(
+                        title=title,
+                        ids=ids,
+                        stopped=stopped,
+                        progress=progress,
+                        watched_at=watched_at,
+                        season_entry=row["source"] != "tmdb",
+                    )
+                )
             else:
                 rows.append(ShowRow(title=title, ids=ids, stopped=stopped))
         elif media_type == "episode":
@@ -125,19 +144,24 @@ def parse_yamtrack(data: bytes, tz: zoneinfo.ZoneInfo) -> list[ImportRow]:
 def parse_tvtime(data: bytes, tz: zoneinfo.ZoneInfo) -> list[ImportRow]:
     """Rows of a TV Time GDPR export: the export's .zip, or one of its tracking CSV files."""
     rows: list[ImportRow] = []
+    read = 0
     for content in _tvtime_files(data).values():
         records = _read(
             _decode(content, fallback="latin-1"),
             lambda header: bool(header & TVTIME_COLUMNS),
             "This is not a TV Time tracking file.",
+            read_before=read,
         )
-        rows.extend(row for record in records if (row := _tvtime_row(record, tz)) is not None)
+        for record in records:
+            read += 1
+            if (row := _tvtime_row(record, tz)) is not None:
+                rows.append(row)
     return rows
 
 
 def keep_tvtime_tracking_files(data: bytes) -> bytes:
     """The upload reduced to the tracking files when it is the whole export archive."""
-    if not zipfile.is_zipfile(io.BytesIO(data)):
+    if not _is_zip(data):
         return data
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -146,28 +170,39 @@ def keep_tvtime_tracking_files(data: bytes) -> bytes:
     return buffer.getvalue()
 
 
-def _tvtime_files(data: bytes) -> dict[str, bytes]:
-    if not zipfile.is_zipfile(io.BytesIO(data)):
-        return {TVTIME_FILES[0]: data}
+def _is_zip(data: bytes) -> bool:
     try:
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            members = [info for info in archive.infolist() if pathlib.PurePosixPath(info.filename).name in TVTIME_FILES]
-            if not members:
-                msg = f"The archive has none of the TV Time files {', '.join(TVTIME_FILES)}."
-                raise ImportFileError(msg)
-            files, budget = {}, MAX_IMPORT_BYTES
-            for info in members:
-                with archive.open(info) as member:
-                    content = member.read(budget + 1)
-                budget -= len(content)
-                if budget < 0:
-                    msg = f"The TV Time files are larger than {MAX_IMPORT_BYTES // (1024 * 1024)} MB."
-                    raise ImportFileError(msg)
-                files[pathlib.PurePosixPath(info.filename).name] = content
-            return files
-    except (zipfile.BadZipFile, NotImplementedError, EOFError, RuntimeError, zlib.error) as error:
+        return zipfile.is_zipfile(io.BytesIO(data))
+    except ValueError as error:
+        # A zip signature with a corrupt directory.
         msg = "The archive cannot be read."
         raise ImportFileError(msg) from error
+
+
+def _tvtime_files(data: bytes) -> dict[str, bytes]:
+    if not _is_zip(data):
+        return {TVTIME_FILES[0]: data}
+    files: dict[str, bytes] = {}
+    budget = MAX_IMPORT_BYTES
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            for info in archive.infolist():
+                name = pathlib.PurePosixPath(info.filename).name
+                if name in TVTIME_FILES and budget >= 0:
+                    with archive.open(info) as member:
+                        files[name] = member.read(budget + 1)
+                    budget -= len(files[name])
+    # ValueError: a corrupt header; UnicodeDecodeError, one of its kind: a file name in no encoding.
+    except (zipfile.BadZipFile, NotImplementedError, EOFError, RuntimeError, ValueError, zlib.error) as error:
+        msg = "The archive cannot be read."
+        raise ImportFileError(msg) from error
+    if not files:
+        msg = f"The archive has none of the TV Time files {', '.join(TVTIME_FILES)}."
+        raise ImportFileError(msg)
+    if budget < 0:
+        msg = f"The TV Time files are larger than {MAX_IMPORT_BYTES // (1024 * 1024)} MB."
+        raise ImportFileError(msg)
+    return files
 
 
 def _tvtime_row(record: dict[str, str], tz: zoneinfo.ZoneInfo) -> ImportRow | None:
@@ -188,9 +223,10 @@ def _tvtime_row(record: dict[str, str], tz: zoneinfo.ZoneInfo) -> ImportRow | No
             watched_at=_datetime(record.get("updated_at") or record.get("created_at") or "", tz),
         )
     if key.startswith("user-series-"):
-        if record.get("is_followed") != "true":
+        followed, archived, for_later = (record.get(name) == "true" for name in TVTIME_SHOW_FLAGS)
+        if not (followed or archived or for_later):
             return None
-        return ShowRow(title=series_name, ids=show_ids)
+        return ShowRow(title=series_name, ids=show_ids, stopped=archived, watch_later=for_later and not archived)
     if key.startswith(("watch-episode-", "rewatch-episode-")) or (not key and record.get("episode_id")):
         return EpisodeRow(
             title=series_name,
@@ -203,24 +239,27 @@ def _tvtime_row(record: dict[str, str], tz: zoneinfo.ZoneInfo) -> ImportRow | No
 
 
 def _decode(data: bytes, fallback: str | None) -> str:
+    """The text, without NUL characters: PostgreSQL text cannot hold them."""
     try:
-        return data.decode("utf-8-sig")
+        text = data.decode("utf-8-sig")
     except UnicodeDecodeError as error:
         if fallback is None:
             msg = "The file is not UTF-8 text."
             raise ImportFileError(msg) from error
-        return data.decode(fallback)
+        text = data.decode(fallback)
+    return text.replace("\x00", "")
 
 
 def _read(
-    text: str, accepts: collections.abc.Callable[[set[str]], bool], wrong_file: str
+    text: str, accepts: collections.abc.Callable[[set[str]], bool], wrong_file: str, *, read_before: int = 0
 ) -> collections.abc.Iterator[dict[str, str]]:
-    """The CSV records, once `accepts` approved its header."""
-    reader = csv.DictReader(io.StringIO(text, newline=""))
+    """The CSV records, once `accepts` approved its header; MAX_IMPORT_ROWS counts the `read_before` records of the
+    import's other files. A quote left open is an error rather than a field running to the end of the file."""
+    reader = csv.DictReader(io.StringIO(text, newline=""), strict=True)
     try:
         if not accepts(set(reader.fieldnames or ())):
             raise ImportFileError(wrong_file)
-        for count, row in enumerate(reader, start=1):
+        for count, row in enumerate(reader, start=read_before + 1):
             if count > MAX_IMPORT_ROWS:
                 msg = f"The file has more than {MAX_IMPORT_ROWS} rows."
                 raise ImportFileError(msg)
@@ -238,12 +277,22 @@ def _int(value: str) -> int | None:
 
 
 def _datetime(value: str, tz: zoneinfo.ZoneInfo) -> dt.datetime | None:
-    """An ISO date or datetime; a date alone is midnight in `tz`, a datetime without offset is UTC."""
+    """An ISO date or datetime; a date alone is midnight in `tz`, a datetime without offset is UTC. A year before
+    MIN_YEAR is a placeholder for no date (TV Time writes 0001-01-01)."""
     value = value.strip()
     try:
         if len(value) == len("2024-01-31"):
-            return dt.datetime.combine(dt.date.fromisoformat(value), dt.time(), tzinfo=tz)
-        parsed = dt.datetime.fromisoformat(value)
+            parsed = dt.datetime.combine(dt.date.fromisoformat(value), dt.time(), tzinfo=tz)
+        else:
+            parsed = dt.datetime.fromisoformat(value)
     except ValueError:
         return None
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.UTC)
+    if parsed.year < MIN_YEAR:
+        return None
+    parsed = parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.UTC)
+    try:
+        # Out of range in UTC (9999-12-31T23:59:59-12:00): no date either.
+        parsed.astimezone(dt.UTC)
+    except OverflowError:
+        return None
+    return parsed

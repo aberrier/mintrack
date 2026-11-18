@@ -9,8 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import undefer
 
-from mintrack.core.catalog.managers import CatalogManager
-from mintrack.core.tracking.managers import TrackingManager
+from mintrack.core.catalog.managers import CatalogManager, episode_code
+from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
 from mintrack.db.models import (
     Episode,
     ImportJob,
@@ -26,6 +26,7 @@ from mintrack.db.models import (
 )
 from mintrack.integrations.tmdb.client import ExternalSource, TMDBClient, TMDBError, TMDBNotFoundError
 from mintrack.observability.logging import logger
+from mintrack.worker.defer import defer_import
 
 from .parsers import (
     EpisodeRow,
@@ -40,8 +41,9 @@ from .parsers import (
 )
 
 ACTIVE_STATUSES = (ImportStatus.PENDING, ImportStatus.RUNNING)
-# A job without progress for this long was lost (server restart) and no longer blocks a new import.
+# A job without progress for this long and without a task to run it was lost, and no longer blocks a new import.
 STALE_AFTER = dt.timedelta(minutes=15)
+_PROCRASTINATE_JOBS = sa.table("procrastinate_jobs", sa.column("queueing_lock"), sa.column("status"))
 PROGRESS_EVERY = 50
 MAX_REPORTED_UNMATCHED = 500
 
@@ -71,15 +73,14 @@ class ImportManager:
         self.session = session
         self.tmdb = tmdb
 
-    async def create(self, user: User, source: ImportSource, filename: str, data: bytes) -> ImportJob:
-        """Validate the file and queue it; raises `ImportInProgressError` or `ImportFileError`."""
+    async def create(
+        self, user: User, source: ImportSource, filename: str, data: bytes, *, queue: bool = True
+    ) -> ImportJob:
+        """Validate the file and queue it for the worker, unless the caller runs it; raises `ImportInProgressError` or
+        `ImportFileError`."""
         now = _now()
-        await self.session.execute(
-            sa.update(ImportJob)
-            .where(ImportJob.status.in_(ACTIVE_STATUSES), ImportJob.updated_at < now - STALE_AFTER)
-            .values(status=ImportStatus.FAILED, file=None, finished_at=now)
-        )
-        active = sa.select(ImportJob.id).filter(ImportJob.user_id == user.id, ImportJob.status.in_(ACTIVE_STATUSES))
+        await self._expire_lost(now)
+        active = sa.select(ImportJob.id).where(ImportJob.user_id == user.id, ImportJob.status.in_(ACTIVE_STATUSES))
         if await self.session.scalar(active) is not None:
             raise ImportInProgressError
         data = await asyncio.to_thread(_validate, source, data, user.timezone)
@@ -89,17 +90,21 @@ class ImportManager:
                 self.session.add(job)
         except IntegrityError as error:
             raise ImportInProgressError from error
+        if queue:
+            await defer_import(self.session, job.id, user.id)
         return job
 
     async def latest(self, user: User) -> ImportJob | None:
+        await self._expire_lost(_now())
         return await self.session.scalar(
             sa.select(ImportJob).filter_by(user_id=user.id).order_by(ImportJob.created_at.desc()).limit(1)
         )
 
     async def run(self, job_id: uuid.UUID) -> None:
-        """Import the rows of a pending job, then drop its file whatever the outcome."""
+        """Import the rows of a pending job, or start again one whose worker stopped, then drop its file whatever the
+        outcome."""
         job = await self.session.get(ImportJob, job_id, options=[undefer(ImportJob.file)])
-        if job is None or job.status is not ImportStatus.PENDING or job.file is None:
+        if job is None or job.status not in ACTIVE_STATUSES or job.file is None:
             return
         user = await self.session.get_one(User, job.user_id)
         job.status, job.updated_at = ImportStatus.RUNNING, _now()
@@ -113,21 +118,45 @@ class ImportManager:
             for index, row in enumerate(rows, start=1):
                 await importer.apply(row)
                 if index % PROGRESS_EVERY == 0:
+                    await importer.refresh_statuses()
                     job.processed, job.updated_at = index, _now()
                     await self.session.commit()
+            await importer.refresh_statuses()
             job.processed, job.report = len(rows), importer.report()
             job.status = ImportStatus.DONE
             job.file, job.finished_at = None, _now()
             await self.session.commit()
+        except asyncio.CancelledError:
+            # The worker is shutting down: the job would otherwise stay running.
+            await self._fail(job_id)
+            raise
         except Exception:  # noqa: BLE001
             logger.exception("import failed", job_id=str(job_id))
-            await self.session.rollback()
-            await self.session.execute(
-                sa.update(ImportJob)
-                .where(ImportJob.id == job_id)
-                .values(status=ImportStatus.FAILED, file=None, finished_at=_now(), updated_at=_now())
-            )
-            await self.session.commit()
+            await self._fail(job_id)
+
+    async def _fail(self, job_id: uuid.UUID) -> None:
+        await self.session.rollback()
+        await self.session.execute(
+            sa.update(ImportJob)
+            .where(ImportJob.id == job_id)
+            .values(status=ImportStatus.FAILED, file=None, finished_at=_now(), updated_at=_now())
+        )
+        await self.session.commit()
+
+    async def _expire_lost(self, now: dt.datetime) -> None:
+        """Fail the jobs without progress for STALE_AFTER whose task is no longer queued or running (the queue was
+        cleared): nothing would finish them. A task waiting in the queue, or retried after its worker stopped, still
+        will."""
+        queued = sa.exists().where(
+            _PROCRASTINATE_JOBS.c.queueing_lock == sa.func.concat("import:", ImportJob.id),
+            sa.cast(_PROCRASTINATE_JOBS.c.status, sa.TEXT).in_(["todo", "doing"]),
+        )
+        await self.session.execute(
+            sa.update(ImportJob)
+            .where(ImportJob.status.in_(ACTIVE_STATUSES), ImportJob.updated_at < now - STALE_AFTER, ~queued)
+            .values(status=ImportStatus.FAILED, file=None, finished_at=now)
+            .execution_options(synchronize_session=False)
+        )
 
 
 class _Importer:
@@ -154,8 +183,12 @@ class _Importer:
         self.tracked: set[uuid.UUID] = set()
         self.watched_episodes: set[uuid.UUID] = set()
         self.watched_movies: set[uuid.UUID] = set()
-        # Shows added stopped, stopped again after each episode marked, as marking resumes them.
-        self.stopped: set[uuid.UUID] = set()
+        # Shows added stopped or put aside: marking their episodes does not resume them.
+        self.set_aside: set[uuid.UUID] = set()
+        # Episodes to mark at the next `refresh_statuses`, per show.
+        self.marked: dict[Media, dict[uuid.UUID, dt.datetime]] = {}
+        # The title of the per-season entry (MyAnimeList, AniList) that matched each show first.
+        self.season_entries: dict[uuid.UUID, str] = {}
 
     async def load(self) -> None:
         """The user's library and watches, so each row is checked without a query."""
@@ -167,6 +200,11 @@ class _Importer:
         self.watched_movies = set(
             await self.session.scalars(sa.select(WatchedMovie.media_id).filter_by(user_id=user_id))
         )
+
+    async def refresh_statuses(self) -> None:
+        """Record the episodes marked since the last call, and compute the status of their shows once."""
+        await self.tracking.record_watches(self.user, self.marked, now=self.started_at, keep_aside=self.set_aside)
+        self.marked.clear()
 
     def report(self) -> ImportReport:
         return {
@@ -203,13 +241,24 @@ class _Importer:
         if isinstance(media, UnmatchedReason):
             self._unmatched(row.title, media)
             return
+        # Another season's entry matched by title to the same show: its episodes are not guessed.
+        if row.season_entry and self.season_entries.setdefault(media.id, row.title) != row.title:
+            self._unmatched(row.title, UnmatchedReason.TO_CHECK)
+            return
         if media.id in self.tracked:
             self._count(imported=False)
             return
-        await self.tracking.track_show(self.user, media, stopped=row.stopped, now=self.started_at)
+        status = (
+            ShowTrackingChoice.STOPPED
+            if row.stopped
+            else ShowTrackingChoice.WATCH_LATER
+            if row.watch_later
+            else ShowTrackingChoice.WATCHING
+        )
+        await self.tracking.set_show_status(self.user, media, status, self.started_at)
         self.tracked.add(media.id)
-        if row.stopped:
-            self.stopped.add(media.id)
+        if status is not ShowTrackingChoice.WATCHING:
+            self.set_aside.add(media.id)
         if row.progress:
             episodes = sorted((key, episode) for key, episode in (await self._episodes(media)).items() if key[0])
             await self._mark(media, [episode for _, episode in episodes[: row.progress]], row.watched_at)
@@ -226,8 +275,11 @@ class _Importer:
             self._unmatched(row.title, media)
             return
         episode = None if season is None or number is None else (await self._episodes(media)).get((season, number))
+        if episode is None and row.ids.tvdb_episode is not None:
+            # TVDB and TMDB may split seasons differently: TMDB knows where TVDB's episode is.
+            media, episode = await self._episode_by_tvdb_id(row.ids.tvdb_episode, media)
         if episode is None:
-            label = row.title if season is None or number is None else f"{row.title} S{season:02}E{number:02}"
+            label = row.title if season is None or number is None else f"{row.title} {episode_code(season, number)}"
             self._unmatched(label, UnmatchedReason.EPISODE_NOT_FOUND)
             return
         if episode.id in self.watched_episodes:
@@ -236,14 +288,27 @@ class _Importer:
         await self._mark(media, [episode], row.watched_at)
         self._count(imported=True)
 
+    async def _episode_by_tvdb_id(self, tvdb_episode_id: int, media: Media) -> tuple[Media, Episode | None]:
+        """The episode TMDB maps the TVDB episode to, in `media` or in the TMDB show it belongs to."""
+        found = await self._find_episode(tvdb_episode_id)
+        if found is None:
+            return media, None
+        show_id, season, number = found
+        if show_id != media.tmdb_id:
+            other = await self._match_tmdb(show_id, MediaType.TV)
+            if isinstance(other, UnmatchedReason):
+                return media, None
+            media = other
+        return media, (await self._episodes(media)).get((season, number))
+
     async def _mark(self, media: Media, episodes: list[Episode], at: dt.datetime | None) -> None:
         if not episodes:
             return
-        ids = [episode.id for episode in episodes]
-        await self.tracking.mark_episodes(self.user, media, ids, at or self.started_at)
-        if media.id in self.stopped:
-            await self.tracking.track_show(self.user, media, stopped=True, now=self.started_at)
-        self.watched_episodes.update(ids)
+        # A date after the import started (a clock or time zone mistake in the export) is the import's.
+        self.marked.setdefault(media, {}).update(
+            dict.fromkeys((episode.id for episode in episodes), at or self.started_at)
+        )
+        self.watched_episodes.update(episode.id for episode in episodes)
         self.tracked.add(media.id)
 
     async def _apply_movie(self, row: MovieRow) -> None:
@@ -254,8 +319,9 @@ class _Importer:
         if media.id in self.watched_movies or (not row.watched and media.id in self.tracked):
             self._count(imported=False)
             return
-        at = row.watched_at or self.started_at
-        await self.tracking.set_movie_watched(self.user, media, watched=row.watched, now=at)
+        # A date after the import started is the import's, as for episodes.
+        at = min(row.watched_at or self.started_at, self.started_at)
+        await self.tracking.set_movie_watched(self.user, media, watched=row.watched, at=at, now=self.started_at)
         self.tracked.add(media.id)
         if row.watched:
             self.watched_movies.add(media.id)
@@ -268,6 +334,9 @@ class _Importer:
             return UnmatchedReason.TMDB_UNAVAILABLE
         if tmdb_id is None:
             return UnmatchedReason.NOT_FOUND
+        return await self._match_tmdb(tmdb_id, media_type)
+
+    async def _match_tmdb(self, tmdb_id: int, media_type: MediaType) -> Media | UnmatchedReason:
         key = (tmdb_id, media_type)
         if key not in self.media:
             try:
