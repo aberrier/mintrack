@@ -91,6 +91,21 @@ test('someone marks a season in one tap, and unmarks it only after confirming', 
   await expect.poll(() => showStatus(viewer)).toBe('Watching');
 });
 
+test('the specials are marked in one tap too, and unmarked only after confirming', async ({ viewer }) => {
+  // Given a show with an aired special
+  const title = uniqueTitle('Paper Kite');
+  await openShow(viewer, title);
+
+  // When they tap the specials' check
+  expect(await tapSeason(viewer, 0)).toBe('1/1');
+  expect(await isSeasonWatched(viewer, 0)).toBe(true);
+
+  // Then tapping it again asks first, and confirming unmarks them
+  await tapSeason(viewer, 0);
+  await answerUnmark(viewer, 'Unmark');
+  expect(await seasonProgress(viewer, 0)).toBe('0/1');
+});
+
 test('finishing an ended show throws confetti and puts the Finished badge on its poster', async ({ viewer }) => {
   // Given an ended show
   const title = uniqueTitle('Quiet Harbour', { ended: true });
