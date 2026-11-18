@@ -69,4 +69,12 @@ export class ApiService {
     unsubscribe: (endpoint: string) => this.http.delete<void>('/api/push/subscriptions', { body: { endpoint } }),
     test: (endpoint: string) => this.http.post<void>('/api/push/test', { endpoint }),
   };
+
+  readonly jellyfin = {
+    list: () => this.http.get<Model.Http.JellyfinAccount[]>('/api/jellyfin/accounts'),
+    link: (request: Model.Http.JellyfinLinkRequest) =>
+      this.http.post<Model.Http.JellyfinAccount>('/api/jellyfin/accounts', request),
+    unlink: (id: string) => this.http.delete<void>(`/api/jellyfin/accounts/${id}`),
+    sync: (id: string) => this.http.post<void>(`/api/jellyfin/accounts/${id}/sync`, null),
+  };
 }
