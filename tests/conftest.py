@@ -20,6 +20,8 @@ from mintrack.integrations.tmdb.config import TMDBConfig
 from mintrack.worker import get_worker_app
 from tests.fakes.tmdb import FakeTMDB
 
+pytest_plugins = ["tests.push_service"]
+
 DATABASE_PASSWORD = "p@ss/w:rd%#value"
 
 

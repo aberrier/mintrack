@@ -4,7 +4,7 @@ import pydantic
 import pytest
 
 import mintrack.config
-from mintrack.config import Config, ConfigError, Environment, load_config
+from mintrack.config import Config, ConfigError, Environment, SecurityConfig, load_config
 from mintrack.config.security import SECRET_KEY_PLACEHOLDER
 from tests.conftest import DATABASE_PASSWORD
 
@@ -211,3 +211,13 @@ def test_an_empty_tmdb_key_counts_as_unset(env: pytest.MonkeyPatch) -> None:
     env.setenv("MINTRACK__TMDB__API_KEY", "")
 
     assert load_config(env_file=None).tmdb.api_key is None
+
+
+def test_keys_are_derived_per_purpose_from_the_secret_key() -> None:
+    security = SecurityConfig(secret_key=pydantic.SecretStr("0123456789abcdef0123456789abcdef"))
+
+    assert security.derive_key(b"a") == security.derive_key(b"a")
+    assert security.derive_key(b"a") != security.derive_key(b"b")
+    assert len(security.derive_key(b"a", length=16)) == 16
+    with pytest.raises(ValueError, match="MINTRACK__SECURITY__SECRET_KEY"):
+        SecurityConfig().derive_key(b"a")
