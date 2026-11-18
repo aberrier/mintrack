@@ -1,0 +1,6 @@
+key,s_id,series_name,is_followed,episode_id,season_number,episode_number,movie_name,type,updated_at,release_date,created_at
+user-series-1-5001,5001,Northern Lights,true,,,,,,,,2023-01-01 10:00:00
+watch-episode-1-9011,5001,Northern Lights,,9011,1,1,,,,,2023-01-02 20:00:00
+rewatch-episode-1-9011,5001,Northern Lights,,9011,1,1,,,,,2023-06-02 20:00:00
+watch-episode-1-7777,7777,Unknown Show,,1,1,1,,,,,2023-01-02 20:00:00
+,,,,,,,Glass Harbor,watch,2023-02-01 22:00:00,2020-05-01,

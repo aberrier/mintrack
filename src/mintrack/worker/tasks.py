@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import mintrack.worker
 from mintrack.core.catalog.managers import CatalogManager, is_airing
+from mintrack.core.imports.managers import ImportManager
 from mintrack.core.jellyfin.managers import JellyfinManager
 from mintrack.core.push.managers import PushManager
 from mintrack.core.push.webpush import get_vapid_key
@@ -118,6 +119,12 @@ async def sync_jellyfin_accounts(timestamp: int) -> None:  # noqa: ARG001
         await session.commit()
 
 
+@blueprint.task(name="imports.run")
+async def run_import(job_id: str) -> None:
+    async with get_database().session() as session:
+        await ImportManager(session, get_tmdb_client()).run(uuid.UUID(job_id))
+
+
 async def defer_refresh(session: AsyncSession, media_id: uuid.UUID) -> None:
     """Defer a refresh in the session's transaction: it runs only if the transaction commits, at most once queued."""
     await _defer_for_media(session, refresh_media, f"refresh_media:{media_id}", media_id)
@@ -131,17 +138,26 @@ async def defer_air_times_refresh(session: AsyncSession, media_id: uuid.UUID) ->
 async def defer_jellyfin_sync(
     session: AsyncSession, account_id: uuid.UUID, user_id: uuid.UUID, *, full: bool = False
 ) -> None:
-    """Defer a sync of the account like `defer_refresh`; one user's accounts sync one at a time."""
+    """Defer a sync of the account like `defer_refresh`; one user's syncs and imports run one at a time."""
     kind = "full" if full else "new"
-    # The same user's accounts may mark the same episodes.
     await _defer(
         session,
         sync_jellyfin_account,
         f"jellyfin_sync:{account_id}:{kind}",
-        f"jellyfin_user:{user_id}",
+        _user_tracking_lock(user_id),
         account_id=str(account_id),
         full=full,
     )
+
+
+async def defer_import(session: AsyncSession, job_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    """Defer the import job like `defer_refresh`, after the user's running syncs and imports."""
+    await _defer(session, run_import, f"import:{job_id}", _user_tracking_lock(user_id), job_id=str(job_id))
+
+
+def _user_tracking_lock(user_id: uuid.UUID) -> str:
+    # Jellyfin syncs and imports may mark the same episodes of the same user.
+    return f"user_tracking:{user_id}"
 
 
 async def _defer_for_media(session: AsyncSession, task: Task, queueing_lock: str, media_id: uuid.UUID) -> None:

@@ -47,7 +47,7 @@ async def test_the_periodic_job_queues_one_sync_per_account_once(
     ).all()
     assert sorted(account_id for account_id, _ in queued) == sorted([str(bob.id), str(carol.id)])
     # A user's accounts never sync at the same time: they may mark the same episodes.
-    assert {lock for _, lock in queued} == {f"jellyfin_user:{user.id}"}
+    assert {lock for _, lock in queued} == {f"user_tracking:{user.id}"}
 
 
 async def test_the_sync_job_syncs_the_account(
