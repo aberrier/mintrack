@@ -1,0 +1,72 @@
+<section class="flex flex-col gap-3" aria-labelledby="api-tokens-title">
+  <h2 id="api-tokens-title" class="[font:var(--mat-sys-title-large)]">
+    {{ translate('app.profile.apiTokens.title') }}
+  </h2>
+  <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+    {{ translate('app.profile.apiTokens.description') }}
+  </p>
+
+  <form class="flex items-start gap-2" (submit)="$event.preventDefault(); create()">
+    <mat-form-field class="min-w-0 grow" subscriptSizing="dynamic">
+      <mat-label>{{ translate('app.profile.apiTokens.name') }}</mat-label>
+      <input matInput [formControl]="name" maxlength="100" autocomplete="off" />
+    </mat-form-field>
+    <button matButton="filled" type="submit" class="mt-1 min-h-12" [disabled]="$creating()">
+      {{ translate('app.profile.apiTokens.create') }}
+    </button>
+  </form>
+
+  @if ($created(); as created) {
+    <div role="status" class="bg-secondary-container text-on-secondary-container flex flex-col gap-2 rounded-xl p-4">
+      <p class="[font:var(--mat-sys-body-medium)]">{{ translate('app.profile.apiTokens.showOnce') }}</p>
+      <code data-testid="new-api-token" class="break-all select-all">{{ created.token }}</code>
+      <div class="flex justify-end gap-2">
+        <button matButton type="button" class="min-h-12" (click)="copy(created.token)">
+          {{ translate('app.profile.apiTokens.copy') }}
+        </button>
+        <button matButton type="button" class="min-h-12" (click)="$created.set(null)">
+          {{ translate('app.profile.apiTokens.done') }}
+        </button>
+      </div>
+    </div>
+  }
+
+  @if (tokens.hasValue()) {
+    <ul class="flex flex-col" [attr.aria-label]="translate('app.profile.apiTokens.title')">
+      @for (token of tokens.value(); track token.id) {
+        <li class="flex min-h-14 items-center gap-2">
+          <div class="flex min-w-0 grow flex-col">
+            <span class="truncate [font:var(--mat-sys-body-large)]">{{ token.name }}</span>
+            <span class="text-on-surface-variant [font:var(--mat-sys-body-small)]">
+              {{ translate('app.profile.apiTokens.created') }} {{ date(token.created_at) }} ·
+              @if (token.last_used_at) {
+                {{ translate('app.profile.apiTokens.lastUsed') }} {{ date(token.last_used_at) }}
+              } @else {
+                {{ translate('app.profile.apiTokens.neverUsed') }}
+              }
+            </span>
+          </div>
+          <button matButton type="button" class="min-h-12" (click)="revoke(token)">
+            {{ translate('app.profile.apiTokens.revoke') }}
+          </button>
+        </li>
+      } @empty {
+        <li class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+          {{ translate('app.profile.apiTokens.empty') }}
+        </li>
+      }
+    </ul>
+  }
+</section>
+
+<ng-template #confirmRevoke let-token>
+  <h2 mat-dialog-title>{{ translate('app.profile.apiTokens.confirmTitle') }}</h2>
+  <mat-dialog-content>
+    <p class="break-words">{{ token.name }}</p>
+    <p>{{ translate('app.profile.apiTokens.confirmText') }}</p>
+  </mat-dialog-content>
+  <mat-dialog-actions align="end">
+    <button matButton type="button" [mat-dialog-close]="false">{{ translate('app.profile.apiTokens.cancel') }}</button>
+    <button matButton type="button" [mat-dialog-close]="true">{{ translate('app.profile.apiTokens.revoke') }}</button>
+  </mat-dialog-actions>
+</ng-template>

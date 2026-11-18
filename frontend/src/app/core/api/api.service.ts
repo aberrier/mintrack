@@ -87,4 +87,10 @@ export class ApiService {
       return this.http.post<Model.Http.ImportJob>('/api/imports', body);
     },
   };
+
+  readonly apiTokens = {
+    list: () => this.http.get<Model.Http.ApiToken[]>('/api/api-tokens'),
+    create: (name: string) => this.http.post<Model.Http.CreatedApiToken>('/api/api-tokens', { name }),
+    revoke: (id: string) => this.http.delete<void>(`/api/api-tokens/${id}`),
+  };
 }
