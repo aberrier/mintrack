@@ -1,0 +1,11 @@
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!src
+!frontend
+frontend/node_modules
+frontend/dist
+frontend/.angular
+**/__pycache__

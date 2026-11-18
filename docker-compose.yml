@@ -1,0 +1,52 @@
+name: mintrack
+
+services:
+  db:
+    # Follows PostgreSQL 18 patch releases on every docker compose pull.
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mintrack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: mintrack
+    volumes:
+      - db:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "mintrack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    security_opt: [no-new-privileges:true]
+    logging: { driver: local }
+
+  server:
+    image: ghcr.io/aberrier/mintrack:edge
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      MINTRACK__DATABASE__HOST: db
+      MINTRACK__DATABASE__USER: mintrack
+      MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+      MINTRACK__DATABASE__NAME: mintrack
+    ports:
+      - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    logging: { driver: local }
+
+networks:
+  default:
+    name: mintrack
+    # A proxy on the host reaches MinTrack from the gateway address.
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+          gateway: 172.30.0.1
+
+volumes:
+  db:
