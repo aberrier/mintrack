@@ -48,9 +48,15 @@ class CatalogManager:
         self.session = session
         self.tmdb = tmdb
 
-    async def search(self, user: User, query: str) -> list[SearchHit]:
-        """TMDB's first page of results, with the user's status of those in their library."""
-        results = await self.tmdb.search(query)
+    async def search(self, user: User, query: str, media_type: MediaType | None = None) -> list[SearchHit]:
+        """TMDB's first page of results, of that type or both, with the user's status of those in their library."""
+        return await self._with_statuses(user, await self.tmdb.search(query, media_type))
+
+    async def trending(self, user: User, media_type: MediaType, now: dt.datetime) -> list[SearchHit]:
+        """The week's trending shows or movies on TMDB, with the user's status of those in their library."""
+        return await self._with_statuses(user, await self.tmdb.trending(media_type, now))
+
+    async def _with_statuses(self, user: User, results: list[TMDBSearchResult]) -> list[SearchHit]:
         statuses = {}
         if results:
             rows = await self.session.execute(
@@ -109,6 +115,8 @@ class CatalogManager:
                 "title": movie.title,
                 "overview": movie.overview,
                 "poster_path": movie.poster_path,
+                "backdrop_path": movie.backdrop_path,
+                "runtime": movie.runtime or None,
                 "release_date": movie.release_date,
                 "tmdb_status": movie.status,
                 "refreshed_at": now,
@@ -123,6 +131,8 @@ class CatalogManager:
                 "title": show.name,
                 "overview": show.overview,
                 "poster_path": show.poster_path,
+                "backdrop_path": show.backdrop_path,
+                "network": show.networks[0].name if show.networks else None,
                 "release_date": show.first_air_date,
                 "tmdb_status": show.status,
                 "tvdb_id": show.external_ids.tvdb_id,

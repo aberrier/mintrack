@@ -1,3 +1,4 @@
+import collections.abc
 import datetime as dt
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,7 @@ TODAY = dt.date(2026, 11, 18)
 LAST_WEEK = dt.datetime(2026, 11, 11, 2, tzinfo=dt.UTC)
 
 
-def labels(episodes: list[UpcomingEpisode]) -> list[str]:
+def labels(episodes: collections.abc.Sequence[UpcomingEpisode]) -> list[str]:
     return [f"{episode.show_title} {episode.season_number}x{episode.episode_number}" for episode in episodes]
 
 
@@ -130,9 +131,10 @@ async def test_up_next_is_the_aired_episode_after_the_last_one_watched(db_sessio
 
     up_next = await UpcomingManager(db_session).up_next(user, now=NOW)
 
-    # Most recently followed first; an undated episode counts as aired when a later one of its season has.
-    assert labels(up_next) == ["Undated 1x2", "New 1x1", "Started 2x1"]
-    assert up_next[1].day == TODAY
+    # Most recently watched first, never watched last; an undated episode counts as aired when a later one of its
+    # season has.
+    assert labels(up_next) == ["Undated 1x2", "Started 2x1", "New 1x1"]
+    assert up_next[2].day == TODAY
 
 
 async def test_up_next_waits_for_an_undated_episode_with_nothing_aired_after_it(db_session: AsyncSession) -> None:

@@ -34,6 +34,8 @@ class TMDBMovie(TMDBModel):
     title: str
     overview: Text = ""
     poster_path: str | None = None
+    backdrop_path: str | None = None
+    runtime: int | None = None
     release_date: OptionalDate = None
     status: str | None = None
 
@@ -55,11 +57,17 @@ class TMDBExternalIds(TMDBModel):
     tvdb_id: int | None = None
 
 
+class TMDBNetwork(TMDBModel):
+    name: str
+
+
 class TMDBShow(TMDBModel):
     id: int
     name: str
     overview: Text = ""
     poster_path: str | None = None
+    backdrop_path: str | None = None
+    networks: list[TMDBNetwork] = []
     first_air_date: OptionalDate = None
     status: str | None = None
     external_ids: TMDBExternalIds = TMDBExternalIds()

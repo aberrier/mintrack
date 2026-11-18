@@ -42,7 +42,7 @@ async def test_episodes_of_another_show_are_rejected(signed_in: httpx.AsyncClien
 
 
 async def test_media_never_loaded_cannot_be_tracked(signed_in: httpx.AsyncClient) -> None:
-    response = await signed_in.put(f"/api/shows/{media_id('tv', 'Never Loaded')}/tracking", json={"stopped": False})
+    response = await signed_in.put(f"/api/shows/{media_id('tv', 'Never Loaded')}/tracking", json={"status": "watching"})
 
     assert response.status_code == fastapi.status.HTTP_404_NOT_FOUND
 
@@ -55,14 +55,15 @@ async def test_the_library_lists_tracked_shows_with_progress_and_forgets_removed
     await signed_in.post(
         f"/api/shows/{tmdb_id}/watched", json={"episode_ids": [episode_id(show, 1, 1)], "watched": True}
     )
-    await signed_in.put(f"/api/shows/{removed_id}/tracking", json={"stopped": True})
+    await signed_in.put(f"/api/shows/{removed_id}/tracking", json={"status": "stopped"})
     await signed_in.delete(f"/api/shows/{removed_id}/tracking")
 
     library = (await signed_in.get("/api/library", params={"media_type": "tv"})).json()
 
     items = {item["tmdb_id"]: item for item in library}
     assert removed_id not in items
-    assert items[tmdb_id] | {"tmdb_id": 0} == {
+    assert items[tmdb_id]["added_at"] <= items[tmdb_id]["last_watched_at"]
+    assert items[tmdb_id] | {"tmdb_id": 0, "added_at": None, "last_watched_at": None} == {
         "tmdb_id": 0,
         "media_type": "tv",
         "title": "Library Show",
@@ -70,6 +71,8 @@ async def test_the_library_lists_tracked_shows_with_progress_and_forgets_removed
         "status": "watching",
         "watched_count": 1,
         "aired_count": 5,
+        "added_at": None,
+        "last_watched_at": None,
     }
 
 
@@ -79,7 +82,7 @@ async def test_following_a_show_still_airing_defers_one_air_times_refresh(
     airing, _ = await show_page(signed_in, "Airing Show")
     ended, _ = await show_page(signed_in, "Ended Show")
     for tmdb_id in (airing, airing, ended):
-        await signed_in.put(f"/api/shows/{tmdb_id}/tracking", json={"stopped": False})
+        await signed_in.put(f"/api/shows/{tmdb_id}/tracking", json={"status": "watching"})
 
     deferred = await db_session.scalars(
         sa.text(

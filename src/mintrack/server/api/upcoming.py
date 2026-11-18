@@ -4,7 +4,7 @@ import uuid
 import fastapi
 import pydantic
 
-from mintrack.core.upcoming.managers import UpcomingManager
+from mintrack.core.upcoming.managers import UpcomingManager, WatchListSection
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.server.api.dependencies import CurrentUserDepType
 
@@ -39,6 +39,18 @@ class UpNextResponse(pydantic.BaseModel):
     episodes: list[UpcomingEpisode]
 
 
+class WatchListEpisode(UpcomingEpisode):
+    # Aired regular episodes after this one that the user has not watched.
+    remaining: int
+    last_watched_at: dt.datetime | None
+    section: WatchListSection
+
+
+class WatchListResponse(pydantic.BaseModel):
+    # Most recently watched first.
+    episodes: list[WatchListEpisode]
+
+
 @router.get("/upcoming")
 async def upcoming(user: CurrentUserDepType, session: DbSessionDepType) -> UpcomingResponse:
     result = await UpcomingManager(session).upcoming(user, now=dt.datetime.now(dt.UTC))
@@ -51,3 +63,10 @@ async def upcoming(user: CurrentUserDepType, session: DbSessionDepType) -> Upcom
 async def up_next(user: CurrentUserDepType, session: DbSessionDepType) -> UpNextResponse:
     episodes = await UpcomingManager(session).up_next(user, now=dt.datetime.now(dt.UTC))
     return UpNextResponse.model_validate({"episodes": episodes}, from_attributes=True)
+
+
+@router.get("/watch-list")
+async def watch_list(user: CurrentUserDepType, session: DbSessionDepType) -> WatchListResponse:
+    """The next episode of each show in progress, in the sections `next` (watched lately) and `dormant`."""
+    episodes = await UpcomingManager(session).up_next(user, now=dt.datetime.now(dt.UTC))
+    return WatchListResponse.model_validate({"episodes": episodes}, from_attributes=True)

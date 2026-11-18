@@ -8,21 +8,52 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintrack.db.models import Media, MediaType
 from mintrack.integrations.tmdb.client import get_tmdb_client
 from tests.conftest import make_tmdb_client
-from tests.fakes.tmdb import MAX_ID, FakeTMDB, media_id
+from tests.fakes.tmdb import MAX_ID, TRENDING, FakeTMDB, media_id
 
 
-async def test_search_finds_shows_and_movies_with_the_users_status(signed_in: httpx.AsyncClient) -> None:
+async def test_search_finds_only_the_chosen_type_with_the_users_status(signed_in: httpx.AsyncClient) -> None:
     show_id = media_id("tv", "Orbit Kitchen")
     await signed_in.get(f"/api/shows/{show_id}")
-    await signed_in.put(f"/api/shows/{show_id}/tracking", json={"stopped": False})
+    await signed_in.put(f"/api/shows/{show_id}/tracking", json={"status": "watching"})
 
-    response = await signed_in.get("/api/search", params={"query": "Orbit Kitchen"})
+    shows = await signed_in.get("/api/search", params={"query": "Orbit Kitchen", "type": "tv"})
+    movies = await signed_in.get("/api/search", params={"query": "Orbit Kitchen", "type": "movie"})
 
-    assert response.status_code == fastapi.status.HTTP_200_OK
-    assert [(r["media_type"], r["year"], r["tracking_status"]) for r in response.json()] == [
-        ("tv", 2024, "watch_later"),
-        ("movie", None, None),
+    assert shows.status_code == movies.status_code == fastapi.status.HTTP_200_OK
+    assert [(r["media_type"], r["year"], r["tracking_status"]) for r in shows.json()] == [("tv", 2024, "watch_later")]
+    assert [(r["media_type"], r["year"], r["tracking_status"]) for r in movies.json()] == [("movie", None, None)]
+
+
+async def test_trending_lists_the_weeks_shows_or_movies_with_the_users_status(signed_in: httpx.AsyncClient) -> None:
+    tracked = media_id("movie", TRENDING[1])
+    await signed_in.get(f"/api/movies/{tracked}")
+    await signed_in.put(f"/api/movies/{tracked}/tracking", json={"watched": True})
+
+    shows = await signed_in.get("/api/discover/trending", params={"type": "tv"})
+    movies = await signed_in.get("/api/discover/trending", params={"type": "movie"})
+
+    assert shows.status_code == movies.status_code == fastapi.status.HTTP_200_OK
+    assert [(r["media_type"], r["title"], r["tracking_status"]) for r in shows.json()] == [
+        ("tv", title, None) for title in TRENDING
     ]
+    assert [(r["tmdb_id"], r["tracking_status"]) for r in movies.json()] == [
+        (media_id("movie", TRENDING[0]), None),
+        (tracked, "watched"),
+    ]
+
+
+async def test_show_and_movie_pages_carry_the_backdrop_network_and_runtime(signed_in: httpx.AsyncClient) -> None:
+    show_id, movie_id = media_id("tv", "Backdrop Show"), media_id("movie", "Backdrop Movie")
+
+    show = (await signed_in.get(f"/api/shows/{show_id}")).json()
+    movie = (await signed_in.get(f"/api/movies/{movie_id}")).json()
+
+    assert (show["backdrop_path"], show["network"], show["runtime"]) == (
+        f"/backdrop-{show_id}.jpg",
+        "Channel Nine",
+        None,
+    )
+    assert (movie["backdrop_path"], movie["network"], movie["runtime"]) == (f"/backdrop-{movie_id}.jpg", None, 118)
 
 
 async def test_a_show_page_lists_seasons_with_specials_last(signed_in: httpx.AsyncClient) -> None:

@@ -1,9 +1,10 @@
 """A fake TMDB speaking its protocol for the routes MinTrack uses.
 
 A search for any query returns one show and one movie titled after the query, with ids derived from it, so each test
-gets its own media. A show has two seasons of three episodes and one special, dated relative to today: the last
-episode airs in a week, unless the title starts with "Ended" (it aired) or "Undated" (no date yet). A title starting
-with "Daily" has 10,000 episodes in its first season. Run it for browser tests with
+gets its own media; a search of one type returns the one of that type. Trending lists one show and one movie per
+title of `trending`. A show has two seasons of three episodes and one special, dated relative to today: the last episode
+airs in a week, unless the title starts with "Ended" (it aired) or "Undated" (no date yet). A title starting with
+"Daily" has 10,000 episodes in its first season. Run it for browser tests with
 `uv run uvicorn tests.fakes.tmdb:app --host 0.0.0.0 --port 8001`.
 """
 
@@ -16,9 +17,12 @@ import zlib
 import fastapi
 import fastapi.responses
 
+from mintrack.db.models import MediaType
+
 INVALID_KEY = "rejected-4f1c9e-key"
 MAX_ID = 10_000_000
 DAILY_EPISODES = 10_000
+TRENDING = ("Trending One", "Trending Two")
 
 
 def media_id(kind: str, query: str) -> int:
@@ -32,6 +36,7 @@ class FakeTMDB:
     dropped: set[tuple[int, int, int]] = dataclasses.field(default_factory=set)
     # (external source, external id) -> ("movie" or "tv", TMDB id), for /find.
     external_ids: dict[tuple[str, str], tuple[str, int]] = dataclasses.field(default_factory=dict)
+    trending: tuple[str, ...] = TRENDING
 
     def title(self, tmdb_id: int, kind: str) -> str:
         return self.titles.get(tmdb_id, f"{kind} {tmdb_id}")
@@ -74,6 +79,8 @@ class FakeTMDB:
             "name": title,
             "overview": f"The story of {title}.",
             "poster_path": None,
+            "backdrop_path": f"/backdrop-{tmdb_id}.jpg",
+            "networks": [{"id": 1, "name": "Channel Nine"}],
             "first_air_date": self.episodes(tmdb_id, 1)[0]["air_date"],
             "status": "Ended" if title.startswith("Ended") else "Returning Series",
             "seasons": [{"season_number": number} for number in (0, 1, 2)],
@@ -91,9 +98,38 @@ class FakeTMDB:
             "title": self.title(tmdb_id, "Movie"),
             "overview": "",
             "poster_path": None,
+            "backdrop_path": f"/backdrop-{tmdb_id}.jpg",
+            "runtime": 118,
             "release_date": "2020-05-01",
             "status": "Released",
         }
+
+    def result(self, kind: MediaType, title: str) -> dict[str, typing.Any]:
+        """A search or trending result of that kind, whose title its pages then answer."""
+        tmdb_id = media_id(kind, title)
+        self.titles[tmdb_id] = title
+        if kind is MediaType.TV:
+            return {"id": tmdb_id, "name": title, "first_air_date": "2024-01-10"}
+        return {"id": tmdb_id, "title": title, "release_date": ""}
+
+    def add_search_routes(self, app: fastapi.FastAPI) -> None:
+        @app.get("/3/search/multi")
+        def search(query: str) -> dict[str, typing.Any]:
+            results = [
+                {"media_type": "tv"} | self.result(MediaType.TV, query),
+                {"media_type": "movie"} | self.result(MediaType.MOVIE, query),
+                {"id": 1, "media_type": "person", "name": query},
+            ]
+            return {"page": 1, "total_pages": 1, "results": results}
+
+        @app.get("/3/search/{kind}")
+        def search_type(kind: MediaType, query: str) -> dict[str, typing.Any]:
+            return {"page": 1, "total_pages": 1, "results": [self.result(kind, query)]}
+
+        @app.get("/3/trending/{kind}/week")
+        def trending(kind: MediaType) -> dict[str, typing.Any]:
+            results = [{"media_type": kind} | self.result(kind, title) for title in self.trending]
+            return {"page": 1, "total_pages": 1, "results": results}
 
     def build_app(self) -> fastapi.FastAPI:
         app = fastapi.FastAPI()
@@ -107,16 +143,7 @@ class FakeTMDB:
                 return fastapi.responses.JSONResponse({"status_message": "Invalid API key"}, status_code=401)
             return await call_next(request)
 
-        @app.get("/3/search/multi")
-        def search(query: str) -> dict[str, typing.Any]:
-            show_id, movie_id = media_id("tv", query), media_id("movie", query)
-            self.titles[show_id] = self.titles[movie_id] = query
-            results = [
-                {"id": show_id, "media_type": "tv", "name": query, "first_air_date": "2024-01-10"},
-                {"id": movie_id, "media_type": "movie", "title": query, "release_date": ""},
-                {"id": 1, "media_type": "person", "name": query},
-            ]
-            return {"page": 1, "total_pages": 1, "results": results}
+        self.add_search_routes(app)
 
         @app.get("/3/tv/{tmdb_id}")
         def show(tmdb_id: int, append_to_response: str = "") -> dict[str, typing.Any]:

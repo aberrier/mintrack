@@ -27,9 +27,10 @@ PARIS = zoneinfo.ZoneInfo("Europe/Paris")
         (None, [AIRED_WATCHED, UNDATED], False, TrackingStatus.UP_TO_DATE),
         (TrackingStatus.STOPPED, [AIRED_WATCHED, AIRED_UNWATCHED], False, TrackingStatus.STOPPED),
         (TrackingStatus.STOPPED, [AIRED_WATCHED], True, TrackingStatus.STOPPED),
+        (TrackingStatus.WATCH_LATER, [AIRED_WATCHED, AIRED_UNWATCHED], False, TrackingStatus.WATCH_LATER),
     ],
 )
-def test_show_status_follows_progress_unless_stopped(
+def test_show_status_follows_progress_unless_stopped_or_put_aside(
     current: TrackingStatus | None,
     episodes: list[EpisodeProgress],
     ended: bool,  # noqa: FBT001

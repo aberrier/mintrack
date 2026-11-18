@@ -1,4 +1,5 @@
 import datetime as dt
+import enum
 import typing
 import uuid
 
@@ -7,7 +8,7 @@ import pydantic
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import find_media, is_airing
-from mintrack.core.tracking.managers import TrackingManager, UnknownEpisodesError
+from mintrack.core.tracking.managers import LibrarySort, LibraryStatus, TrackingManager, UnknownEpisodesError
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import Media, MediaType, TrackingStatus
 from mintrack.server.api.catalog import MovieTrackingResponse, ShowTrackingResponse, TMDBId
@@ -17,10 +18,18 @@ from mintrack.worker.tasks import defer_air_times_refresh
 router = fastapi.APIRouter(tags=["tracking"])
 
 MAX_EPISODES_PER_REQUEST = 2000
+DEFAULT_HISTORY_PAGE = 30
+MAX_HISTORY_PAGE = 100
+
+
+class ShowTrackingChoice(enum.StrEnum):
+    WATCHING = enum.auto()
+    WATCH_LATER = enum.auto()
+    STOPPED = enum.auto()
 
 
 class ShowTrackingRequest(pydantic.BaseModel):
-    stopped: bool = False
+    status: ShowTrackingChoice = ShowTrackingChoice.WATCHING
 
 
 class WatchedEpisodesRequest(pydantic.BaseModel):
@@ -41,6 +50,28 @@ class LibraryItemResponse(pydantic.BaseModel):
     # Regular episodes (specials excluded); 0 for movies.
     watched_count: int
     aired_count: int
+    added_at: dt.datetime
+    last_watched_at: dt.datetime | None
+
+
+class HistoryEntryResponse(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+
+    # The episode's id, or the movie's: with watched_at, the cursor of the next page.
+    id: uuid.UUID
+    media_type: MediaType
+    tmdb_id: int
+    title: str
+    poster_path: str | None
+    season_number: int | None
+    episode_number: int | None
+    episode_title: str | None
+    watched_at: dt.datetime
+
+
+class HistoryResponse(pydantic.BaseModel):
+    entries: list[HistoryEntryResponse]
+    has_more: bool
 
 
 async def cached(session: AsyncSession, media_type: MediaType, tmdb_id: int) -> Media:
@@ -58,10 +89,14 @@ async def track_show(
     user: CurrentUserDepType,
     session: DbSessionDepType,
 ) -> ShowTrackingResponse:
-    """Add the show to the library, stop it or resume it."""
+    """Add the show to the library, put it aside to watch later, stop it or resume it."""
     media = await cached(session, MediaType.TV, tmdb_id)
-    tracking = await TrackingManager(session).track_show(user, media, stopped=body.stopped, now=dt.datetime.now(dt.UTC))
-    if not body.stopped and is_airing(media):
+    manager, now = TrackingManager(session), dt.datetime.now(dt.UTC)
+    if body.status is ShowTrackingChoice.WATCH_LATER:
+        tracking = await manager.watch_later(user, media, now)
+    else:
+        tracking = await manager.track_show(user, media, stopped=body.status is ShowTrackingChoice.STOPPED, now=now)
+    if body.status is ShowTrackingChoice.WATCHING and is_airing(media):
         # Exact air times, before the next daily refresh.
         await defer_air_times_refresh(session, media.id)
     await session.commit()
@@ -122,9 +157,13 @@ async def untrack_movie(tmdb_id: TMDBId, user: CurrentUserDepType, session: DbSe
 
 @router.get("/library")
 async def library(
-    media_type: MediaType, user: CurrentUserDepType, session: DbSessionDepType
+    media_type: MediaType,
+    user: CurrentUserDepType,
+    session: DbSessionDepType,
+    sort: LibrarySort = LibrarySort.LAST_WATCHED,
+    status: LibraryStatus | None = None,
 ) -> list[LibraryItemResponse]:
-    items = await TrackingManager(session).library(user, media_type, dt.datetime.now(dt.UTC))
+    items = await TrackingManager(session).library(user, media_type, dt.datetime.now(dt.UTC), sort=sort, status=status)
     return [
         LibraryItemResponse(
             tmdb_id=item.media.tmdb_id,
@@ -134,6 +173,26 @@ async def library(
             status=item.status,
             watched_count=item.watched_count,
             aired_count=item.aired_count,
+            added_at=item.added_at,
+            last_watched_at=item.last_watched_at,
         )
         for item in items
     ]
+
+
+@router.get("/history")
+async def history(
+    user: CurrentUserDepType,
+    session: DbSessionDepType,
+    before: dt.datetime | None = None,
+    # Without it, the page starts strictly before `before`.
+    before_id: uuid.UUID | None = None,
+    limit: typing.Annotated[int, fastapi.Query(ge=1, le=MAX_HISTORY_PAGE)] = DEFAULT_HISTORY_PAGE,
+) -> HistoryResponse:
+    """The episodes and movies the user watched, newest first, a page at a time."""
+    cursor = (before, before_id or uuid.UUID(int=0)) if before is not None else None
+    entries = await TrackingManager(session).history(user, before=cursor, limit=limit + 1)
+    return HistoryResponse(
+        entries=[HistoryEntryResponse.model_validate(entry) for entry in entries[:limit]],
+        has_more=len(entries) > limit,
+    )

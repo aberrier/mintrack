@@ -110,6 +110,24 @@ async def test_a_stopped_show_stays_stopped_until_an_episode_is_marked(
     assert back.status is TrackingStatus.WATCHING
 
 
+async def test_a_show_put_aside_stays_there_until_an_episode_is_marked_or_it_is_resumed(
+    db_session: AsyncSession, tmdb: TMDBClient, user: User
+) -> None:
+    show = await cached_media(db_session, tmdb, "Aside Drama")
+    episodes = await episodes_of(db_session, show)
+    manager = TrackingManager(db_session)
+    await manager.mark_watched(user, episodes[1, 1], now())
+
+    aside = await manager.watch_later(user, show, now())
+    back = await manager.mark_watched(user, episodes[1, 2], now())
+    await manager.watch_later(user, show, now())
+    resumed = await manager.track_show(user, show, stopped=False, now=now())
+
+    assert aside.status is TrackingStatus.WATCH_LATER
+    assert back.status is TrackingStatus.WATCHING
+    assert resumed.status is TrackingStatus.WATCHING
+
+
 async def test_episodes_of_another_show_are_refused(db_session: AsyncSession, tmdb: TMDBClient, user: User) -> None:
     show = await cached_media(db_session, tmdb, "Mine")
     other = await cached_media(db_session, tmdb, "Other")

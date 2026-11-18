@@ -13,6 +13,7 @@ from mintrack.db.models import (
     ImportSource,
     ImportStatus,
     Media,
+    MediaType,
     TrackingStatus,
     User,
     UserMedia,
@@ -166,9 +167,8 @@ async def test_media_already_in_the_library_keep_their_status(
     db_session: AsyncSession, user: User, catalogue: tuple[Media, Media]
 ) -> None:
     show, _ = catalogue
-    entry = UserMedia(
-        user_id=user.id, media_id=show.id, status=TrackingStatus.STOPPED, updated_at=dt.datetime.now(dt.UTC)
-    )
+    now = dt.datetime.now(dt.UTC)
+    entry = UserMedia(user_id=user.id, media_id=show.id, status=TrackingStatus.STOPPED, added_at=now, updated_at=now)
     db_session.add(entry)
     data = YAMTRACK.splitlines()[0] + b"\n1001,tmdb,tv,Northern Lights,,,,,,Completed,,,,\n"
 
@@ -221,7 +221,7 @@ async def test_a_failed_job_drops_its_file(
     db_session: AsyncSession, user: User, catalogue: tuple[Media, Media]
 ) -> None:
     class BrokenTMDB(FakeTMDB):
-        async def search(self, query: str) -> list[TMDBSearchResult]:
+        async def search(self, query: str, media_type: MediaType | None = None) -> list[TMDBSearchResult]:
             raise RuntimeError
 
     job = await run_import(
