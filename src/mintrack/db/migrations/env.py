@@ -6,8 +6,8 @@ from alembic.operations.ops import MigrationScript
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
 
-from mintrack.db.base import DatabaseModel
 from mintrack.db.config import CONNECT_ARGS
+from mintrack.db.models import DatabaseModel
 
 
 def process_revision_directives(

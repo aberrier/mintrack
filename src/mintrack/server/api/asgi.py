@@ -2,6 +2,8 @@ import fastapi
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from mintrack.config import Config, get_config
+from mintrack.server.api import admin_users, auth
+from mintrack.server.api.dependencies import check_xsrf, get_current_session
 from mintrack.server.common import healthcheck
 from mintrack.server.common.config import API_PREFIX, get_fastapi_common_config
 from mintrack.server.common.exception_handlers import GenericServerErrorMiddleware
@@ -12,6 +14,19 @@ from mintrack.server.common.security_headers import SecurityHeadersMiddleware
 def build_api_router() -> fastapi.APIRouter:
     router = fastapi.APIRouter(prefix=API_PREFIX)
     router.include_router(healthcheck.router)
+    router.include_router(auth.public_router)
+
+    # Every other route needs a session, and an XSRF token on unsafe methods.
+    protected = fastapi.APIRouter(
+        dependencies=[fastapi.Depends(get_current_session), fastapi.Depends(check_xsrf)],
+        responses={
+            fastapi.status.HTTP_401_UNAUTHORIZED: {"description": "Not authenticated"},
+            fastapi.status.HTTP_403_FORBIDDEN: {"description": "Missing XSRF token, or admins only"},
+        },
+    )
+    protected.include_router(auth.router)
+    protected.include_router(admin_users.router)
+    router.include_router(protected)
     return router
 
 
