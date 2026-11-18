@@ -20,7 +20,7 @@ test('the bottom navigation stays on screen, with tap targets of at least 48px',
 });
 
 test('client routes load the app', async ({ admin: { page } }) => {
-  await page.goto('/shows/42');
+  await page.goto('/no/such/page');
 
   await expect(page.getByTestId('server-status')).toHaveText('Online');
 });

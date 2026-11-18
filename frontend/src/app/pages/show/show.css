@@ -1,0 +1,35 @@
+.episode {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 64px;
+  border-bottom: 1px solid var(--mat-sys-outline-variant);
+}
+
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--mat-sys-outline);
+  cursor: pointer;
+  transition: color 120ms ease-out;
+}
+
+.check.watched {
+  color: var(--mat-sys-primary);
+}
+
+.check:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+}

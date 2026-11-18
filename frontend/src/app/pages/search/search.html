@@ -1,0 +1,57 @@
+<section class="flex flex-col gap-4 p-4">
+  <h1 class="[font:var(--mat-sys-headline-small)]">{{ translate('app.search.title') }}</h1>
+
+  <input
+    type="search"
+    class="search-field"
+    enterkeyhint="search"
+    autocomplete="off"
+    [value]="q()"
+    (input)="onInput($event)"
+    [attr.aria-label]="translate('app.search.label')"
+    [placeholder]="translate('app.search.placeholder')" />
+
+  @switch ($state().kind) {
+    @case ('loading') {
+      <p role="status" class="text-on-surface-variant">{{ translate('app.search.loading') }}</p>
+    }
+    @case ('failed') {
+      <p role="alert" class="text-on-surface-variant">{{ translate('app.search.failed') }}</p>
+    }
+    @case ('unconfigured') {
+      <p role="alert" class="text-on-surface-variant">{{ translate('app.search.unconfigured') }}</p>
+    }
+  }
+
+  @if ($state(); as state) {
+    @if (state.kind === 'done') {
+      @if (state.results.length === 0) {
+        <p class="text-on-surface-variant">{{ translate('app.search.noResults') }}</p>
+      }
+      <ul class="flex flex-col">
+        @for (result of state.results; track result.media_type + result.tmdb_id) {
+          <li>
+            <a
+              [routerLink]="link(result)"
+              class="flex min-h-[72px] items-center gap-3 py-2"
+              data-testid="search-result">
+              <span class="w-12 flex-none"><app-poster [path]="result.poster_path" /></span>
+              <span class="flex min-w-0 flex-col">
+                <span class="truncate [font:var(--mat-sys-title-medium)]">{{ result.title }}</span>
+                <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+                  {{ translate(result.media_type === 'tv' ? 'app.search.show' : 'app.search.movie') }}
+                  @if (result.year) {
+                    · {{ result.year }}
+                  }
+                  @if (result.tracking_status) {
+                    · {{ statusLabel(result.tracking_status) }}
+                  }
+                </span>
+              </span>
+            </a>
+          </li>
+        }
+      </ul>
+    }
+  }
+</section>

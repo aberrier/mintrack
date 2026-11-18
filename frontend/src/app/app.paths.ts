@@ -5,4 +5,8 @@ export const appRoutes = {
   password: (rp = '/') => `${rp}password`,
   profile: (rp = '/') => `${rp}profile`,
   adminUsers: (rp = '/') => `${rp}admin/users`,
+  library: (rp = '/') => `${rp}library`,
+  search: (rp = '/') => `${rp}search`,
+  show: (tmdbId: number | string, rp = '/') => `${rp}shows/${tmdbId}`,
+  movie: (tmdbId: number | string, rp = '/') => `${rp}movies/${tmdbId}`,
 };

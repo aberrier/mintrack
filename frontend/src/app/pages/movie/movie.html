@@ -1,0 +1,42 @@
+@if ($movie(); as movie) {
+  <section class="flex flex-col gap-4 p-4">
+    <header class="flex gap-4">
+      <span class="w-28 flex-none"><app-poster [path]="movie.poster_path" width="w342" /></span>
+      <div class="flex min-w-0 flex-col gap-2">
+        <h1 class="[font:var(--mat-sys-headline-small)]">{{ movie.title }}</h1>
+        @if (movie.release_date) {
+          <p class="text-on-surface-variant [font:var(--mat-sys-label-large)]">{{ movie.release_date.slice(0, 4) }}</p>
+        }
+        @if (movie.tracking; as tracking) {
+          <p class="text-on-surface-variant [font:var(--mat-sys-label-large)]" data-testid="movie-status">
+            {{ statusLabel(tracking.status) }}
+          </p>
+        }
+        <div class="flex flex-wrap items-center gap-1">
+          @if (movie.tracking?.status === 'watched') {
+            <button mat-stroked-button type="button" (click)="track(movie, false)">
+              {{ translate('app.movie.unwatch') }}
+            </button>
+          } @else {
+            <button mat-flat-button type="button" (click)="track(movie, true)">
+              {{ translate('app.movie.markWatched') }}
+            </button>
+            @if (!movie.tracking) {
+              <button mat-stroked-button type="button" (click)="track(movie, false)">
+                {{ translate('app.movie.watchLater') }}
+              </button>
+            }
+          }
+          @if (movie.tracking) {
+            <button mat-button type="button" (click)="remove(movie)">{{ translate('app.common.remove') }}</button>
+          }
+        </div>
+      </div>
+    </header>
+    @if (movie.overview) {
+      <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ movie.overview }}</p>
+    }
+  </section>
+} @else if ($failed()) {
+  <p role="alert" class="p-4 text-on-surface-variant">{{ translate('app.common.loadFailed') }}</p>
+}
