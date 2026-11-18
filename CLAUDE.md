@@ -30,6 +30,7 @@ just test       # pytest (needs just dev-db for the database tests)
 just format     # apply ruff fixes and formatting
 just dev        # mintrack server --reload
 just dev-frontend  # ng serve on :4200, proxying /api to just dev
+just image      # build the Docker image as ghcr.io/aberrier/mintrack:edge, which docker compose up then runs
 ```
 
 Always run Python tools through `uv run`. Run `just` (check and test) before committing. Install just with
@@ -54,9 +55,10 @@ frontend/src/app/
   pages/<page>/    # one lazy-loaded standalone component per route (app.routes.ts)
 frontend/src/types/ # global namespaces (Model for API shapes)
 frontend/e2e/      # Playwright specs, phone and desktop projects
+Dockerfile, docker-compose.yml, .env.example  # the image and the install; README "Install" repeats docker-compose.yml
 ```
 
-Business logic goes in `core/<domain>/managers` (from M2), endpoints and their Pydantic schemas in `server/api/`,
+Business logic goes in `core/<domain>/managers`, endpoints and their Pydantic schemas in `server/api/`,
 dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAlchemy directly.
 
 ## Rules
@@ -106,7 +108,7 @@ npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, de
 - **Phone first:** test in the Playwright `phone` project first. Tap targets are at least 48px; content stays inside
   `env(safe-area-inset-*)`; no horizontal scroll. Only the shell's content area scrolls (`100dvh` shell, marked
   `cdkScrollable` for Material overlays), so the router's window scrolling does nothing: the first page with a list
-  (M3) saves and restores that element's scroll position per history entry.
+  saves and restores that element's scroll position per history entry.
 - **UI:** Material 3 for dialogs, snackbars, menus, form fields and ripples; custom components for the core lists
   (bottom navigation, episode rows, poster cards). Import Material components one by one, never whole modules at the
   root. Tailwind for layout and Material's colour tokens (`bg-surface`, `text-on-surface-variant`); typography from

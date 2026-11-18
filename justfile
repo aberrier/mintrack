@@ -41,3 +41,7 @@ clean:
 # The Angular dev server on :4200, proxying /api to just dev
 dev-frontend:
     cd frontend && npx ng serve
+
+# Build the Docker image as ghcr.io/aberrier/mintrack:edge, the tag docker-compose.yml runs
+image:
+    docker build --tag ghcr.io/aberrier/mintrack:edge --build-arg COMMIT=$(git rev-parse --short HEAD) .

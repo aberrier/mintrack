@@ -4,7 +4,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
-    # A freshly published release is not picked up for a week, so a compromised version is usually yanked first.
+    # Waits a week before proposing a newly published release.
     cooldown:
       default-days: 7
     groups:
@@ -32,3 +32,10 @@ updates:
         patterns: ["@angular/*", "@angular-devkit/*"]
       npm-minor-and-patch:
         update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
