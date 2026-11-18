@@ -1,16 +1,17 @@
-import { NgTemplateOutlet } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, input, signal } from '@angular/core';
-import { toObservable, toSignal } from '@angular/core/rxjs-interop';
+import { rxResource, toObservable, toSignal } from '@angular/core/rxjs-interop';
 import { MatIcon } from '@angular/material/icon';
 import { Router, RouterLink } from '@angular/router';
-import { catchError, distinctUntilChanged, map, Observable, of, startWith, switchMap, timer } from 'rxjs';
+import { catchError, map, Observable, of, startWith, switchMap, timer } from 'rxjs';
 import { appRoutes } from '../../app.paths';
 import { ApiService } from '../../core/api/api.service';
 import { injectTranslator } from '../../core/i18n';
-import { TrackingStore } from '../../core/tracking/tracking.store';
+import { resultKey, TrackingStore } from '../../core/tracking/tracking.store';
 import { EmptyState } from '../../shared/empty-state';
+import { LoadError } from '../../shared/load-error';
 import { MediaTile } from '../../shared/media-tile';
+import { mediaTypeParam } from '../../shared/params';
 import { Skeleton } from '../../shared/skeleton';
 import { injectStatusLabel } from '../../shared/status';
 
@@ -18,6 +19,7 @@ type ResultsState =
   { kind: 'idle' | 'loading' | 'failed' | 'unconfigured' } | { kind: 'done'; results: Model.Http.SearchResult[] };
 
 const DEBOUNCE_MS = 300;
+const TYPES: Model.Http.MediaType[] = ['tv', 'movie'];
 
 /**
  * Search among shows (anime included) or movies, the query and the type in the URL so back keeps them; without a
@@ -25,7 +27,7 @@ const DEBOUNCE_MS = 300;
  */
 @Component({
   selector: 'app-discover',
-  imports: [NgTemplateOutlet, RouterLink, MatIcon, MediaTile, EmptyState, Skeleton],
+  imports: [RouterLink, MatIcon, MediaTile, EmptyState, Skeleton, LoadError],
   templateUrl: './discover.html',
   styles: `
     /* The search field: a full pill with the icon inside, the whole pill focusing the input. */
@@ -35,7 +37,7 @@ const DEBOUNCE_MS = 300;
       gap: 12px;
       min-height: 56px;
       padding-inline: 16px;
-      border-radius: 28px;
+      border-radius: var(--mat-sys-corner-full);
       background: var(--mat-sys-surface-container-high);
       color: var(--mat-sys-on-surface-variant);
       cursor: text;
@@ -64,23 +66,21 @@ export default class Discover {
   protected readonly translate = injectTranslator('app');
   protected readonly statusLabel = injectStatusLabel();
   protected readonly routes = appRoutes;
-  protected readonly types: Model.Http.MediaType[] = ['tv', 'movie'];
+  protected readonly types = TYPES;
 
   /** The `q` query parameter. */
   readonly q = input<string, string | undefined>('', { transform: (value) => value ?? '' });
   /** The `type` query parameter: shows unless it says movie. */
-  readonly type = input<Model.Http.MediaType, string | undefined>('tv', {
-    transform: (value) => (value === 'movie' ? 'movie' : 'tv'),
+  readonly type = input<Model.Http.MediaType, string | undefined>('tv', { transform: mediaTypeParam });
+  /** Bumped by Try again, to send the same search again. */
+  private readonly $attempt = signal(0);
+  private readonly $search = computed(() => ({ query: this.q().trim(), type: this.type(), attempt: this.$attempt() }), {
+    equal: (a, b) => a.query === b.query && a.type === b.type && a.attempt === b.attempt,
   });
-  private readonly $search = computed(() => ({ query: this.q().trim(), type: this.type() }));
-
-  /** Titles added from this page, by `type:id`, ahead of the server's statuses. */
-  private readonly $added = signal<Record<string, boolean>>({});
 
   /** Earlier results go as soon as the query or the type changes; the search waits for typing to pause. */
   protected readonly $state = toSignal(
     toObservable(this.$search).pipe(
-      distinctUntilChanged((a, b) => a.query === b.query && a.type === b.type),
       switchMap(({ query, type }) =>
         query
           ? timer(DEBOUNCE_MS).pipe(
@@ -93,30 +93,23 @@ export default class Discover {
     { initialValue: { kind: 'idle' } as ResultsState },
   );
 
-  protected readonly trending = [
-    {
-      id: 'tv',
-      title: this.translate('app.discover.trendingShows'),
-      $state: toSignal(results(this.api.catalog.trending('tv')), { requireSync: true }),
-    },
-    {
-      id: 'movie',
-      title: this.translate('app.discover.trendingMovies'),
-      $state: toSignal(results(this.api.catalog.trending('movie')), { requireSync: true }),
-    },
-  ];
+  protected readonly trending = TYPES.map((type) => ({
+    id: type,
+    title: this.translate(type === 'tv' ? 'app.discover.trendingShows' : 'app.discover.trendingMovies'),
+    results: rxResource({ stream: () => this.api.catalog.trending(type) }),
+  }));
 
   protected onInput(event: Event): void {
     const q = (event.target as HTMLInputElement).value;
     void this.router.navigate([], { queryParams: { q: q || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
-  protected link(result: Model.Http.SearchResult): string {
-    return result.media_type === 'tv' ? appRoutes.show(result.tmdb_id) : appRoutes.movie(result.tmdb_id);
+  protected retrySearch(): void {
+    this.$attempt.update((attempt) => attempt + 1);
   }
 
   protected tracked(result: Model.Http.SearchResult): boolean {
-    return result.tracking_status !== null || !!this.$added()[key(result)];
+    return result.tracking_status !== null || !!this.store.added()[resultKey(result.media_type, result.tmdb_id)];
   }
 
   protected detail(result: Model.Http.SearchResult): string | null {
@@ -125,26 +118,23 @@ export default class Discover {
   }
 
   /** Add to the library at once: a show to start watching, a movie to watch later. */
-  protected async add(result: Model.Http.SearchResult): Promise<void> {
-    const id = key(result);
-    this.$added.update((added) => ({ ...added, [id]: true }));
-    const saved = await this.store.addFromResults(result.media_type, result.tmdb_id);
-    if (!saved) this.$added.update((added) => ({ ...added, [id]: false }));
+  protected add(result: Model.Http.SearchResult): void {
+    void this.store.addFromResults(result.media_type, result.tmdb_id);
+  }
+
+  /** Whether a trending request failed because the server has no TMDB key. */
+  protected unconfigured(error: unknown): boolean {
+    return isUnconfigured((error as { cause?: unknown } | undefined)?.cause ?? error);
   }
 }
 
-function key(result: Model.Http.SearchResult): string {
-  return `${result.media_type}:${result.tmdb_id}`;
+function isUnconfigured(error: unknown): boolean {
+  return error instanceof HttpErrorResponse && error.status === 503;
 }
 
 function results(request: Observable<Model.Http.SearchResult[]>): Observable<ResultsState> {
   return request.pipe(
     map((results): ResultsState => ({ kind: 'done', results })),
-    catchError((error: unknown) =>
-      of<ResultsState>({
-        kind: error instanceof HttpErrorResponse && error.status === 503 ? 'unconfigured' : 'failed',
-      }),
-    ),
-    startWith<ResultsState>({ kind: 'loading' }),
+    catchError((error: unknown) => of<ResultsState>({ kind: isUnconfigured(error) ? 'unconfigured' : 'failed' })),
   );
 }

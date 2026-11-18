@@ -1,11 +1,6 @@
 /** Shapes exchanged with the MinTrack API. */
 declare namespace Model {
   namespace Http {
-    interface HealthResponse {
-      status: 'ok' | 'degraded';
-      database: 'ok' | 'unavailable';
-    }
-
     interface User {
       id: string;
       username: string;
@@ -36,8 +31,12 @@ declare namespace Model {
     }
 
     type MediaType = 'movie' | 'tv';
-    /** Shows: watch_later, watching, up_to_date, finished, stopped. Movies: watch_later, watched. */
-    type TrackingStatus = 'watch_later' | 'watching' | 'up_to_date' | 'finished' | 'stopped' | 'watched';
+    /**
+     * Shows: not_started (followed, nothing watched), watching, up_to_date, finished, and the two set aside by the user,
+     * watch_later and stopped. Movies: watch_later, watched.
+     */
+    type TrackingStatus =
+      'not_started' | 'watch_later' | 'watching' | 'up_to_date' | 'finished' | 'stopped' | 'watched';
     /** What a user sets on a show; the other statuses follow from the episodes watched. */
     type ShowTrackingChoice = 'watching' | 'watch_later' | 'stopped';
 
@@ -61,9 +60,18 @@ declare namespace Model {
       airstamp: string | null;
     }
 
+    /** A season's counts; its episodes come from the season's own endpoint. */
     interface Season {
       season_number: number;
       title: string;
+      episode_count: number;
+      watched_count: number;
+      /** Aired episodes, in the user's time zone. */
+      aired_count: number;
+    }
+
+    interface SeasonEpisodes {
+      season_number: number;
       episodes: Episode[];
     }
 
@@ -92,9 +100,16 @@ declare namespace Model {
       runtime: number | null;
     }
 
+    interface NextEpisode extends Episode {
+      /** Aired regular episodes after it that the user has not watched. */
+      remaining: number;
+    }
+
     interface Show extends Media {
       seasons: Season[];
       tracking: ShowTracking | null;
+      /** The episode to watch next, in the user's time zone; null when the show is not in progress or caught up. */
+      next_episode: NextEpisode | null;
     }
 
     interface Movie extends Media {
@@ -102,8 +117,6 @@ declare namespace Model {
     }
 
     type LibrarySort = 'last_watched' | 'last_added' | 'title';
-    /** A tracking status, or not_started: in the library with nothing watched. */
-    type LibraryStatus = TrackingStatus | 'not_started';
 
     interface LibraryItem {
       tmdb_id: number;
@@ -139,18 +152,23 @@ declare namespace Model {
     interface UpcomingResponse {
       /** The user's IANA time zone, in which days are grouped and times shown. */
       time_zone: string;
-      new: UpcomingEpisode[];
+      /** From today on. */
       days: UpcomingDay[];
     }
 
-    /** next: watched within 30 days; dormant: not watched since, or never. */
-    type WatchListSection = 'next' | 'dormant';
+    /** next: watched lately; dormant: not watched for a while; not_started: nothing watched, its first episode. */
+    type WatchListSection = 'next' | 'dormant' | 'not_started';
 
     interface WatchListEpisode extends UpcomingEpisode {
       /** Aired regular episodes after this one that the user has not watched. */
       remaining: number;
       last_watched_at: string | null;
       section: WatchListSection;
+      /**
+       * The regular episode after this one, aired or not, shown once this one is checked if aired; null after the last.
+       * Unknown (absent) on a card moved on screen, until the list loads again.
+       */
+      following?: Episode | null;
     }
 
     interface WatchListResponse {
@@ -170,6 +188,8 @@ declare namespace Model {
       episode_number: number | null;
       episode_title: string | null;
       watched_at: string;
+      /** The user finished the show; always false for movies. */
+      finished: boolean;
     }
 
     interface HistoryResponse {
@@ -196,21 +216,39 @@ declare namespace Model {
       last_sync_skipped: number;
     }
 
-    interface JellyfinLinkRequest {
-      server_url: string;
+    interface JellyfinLinkRequest extends JellyfinServerRequest {
       username: string;
       password: string;
     }
 
+    interface JellyfinServerRequest {
+      server_url: string;
+    }
+
+    interface QuickConnect {
+      /** Shown to the user, who approves it in a Jellyfin app signed in to their account. */
+      code: string;
+      secret: string;
+    }
+
+    interface QuickConnectRequest extends JellyfinServerRequest {
+      secret: string;
+    }
+
+    interface QuickConnectState {
+      approved: boolean;
+    }
+
     type JellyfinLinkError =
       | 'jellyfin_invalid_credentials'
-      | 'jellyfin_forbidden_address'
       | 'jellyfin_unreachable'
       | 'jellyfin_redirected'
-      | 'jellyfin_bad_response';
+      | 'jellyfin_bad_response'
+      | 'jellyfin_quick_connect_disabled'
+      | 'jellyfin_quick_connect_pending';
 
     type ImportSource = 'yamtrack' | 'tvtime';
-    type UnmatchedReason = 'unsupported' | 'not_found' | 'episode_not_found' | 'tmdb_unavailable';
+    type UnmatchedReason = 'unsupported' | 'not_found' | 'episode_not_found' | 'tmdb_unavailable' | 'to_check';
 
     interface ImportJob {
       id: string;

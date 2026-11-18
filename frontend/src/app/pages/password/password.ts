@@ -3,7 +3,7 @@ import { afterNextRender, ChangeDetectionStrategy, Component, inject, signal } f
 import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButton } from '@angular/material/button';
-import { MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
+import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
 import { ActivatedRoute, Router } from '@angular/router';
 import { firstValueFrom } from 'rxjs';
@@ -15,7 +15,7 @@ import { injectTranslator, TranslationPath } from '../../core/i18n';
 /** Sets a password from an invitation or reset link: /password#<token>. */
 @Component({
   selector: 'app-password',
-  imports: [ReactiveFormsModule, MatFormField, MatLabel, MatHint, MatInput, MatButton],
+  imports: [ReactiveFormsModule, MatFormField, MatLabel, MatHint, MatError, MatInput, MatButton],
   templateUrl: './password.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })

@@ -11,12 +11,7 @@ const SLOP_PX = 10;
 @Component({
   selector: 'app-swipe-actions',
   template: `
-    <div
-      #actions
-      class="actions"
-      [attr.aria-hidden]="$open() ? null : 'true'"
-      [attr.inert]="$open() ? null : ''"
-      (click)="close()">
+    <div #actions class="actions" [attr.inert]="$open() ? null : ''" (click)="close()">
       <ng-content select="[swipeAction]" />
     </div>
     <div #front class="front" (transitionend)="hideActionsWhenClosed()">
@@ -42,7 +37,7 @@ const SLOP_PX = 10;
       background: var(--mat-sys-surface);
     }
     .front.settling {
-      transition: transform 200ms cubic-bezier(0.2, 0, 0, 1);
+      transition: transform var(--duration-toggle) var(--ease-standard);
     }
   `,
   host: { '(keydown.escape)': 'close()' },

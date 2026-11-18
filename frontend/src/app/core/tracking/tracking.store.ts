@@ -1,10 +1,18 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { MatSnackBar } from '@angular/material/snack-bar';
-import { catchError, concatMap, EMPTY, map, Observable, Subject, switchMap, tap } from 'rxjs';
+import { catchError, concat, concatMap, EMPTY, last, map, Observable, of, Subject, switchMap, tap } from 'rxjs';
+import { Confetti } from '../../shared/confetti';
 import { ApiService } from '../api/api.service';
+import { AuthStore } from '../auth/auth.store';
 import { injectTranslator } from '../i18n';
+import { injectNotify } from '../notify';
+import { guessNext, isAired, isWatched, LoadedSeasons } from './episodes';
 
 type Key = `${Model.Http.MediaType}:${number}`;
+
+/** What a write to a show changes: its tracking, its seasons' counts and the episode to watch next guessed from them. */
+type ShowState = Pick<Model.Http.Show, 'tracking' | 'next_episode' | 'seasons'>;
+/** An episode as a write needs it: its id, and its season whose count changes. */
+export type EpisodeRef = Pick<Model.Http.Episode, 'id' | 'season_number'>;
 
 interface Write {
   request: () => Observable<unknown>;
@@ -13,6 +21,8 @@ interface Write {
 
 /** Statuses a show leaves only when an episode is marked or the show is resumed. */
 const SET_ASIDE: readonly Model.Http.TrackingStatus[] = ['stopped', 'watch_later'];
+/** Statuses a marked episode turns into watching. */
+const NOT_IN_PROGRESS: readonly Model.Http.TrackingStatus[] = [...SET_ASIDE, 'not_started'];
 /** The API's limit of episode ids per request. */
 export const MAX_EPISODES_PER_REQUEST = 2000;
 
@@ -20,38 +30,58 @@ export const MAX_EPISODES_PER_REQUEST = 2000;
 export interface LibraryQuery {
   mediaType: Model.Http.MediaType;
   sort?: Model.Http.LibrarySort;
-  status?: Model.Http.LibraryStatus | null;
+  status?: Model.Http.TrackingStatus | null;
+}
+
+/** Confetti when the server says a show became finished. */
+function celebrate(confetti: Confetti) {
+  return (before: Model.Http.ShowTracking | null | undefined, saved: Model.Http.ShowTracking | null) => {
+    if (before?.status !== 'finished' && saved?.status === 'finished') confetti.launch();
+  };
 }
 
 export function libraryKey({ mediaType, sort = 'last_watched', status = null }: LibraryQuery): string {
   return `${mediaType}:${sort}:${status ?? 'all'}`;
 }
 
+export function resultKey(mediaType: Model.Http.MediaType, tmdbId: number): Key {
+  return `${mediaType}:${tmdbId}`;
+}
+
 /**
  * Shows, movies and the library, with optimistic writes: a tap updates the store at once, then its request is queued
  * behind the earlier writes to the same item. The server's answer becomes the item's confirmed value; on an error,
  * when no later write to that item is queued, the item goes back to its confirmed value and a snackbar says so.
- * Each write returns a promise of whether the server accepted it, for stores that show the same item elsewhere.
+ * Each write returns a promise of whether the server accepted it. When the server says a show became finished, from
+ * wherever its episodes were marked, confetti falls.
  */
 @Injectable({ providedIn: 'root' })
 export class TrackingStore {
   private readonly api = inject(ApiService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly auth = inject(AuthStore);
+  private readonly confetti = inject(Confetti);
+  private readonly notify = injectNotify();
   private readonly translate = injectTranslator('app');
 
   private readonly $shows = signal<Record<number, Model.Http.Show>>({});
   private readonly $movies = signal<Record<number, Model.Http.Movie>>({});
   private readonly $library = signal<Record<string, Model.Http.LibraryItem[]>>({});
+  private readonly $episodes = signal<Record<number, LoadedSeasons>>({});
+  private readonly $added = signal<Partial<Record<Key, boolean>>>({});
   private readonly queues = new Map<Key, Subject<Write>>();
   private readonly pending = new Map<Key, number>();
   private readonly confirmed = new Map<Key, unknown>();
 
   /** Loaded shows by TMDB id. */
   readonly shows = this.$shows.asReadonly();
+  /** Loaded seasons' episodes, by TMDB id then season number. */
+  readonly episodes = this.$episodes.asReadonly();
   /** Loaded movies by TMDB id. */
   readonly movies = this.$movies.asReadonly();
   /** The last library loaded for each query, by `libraryKey`. */
   readonly library = this.$library.asReadonly();
+  /** Titles added from search or trending results, by `resultKey`: true at once, false again if the server refused. */
+  readonly added = this.$added.asReadonly();
 
   loadShow(tmdbId: number): Observable<Model.Http.Show> {
     return this.api.catalog.show(tmdbId).pipe(tap((show) => this.$shows.update((all) => ({ ...all, [tmdbId]: show }))));
@@ -69,51 +99,90 @@ export class TrackingStore {
       .pipe(tap((items) => this.$library.update((all) => ({ ...all, [libraryKey(query)]: items }))));
   }
 
-  /**
-   * Mark episodes watched now, or unmark them. The screen changes at once; the ids go to the server in requests of at
-   * most MAX_EPISODES_PER_REQUEST, each answer confirming what it saved.
-   */
-  setWatched(tmdbId: number, episodeIds: string[], watched: boolean): Promise<boolean> {
-    const chunks: string[][] = [];
-    for (let start = 0; start < episodeIds.length; start += MAX_EPISODES_PER_REQUEST)
-      chunks.push(episodeIds.slice(start, start + MAX_EPISODES_PER_REQUEST));
-    const marked = (tracking: Model.Http.ShowTracking | null): Model.Http.ShowTracking | null => {
-      const marks = { ...tracking?.watched };
-      const now = new Date().toISOString();
-      for (const id of episodeIds) {
-        if (watched) marks[id] ??= now;
-        else delete marks[id];
-      }
-      if (!tracking && !watched) return null;
-      const status = !tracking || (watched && SET_ASIDE.includes(tracking.status)) ? 'watching' : tracking.status;
-      return { status, watched: marks };
-    };
-    const writes = chunks.map((ids, index) =>
-      this.updateShowTracking(tmdbId, index === 0 ? marked : (tracking) => tracking, () =>
-        this.api.tracking.setWatched(tmdbId, ids, watched),
+  /** A season's episodes, asked of the server the first time. */
+  loadSeason(tmdbId: number, seasonNumber: number): Observable<Model.Http.Episode[]> {
+    const loaded = this.$episodes()[tmdbId]?.[seasonNumber];
+    if (loaded) return of(loaded);
+    return this.api.catalog.season(tmdbId, seasonNumber).pipe(
+      map(({ episodes }) => episodes),
+      tap((episodes) =>
+        this.$episodes.update((all) => ({ ...all, [tmdbId]: { ...all[tmdbId], [seasonNumber]: episodes } })),
       ),
     );
-    return writes.length === 1 ? writes[0] : Promise.all(writes).then((results) => results.every(Boolean));
+  }
+
+  /**
+   * Mark episodes watched now, or unmark them. The screen changes at once (marks, season counts, the episode to watch
+   * next guessed from the loaded seasons); the ids go to the server in requests of at most MAX_EPISODES_PER_REQUEST.
+   */
+  setWatched(tmdbId: number, episodes: EpisodeRef[], watched: boolean): Promise<boolean> {
+    if (episodes.length === 0) return Promise.resolve(true);
+    return this.updateShow(
+      tmdbId,
+      (state) => this.marked(tmdbId, state, episodes, watched),
+      () => this.sendMarks(tmdbId, episodes, watched),
+      celebrate(this.confetti),
+    );
+  }
+
+  /**
+   * Mark a season's aired episodes watched, or unmark its watched ones. Its count changes at once; a season not loaded
+   * yet is loaded before the marks are sent.
+   */
+  markSeason(tmdbId: number, seasonNumber: number, watched: boolean): Promise<boolean> {
+    const now = new Date();
+    const targets = (episodes: Model.Http.Episode[]) => {
+      const show = this.$shows()[tmdbId] ?? { tracking: null };
+      return episodes.filter((episode) =>
+        watched ? isAired(episode, now, this.auth.$timeZone()) && !isWatched(show, episode) : isWatched(show, episode),
+      );
+    };
+    const loaded = this.$episodes()[tmdbId]?.[seasonNumber];
+    if (loaded) return this.setWatched(tmdbId, targets(loaded), watched);
+    return this.updateShow(
+      tmdbId,
+      (state) => {
+        const seasons = state.seasons.map((season) =>
+          season.season_number === seasonNumber
+            ? { ...season, watched_count: watched ? Math.max(season.watched_count, season.aired_count) : 0 }
+            : season,
+        );
+        return this.marked(tmdbId, { ...state, seasons }, [], watched);
+      },
+      () =>
+        this.loadSeason(tmdbId, seasonNumber).pipe(
+          switchMap((episodes) => {
+            const ids = targets(episodes);
+            return ids.length ? this.sendMarks(tmdbId, ids, watched) : of(this.$shows()[tmdbId]?.tracking ?? null);
+          }),
+        ),
+      celebrate(this.confetti),
+    );
   }
 
   /** Add the show to the library or resume it (watching), put it aside (watch_later) or stop it. */
   trackShow(tmdbId: number, status: Model.Http.ShowTrackingChoice): Promise<boolean> {
-    return this.updateShowTracking(
+    return this.updateShow(
       tmdbId,
-      (tracking) => {
+      (state) => {
+        const { tracking } = state;
         const watched = tracking?.watched ?? {};
-        if (status !== 'watching') return { status, watched };
-        if (tracking && !SET_ASIDE.includes(tracking.status)) return tracking;
-        return { status: Object.keys(watched).length > 0 ? 'watching' : 'watch_later', watched };
+        if (status !== 'watching') return { ...state, tracking: { status, watched }, next_episode: null };
+        if (tracking && !SET_ASIDE.includes(tracking.status)) return state;
+        const resumed: Model.Http.ShowTracking = {
+          status: Object.keys(watched).length === 0 ? 'not_started' : 'watching',
+          watched,
+        };
+        return { ...state, tracking: resumed, next_episode: this.guess(tmdbId, resumed, state) ?? null };
       },
       () => this.api.tracking.trackShow(tmdbId, status),
     );
   }
 
   untrackShow(tmdbId: number): Promise<boolean> {
-    return this.updateShowTracking(
+    return this.updateShow(
       tmdbId,
-      () => null,
+      (state) => ({ ...state, tracking: null, next_episode: null }),
       () => this.api.tracking.untrackShow(tmdbId).pipe(map(() => null)),
     );
   }
@@ -142,30 +211,118 @@ export class TrackingStore {
    * Add a title seen only among search or trending results: a show to watch, a movie to watch later. The server
    * writes only titles in its catalog, so the title's page is loaded first.
    */
-  addFromResults(mediaType: Model.Http.MediaType, tmdbId: number): Promise<boolean> {
-    if (mediaType === 'tv')
-      return this.updateShowTracking(
-        tmdbId,
-        (tracking) => tracking ?? { status: 'watch_later', watched: {} },
-        () => this.api.catalog.show(tmdbId).pipe(switchMap(() => this.api.tracking.trackShow(tmdbId, 'watching'))),
-      );
-    return this.updateMovieTracking(
-      tmdbId,
-      (tracking) => tracking ?? { status: 'watch_later', watched_at: null },
-      () => this.api.catalog.movie(tmdbId).pipe(switchMap(() => this.api.tracking.trackMovie(tmdbId, false))),
-    );
+  async addFromResults(mediaType: Model.Http.MediaType, tmdbId: number): Promise<boolean> {
+    const key = resultKey(mediaType, tmdbId);
+    this.$added.update((added) => ({ ...added, [key]: true }));
+    const saved = await (mediaType === 'tv'
+      ? this.updateShow(
+          tmdbId,
+          (state) => (state.tracking ? state : { ...state, tracking: { status: 'not_started', watched: {} } }),
+          () => this.api.catalog.show(tmdbId).pipe(switchMap(() => this.api.tracking.trackShow(tmdbId, 'watching'))),
+        )
+      : this.updateMovieTracking(
+          tmdbId,
+          (tracking) => tracking ?? { status: 'watch_later', watched_at: null },
+          () => this.api.catalog.movie(tmdbId).pipe(switchMap(() => this.api.tracking.trackMovie(tmdbId, false))),
+        ));
+    if (!saved) this.$added.update((added) => ({ ...added, [key]: false }));
+    return saved;
   }
 
-  private updateShowTracking(
+  /** The show after marking or unmarking `episodes`: marks, status, season counts and the guessed next episode. */
+  private marked(tmdbId: number, state: ShowState, episodes: EpisodeRef[], watched: boolean): ShowState {
+    const { tracking } = state;
+    if (!tracking && !watched) return state;
+    const marks = { ...tracking?.watched };
+    const changes = new Map<number, number>();
+    const now = new Date().toISOString();
+    for (const { id, season_number } of episodes) {
+      if (watched === !!marks[id]) continue;
+      if (watched) marks[id] = now;
+      else delete marks[id];
+      changes.set(season_number, (changes.get(season_number) ?? 0) + (watched ? 1 : -1));
+    }
+    let status = tracking?.status ?? 'watching';
+    if (watched && (!tracking || NOT_IN_PROGRESS.includes(status))) status = 'watching';
+    if (!watched && Object.keys(marks).length === 0 && !SET_ASIDE.includes(status)) status = 'not_started';
+    const seasons = state.seasons.map((season) => {
+      const change = changes.get(season.season_number);
+      return change ? { ...season, watched_count: Math.max(0, season.watched_count + change) } : season;
+    });
+    const next: Model.Http.ShowTracking = { status, watched: marks };
+    const guessed = this.guess(tmdbId, next, { ...state, seasons });
+    return { tracking: next, seasons, next_episode: guessed === undefined ? state.next_episode : guessed };
+  }
+
+  /** The episode to watch next with `tracking`, from the loaded seasons; undefined when they cannot say. */
+  private guess(
     tmdbId: number,
-    next: (tracking: Model.Http.ShowTracking | null) => Model.Http.ShowTracking | null,
+    tracking: Model.Http.ShowTracking,
+    state: ShowState,
+  ): Model.Http.NextEpisode | null | undefined {
+    const show = this.$shows()[tmdbId];
+    if (!show) return undefined;
+    const loaded = this.$episodes()[tmdbId] ?? {};
+    return guessNext({ ...show, ...state, tracking }, loaded, new Date(), this.auth.$timeZone());
+  }
+
+  /** The marks in requests of at most MAX_EPISODES_PER_REQUEST, one after the other; the last answer is the show's. */
+  private sendMarks(
+    tmdbId: number,
+    episodes: EpisodeRef[],
+    watched: boolean,
+  ): Observable<Model.Http.ShowTracking | null> {
+    const ids = episodes.map(({ id }) => id);
+    const requests: Observable<Model.Http.ShowTracking | null>[] = [];
+    for (let start = 0; start < ids.length; start += MAX_EPISODES_PER_REQUEST)
+      requests.push(this.api.tracking.setWatched(tmdbId, ids.slice(start, start + MAX_EPISODES_PER_REQUEST), watched));
+    return concat(...requests).pipe(last());
+  }
+
+  /**
+   * `saved` runs on each answer with the tracking confirmed before it and the one the server sent. Once no write to the
+   * show is left, the show is loaded again: the server's next episode and counts replace the guesses.
+   */
+  private updateShow(
+    tmdbId: number,
+    next: (state: ShowState) => ShowState,
     request: () => Observable<Model.Http.ShowTracking | null>,
+    saved?: (before: Model.Http.ShowTracking | null | undefined, after: Model.Http.ShowTracking | null) => void,
   ): Promise<boolean> {
-    const set = (tracking: Model.Http.ShowTracking | null) =>
-      this.$shows.update((all) => (all[tmdbId] ? { ...all, [tmdbId]: { ...all[tmdbId], tracking } } : all));
-    const current = this.$shows()[tmdbId]?.tracking ?? null;
+    const set = (state: ShowState) =>
+      this.$shows.update((all) => (all[tmdbId] ? { ...all, [tmdbId]: { ...all[tmdbId], ...state } } : all));
+    const loaded = this.$shows()[tmdbId];
+    const current: ShowState = {
+      tracking: loaded?.tracking ?? null,
+      next_episode: loaded?.next_episode ?? null,
+      seasons: loaded?.seasons ?? [],
+    };
     set(next(current));
-    return this.write(`tv:${tmdbId}`, current, set, request);
+    return this.write<ShowState>(
+      `tv:${tmdbId}`,
+      current,
+      set,
+      () => request().pipe(map((tracking) => ({ ...this.showState(tmdbId), tracking }))),
+      saved && ((before, after) => saved(before?.tracking, after.tracking)),
+    ).then((succeeded) => {
+      this.refresh(tmdbId);
+      return succeeded;
+    });
+  }
+
+  private showState(tmdbId: number): ShowState {
+    const show = this.$shows()[tmdbId];
+    return { tracking: show?.tracking ?? null, next_episode: show?.next_episode ?? null, seasons: show?.seasons ?? [] };
+  }
+
+  /** Load a loaded show again, unless a write to it is queued, whose answer would then be undone on screen. */
+  private refresh(tmdbId: number): void {
+    const idle = () => (this.pending.get(`tv:${tmdbId}`) ?? 0) === 0;
+    if (!this.$shows()[tmdbId] || !idle()) return;
+    this.api.catalog.show(tmdbId).subscribe({
+      next: (show) => idle() && this.$shows.update((all) => ({ ...all, [tmdbId]: show })),
+      error: () => undefined,
+    });
   }
 
   private updateMovieTracking(
@@ -181,7 +338,13 @@ export class TrackingStore {
   }
 
   /** Queue `request` behind the earlier writes to the same item; `before` is the item's value before this write. */
-  private write<T>(key: Key, before: T, set: (value: T) => void, request: () => Observable<T>): Promise<boolean> {
+  private write<T>(
+    key: Key,
+    before: T,
+    set: (value: T) => void,
+    request: () => Observable<T>,
+    saved?: (before: T | undefined, after: T) => void,
+  ): Promise<boolean> {
     const pending = this.pending.get(key) ?? 0;
     if (pending === 0) this.confirmed.set(key, before);
     this.pending.set(key, pending + 1);
@@ -191,11 +354,14 @@ export class TrackingStore {
         settle: (succeeded, value) => {
           const left = this.pending.get(key)! - 1;
           this.pending.set(key, left);
-          if (succeeded) this.confirmed.set(key, value);
+          if (succeeded) {
+            saved?.(this.confirmed.get(key) as T | undefined, value as T);
+            this.confirmed.set(key, value);
+          }
           resolve(succeeded);
           if (left > 0) return;
           set(this.confirmed.get(key) as T);
-          if (!succeeded) this.snackBar.open(this.translate('app.tracking.saveFailed'), undefined, { duration: 4000 });
+          if (!succeeded) this.notify(this.translate('app.tracking.saveFailed'));
         },
       }),
     );

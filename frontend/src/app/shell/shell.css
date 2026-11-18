@@ -16,7 +16,8 @@
 .bottom-nav {
   flex: none;
   display: flex;
-  justify-content: space-around;
+  /* The tabs share a phone's width; on a wider screen they stay together in the middle. */
+  justify-content: center;
   min-height: 80px;
   padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background: var(--mat-sys-surface-container);
@@ -35,7 +36,7 @@
   color: var(--mat-sys-on-surface-variant);
   font: var(--mat-sys-label-medium);
   text-decoration: none;
-  border-radius: 16px;
+  border-radius: var(--mat-sys-corner-large);
 }
 
 .nav-item:focus-visible {
@@ -58,7 +59,7 @@
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 16px;
+  border-radius: var(--mat-sys-corner-full);
   background: var(--mat-sys-secondary-container);
   opacity: 0;
   transform: scaleX(0.4);
@@ -93,10 +94,6 @@
   color: var(--mat-sys-on-surface);
 }
 
-.nav-item.active .label {
-  font-weight: 700;
-}
-
 .nav-item.active .indicator {
   color: var(--mat-sys-on-secondary-container);
 }
@@ -114,4 +111,49 @@
 .nav-item.active .filled {
   opacity: 1;
   transform: none;
+}
+
+/* Nothing can load: why, and one way to try again. */
+.unreachable {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  max-width: 40ch;
+  margin-inline: auto;
+  padding: 64px 16px;
+  text-align: center;
+}
+
+.unreachable .badge {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 8px;
+  border-radius: var(--mat-sys-corner-full);
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+}
+
+.retry {
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 0 24px;
+  border: 0;
+  border-radius: var(--mat-sys-corner-full);
+  background: var(--mat-sys-primary);
+  color: var(--mat-sys-on-primary);
+  font: var(--mat-sys-label-large);
+  cursor: pointer;
+  transition: transform var(--duration-short) var(--ease-standard);
+}
+
+.retry:active {
+  transform: scale(0.97);
+}
+
+.retry:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 2px;
 }

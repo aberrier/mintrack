@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, input, output, signal } from '@angular/core';
 import { MatIcon } from '@angular/material/icon';
 import { injectTranslator } from '../core/i18n';
-import { posterUrl } from '../core/tracking/episodes';
+import { imageUrl } from './images';
 
 /**
  * A TMDB poster at its 2:3 ratio, fading in over a plain surface once loaded; the surface stays when there is none or
@@ -14,17 +14,17 @@ import { posterUrl } from '../core/tracking/episodes';
   imports: [MatIcon],
   template: `
     <div class="frame">
-      @if ($url(); as url) {
-        @if (!$failed()) {
-          <img
-            [src]="url"
-            alt=""
-            loading="lazy"
-            decoding="async"
-            [class.loaded]="$loaded()"
-            (load)="$loaded.set(true)"
-            (error)="$failed.set(true)" />
-        }
+      @if ($url() && !$failed()) {
+        <img
+          [src]="$url()"
+          alt=""
+          loading="lazy"
+          decoding="async"
+          [class.loaded]="$loaded()"
+          (load)="$loaded.set(true)"
+          (error)="$failed.set(true)" />
+      } @else if (fallback()) {
+        <span class="fallback" aria-hidden="true">{{ fallback() }}</span>
       }
       @if (finished()) {
         <span class="badge" data-testid="finished-badge">
@@ -57,7 +57,7 @@ import { posterUrl } from '../core/tracking/episodes';
       aspect-ratio: 2 / 3;
       width: 100%;
       overflow: hidden;
-      border-radius: 8px;
+      border-radius: var(--mat-sys-corner-small);
       background: var(--mat-sys-surface-container-high);
     }
     img {
@@ -70,6 +70,19 @@ import { posterUrl } from '../core/tracking/episodes';
     img.loaded {
       opacity: 1;
     }
+    /* Without an image, the title written on the plain surface. */
+    .fallback {
+      position: absolute;
+      inset: 0;
+      display: -webkit-box;
+      overflow: hidden;
+      padding: 8px;
+      color: var(--mat-sys-on-surface-variant);
+      font: var(--mat-sys-title-small);
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 4;
+      overflow-wrap: anywhere;
+    }
     .badge {
       position: absolute;
       inset: auto 4px 4px;
@@ -78,7 +91,7 @@ import { posterUrl } from '../core/tracking/episodes';
       justify-content: center;
       gap: 4px;
       padding: 2px 4px;
-      border-radius: 4px;
+      border-radius: var(--mat-sys-corner-extra-small);
       background: var(--mat-sys-primary);
       color: var(--mat-sys-on-primary);
       font: var(--mat-sys-label-medium);
@@ -107,7 +120,7 @@ import { posterUrl } from '../core/tracking/episodes';
       place-items: center;
       width: 28px;
       height: 28px;
-      border-radius: 8px;
+      border-radius: var(--mat-sys-corner-small);
       background: color-mix(in srgb, var(--mat-sys-surface) 85%, transparent);
       color: var(--mat-sys-on-surface);
       transition:
@@ -117,13 +130,19 @@ import { posterUrl } from '../core/tracking/episodes';
     .add:active .square {
       transform: scale(0.9);
     }
+    /* The check pops in; what leaves goes quicker and plainly, so the pop never plays backwards. */
     .square mat-icon {
       grid-area: 1 / 1;
       width: 20px;
       height: 20px;
       transition:
+        opacity var(--duration-exit) var(--ease-emph-accel),
+        transform var(--duration-exit) var(--ease-emph-accel);
+    }
+    .plus {
+      transition:
         opacity var(--duration-toggle) var(--ease-standard),
-        transform var(--duration-medium) var(--ease-pop);
+        transform var(--duration-toggle) var(--ease-standard);
     }
     .tick {
       opacity: 0;
@@ -140,6 +159,9 @@ import { posterUrl } from '../core/tracking/episodes';
     .add.done .tick {
       opacity: 1;
       transform: none;
+      transition:
+        opacity var(--duration-toggle) var(--ease-standard),
+        transform var(--duration-medium) var(--ease-pop);
     }
     .add:focus-visible {
       outline: 2px solid var(--mat-sys-primary);
@@ -159,10 +181,12 @@ export class Poster {
   readonly tracked = input<boolean | null>(null);
   /** Names the add button. */
   readonly label = input('');
+  /** Written on the poster's place when there is no image, for tiles that show no title of their own. */
+  readonly fallback = input('');
 
   readonly add = output<void>();
 
-  protected readonly $url = computed(() => posterUrl(this.path(), this.width()));
+  protected readonly $url = computed(() => imageUrl(this.path(), this.width()));
   protected readonly $loaded = signal(false);
   protected readonly $failed = signal(false);
 }

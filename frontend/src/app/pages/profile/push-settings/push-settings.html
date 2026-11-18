@@ -1,34 +1,25 @@
-<section class="flex flex-col gap-2" data-testid="push-settings">
-  <h2 class="[font:var(--mat-sys-title-medium)]">{{ translate('app.push.title') }}</h2>
+<div class="flex flex-col gap-2" data-testid="push-settings">
+  @let hint = $hint();
   <mat-slide-toggle
     class="min-h-12"
     [checked]="store.$state() === 'on'"
     [disabled]="!$canToggle()"
+    [aria-describedby]="hint ? 'push-hint' : ''"
     (change)="toggle($event)">
     {{ translate('app.push.toggle') }}
   </mat-slide-toggle>
-  @switch (store.$state()) {
-    @case ('install') {
-      <p class="text-on-surface-variant" data-testid="push-hint">{{ translate('app.push.hints.install') }}</p>
-    }
-    @case ('unsupported') {
-      <p class="text-on-surface-variant" data-testid="push-hint">{{ translate('app.push.hints.unsupported') }}</p>
-    }
-    @case ('unconfigured') {
-      <p class="text-on-surface-variant" data-testid="push-hint">{{ translate('app.push.hints.unconfigured') }}</p>
-    }
-    @case ('blocked') {
-      <p class="text-on-surface-variant" data-testid="push-hint">{{ translate('app.push.hints.blocked') }}</p>
-    }
-    @case ('on') {
-      <button
-        matButton="outlined"
-        type="button"
-        class="min-h-12 self-start"
-        [disabled]="store.$busy()"
-        (click)="store.sendTest()">
-        {{ translate('app.push.test.button') }}
-      </button>
-    }
+  @if (hint) {
+    <p id="push-hint" class="text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="push-hint">
+      {{ translate(hint) }}
+    </p>
+  } @else if (store.$state() === 'on') {
+    <button
+      matButton="outlined"
+      type="button"
+      class="min-h-12 self-start"
+      [disabled]="store.$busy()"
+      (click)="store.sendTest()">
+      {{ translate('app.push.test.button') }}
+    </button>
   }
-</section>
+</div>

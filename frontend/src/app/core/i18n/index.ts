@@ -8,12 +8,12 @@ export { injectTranslator, type TranslationPath };
  *
  * @example
  * ```html
- * <h1>{{ translate('app.profile.title') }}</h1>
- * <p>{{ translate('app.adminUsers.link.intro', { username }) }}</p>
+ * <h1>{{ translate('app.nav.profile') }}</h1>
+ * <p>{{ translate('app.admin.link.intro', { username }) }}</p>
  * ```
  *
  * ```typescript
- * class HomePage {
+ * class Profile {
  *   protected readonly translate = injectTranslator('app');
  * }
  * ```

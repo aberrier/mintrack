@@ -1,0 +1,89 @@
+<div class="flex max-w-xl flex-col gap-8 px-4 pt-8 pb-8">
+  <h1 class="[font:var(--mat-sys-headline-small)] font-semibold!">{{ translate('app.admin.title') }}</h1>
+
+  <section class="settings-card" aria-labelledby="admin-invite">
+    <h2 id="admin-invite" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.admin.inviteTitle') }}</h2>
+    <form class="flex items-start gap-2" [formGroup]="form" #inviteForm="ngForm" (ngSubmit)="create(inviteForm)">
+      <mat-form-field appearance="outline" class="min-w-0 flex-1">
+        <mat-label>{{ translate('app.admin.create.username') }}</mat-label>
+        <input matInput formControlName="username" autocomplete="off" autocapitalize="none" spellcheck="false" />
+        <mat-hint>{{ translate('app.admin.create.hint') }}</mat-hint>
+        <mat-error>{{ translate('app.admin.create.hint') }}</mat-error>
+      </mat-form-field>
+      <button matButton="filled" type="submit" class="mt-1 min-h-12" [disabled]="$busy()">
+        {{ translate('app.admin.create.submit') }}
+      </button>
+    </form>
+    @if ($taken()) {
+      <p role="alert" class="text-error [font:var(--mat-sys-body-medium)]">{{ translate('app.admin.create.taken') }}</p>
+    }
+
+    @if ($shownLink(); as shown) {
+      <div
+        class="flex flex-col gap-2 rounded-xl bg-secondary-container p-4 text-on-secondary-container"
+        data-testid="shown-link">
+        <p class="[font:var(--mat-sys-body-medium)]">
+          {{ translate('app.admin.link.intro', { username: shown.username }) }}
+        </p>
+        <div class="flex items-center gap-2">
+          <code class="min-w-0 flex-1 break-all select-all" data-testid="link">{{ shown.link }}</code>
+          <button
+            matIconButton
+            type="button"
+            class="size-12!"
+            [attr.aria-label]="translate('app.admin.link.copy')"
+            (click)="copy(shown.link)">
+            <mat-icon svgIcon="content_copy" aria-hidden="true" />
+          </button>
+        </div>
+      </div>
+    }
+  </section>
+
+  <section class="flex flex-col gap-3" aria-labelledby="admin-users">
+    <h2 id="admin-users" class="[font:var(--mat-sys-title-large)] font-semibold!">
+      {{ translate('app.admin.users') }}
+    </h2>
+    @if (users.error() && !users.hasValue()) {
+      <app-load-error class="px-0!" [message]="translate('app.admin.loadFailed')" (retry)="users.reload()" />
+    }
+    <ul class="flex flex-col gap-3" data-testid="users">
+      @for (user of users.value() ?? []; track user.id) {
+        <li class="user enter" [style.--i]="$index" [attr.data-username]="user.username">
+          <div class="flex flex-col gap-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="min-w-0 truncate [font:var(--mat-sys-title-medium)]">{{ user.username }}</span>
+              <span
+                class="tag"
+                [class.active]="user.status === 'active'"
+                [class.disabled]="user.status === 'disabled'"
+                data-testid="status"
+                >{{ translate(statusLabels[user.status]) }}</span
+              >
+              @if (user.is_admin) {
+                <span class="tag">{{ translate('app.admin.admin') }}</span>
+              }
+            </div>
+            <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ lastSeen(user) }}</span>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            @if (user.status === 'disabled') {
+              <button matButton="outlined" type="button" class="min-h-12" (click)="setActive(user, true)">
+                {{ translate('app.admin.enable') }}
+              </button>
+            } @else {
+              <button matButton="outlined" type="button" class="min-h-12" (click)="newLink(user)">
+                {{ translate('app.admin.newLink') }}
+              </button>
+              @if (user.id !== $me()?.id) {
+                <button matButton type="button" class="min-h-12" (click)="setActive(user, false)">
+                  {{ translate('app.admin.disable') }}
+                </button>
+              }
+            }
+          </div>
+        </li>
+      }
+    </ul>
+  </section>
+</div>

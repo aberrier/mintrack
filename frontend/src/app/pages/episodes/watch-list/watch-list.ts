@@ -4,7 +4,6 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
-  DestroyRef,
   ElementRef,
   inject,
   signal,
@@ -13,18 +12,24 @@ import {
 import { MatIcon } from '@angular/material/icon';
 import { Router } from '@angular/router';
 import { appRoutes } from '../../../app.paths';
-import { injectTranslator } from '../../../core/i18n';
-import { WatchListStore } from '../../../core/tracking/watch-list.store';
+import { AuthStore } from '../../../core/auth/auth.store';
+import { formatDate } from '../../../core/dates';
+import { injectTranslator, TranslationPath } from '../../../core/i18n';
+import { SetAside, WatchListStore } from '../../../core/tracking/watch-list.store';
+import { CollapsedSections } from '../../../shared/collapsed-sections';
 import { EmptyState } from '../../../shared/empty-state';
-import { CardAction, CardEpisode, EpisodeCard } from '../../../shared/episode-card/episode-card';
+import { CardAction, EpisodeCard, historyCard } from '../../../shared/episode-card/episode-card';
+import { LoadError } from '../../../shared/load-error';
+import { PullToLoad } from '../../../shared/pull-to-load';
 import { Skeleton } from '../../../shared/skeleton';
 import { ViewModes } from '../../../shared/view-toggle';
 import { EpisodesTabs } from '../episodes-tabs';
 
-/** How close to the top, in pixels, scrolling loads the next page of history. */
-const HISTORY_THRESHOLD_PX = 300;
-/** How far a finger pulls down at the top before the history loads. */
-const PULL_PX = 40;
+const SECTIONS: Record<Model.Http.WatchListSection, TranslationPath<'app'>> = {
+  next: 'app.watchList.next',
+  dormant: 'app.watchList.dormant',
+  not_started: 'app.watchList.notStarted',
+};
 
 /**
  * The next episode of each show in progress, watched lately or not for a while, each checked in one tap. Above it,
@@ -32,56 +37,97 @@ const PULL_PX = 40;
  */
 @Component({
   selector: 'app-watch-list',
-  imports: [EpisodeCard, EpisodesTabs, EmptyState, Skeleton, MatIcon],
+  imports: [EpisodeCard, EpisodesTabs, EmptyState, Skeleton, MatIcon, PullToLoad, LoadError],
   templateUrl: './watch-list.html',
+  styles: `
+    /* A section's title as a full-width button folding it: the title, its count, then a chevron. */
+    .section-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      min-height: 48px;
+      margin-top: 16px;
+      padding: 0 16px;
+      border: 0;
+      background: none;
+      color: var(--mat-sys-on-surface-variant);
+      font: var(--mat-sys-title-small);
+      letter-spacing: 0.06em;
+      text-align: start;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .section-toggle:focus-visible {
+      outline: 2px solid var(--mat-sys-primary);
+      outline-offset: -4px;
+    }
+    .count {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: normal;
+    }
+    .chevron {
+      margin-inline-start: auto;
+      transform: rotate(-90deg);
+      transition: transform var(--duration-medium) var(--ease-emph-decel);
+    }
+    .chevron.open {
+      transform: none;
+    }
+    .history-toggle {
+      align-self: flex-end;
+    }
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export default class WatchList {
   protected readonly translate = injectTranslator('app');
   protected readonly routes = appRoutes;
   protected readonly store = inject(WatchListStore);
+  private readonly timeZone = inject(AuthStore).$timeZone;
   protected readonly $mode = inject(ViewModes).mode('watchList');
   protected readonly $failed = signal(false);
+  private readonly collapsedSections = inject(CollapsedSections);
 
   private readonly historyBlock = viewChild.required<ElementRef<HTMLElement>>('history');
 
-  protected readonly actions: CardAction[] = [
-    { id: 'watch_later', label: this.translate('app.watchList.watchLater'), icon: 'schedule' },
-    { id: 'stopped', label: this.translate('app.watchList.stop'), icon: 'block' },
+  protected readonly actions: CardAction<SetAside>[] = [
+    { id: 'watch_later', label: this.translate('app.status.watch_later'), icon: 'schedule' },
+    { id: 'stopped', label: this.translate('app.common.stopWatching'), icon: 'block' },
   ];
 
+  /** Watch next, Haven't watched for a while, Haven't started: each with its cards, folded or not; empty ones hidden. */
   protected readonly $sections = computed(() => {
     const episodes = this.store.episodes() ?? [];
-    return [
-      {
-        id: 'next',
-        label: this.translate('app.watchList.next'),
-        episodes: episodes.filter((e) => e.section === 'next'),
-      },
-      {
-        id: 'dormant',
-        label: this.translate('app.watchList.dormant'),
-        episodes: episodes.filter((e) => e.section === 'dormant'),
-      },
-    ].filter((section) => section.episodes.length > 0);
+    const collapsed = this.collapsedSections.collapsed();
+    return Object.entries(SECTIONS)
+      .map(([id, label]) => ({
+        id,
+        label: this.translate(label),
+        episodes: episodes.filter((episode) => episode.section === id),
+        open: !collapsed.has(`watchList:${id}`),
+      }))
+      .filter((section) => section.episodes.length > 0);
   });
+
+  protected toggleSection(id: string): void {
+    this.collapsedSections.toggle('watchList', id);
+  }
 
   /** Oldest at the top, the newest right above the watch list. */
   protected readonly $history = computed(() =>
     this.store
       .history()
-      .map((entry) => ({ entry, card: historyCard(entry), detail: formatWatched(entry.watched_at) }))
+      .map((entry) => ({ entry, card: historyCard(entry), detail: formatDate(entry.watched_at, this.timeZone()) }))
       .reverse(),
   );
 
   constructor() {
     // Back and forward come back to the history as it was; any other visit opens on the watch list.
     if (inject(Router).currentNavigation()?.trigger !== 'popstate') this.store.resetHistory();
-    this.store.load().subscribe({ error: () => this.$failed.set(true) });
+    this.load();
 
     const scroller = inject(CdkScrollable, { optional: true })?.getElementRef().nativeElement;
-    if (scroller) this.loadHistoryOnScrollUp(scroller);
-
     let height: number | null = null;
     afterRenderEffect({
       earlyRead: () => {
@@ -96,65 +142,13 @@ export default class WatchList {
     });
   }
 
-  protected loadHistory(): void {
-    this.store.loadOlderHistory();
+  protected load(): void {
+    this.$failed.set(false);
+    this.store.load().subscribe({ error: () => this.$failed.set(true) });
   }
 
-  protected onAction(episode: Model.Http.WatchListEpisode, action: string): void {
-    this.store.remove(episode, action === 'stopped' ? 'stopped' : 'watch_later');
+  /** Scrolling or pulling up from the top loads an older page of history, one at a time. */
+  protected pulled(): void {
+    if (this.store.historyState() === 'idle') this.store.loadOlderHistory();
   }
-
-  /** Wheel or finger pulling down at the very top, or scrolling near the top once the history shows. */
-  private loadHistoryOnScrollUp(scroller: HTMLElement): void {
-    let pullFrom: number | null = null;
-    const canLoad = () => this.store.historyState() === 'idle';
-    const scroll = () => {
-      if (canLoad() && this.store.history().length > 0 && scroller.scrollTop < HISTORY_THRESHOLD_PX) this.loadHistory();
-    };
-    const wheel = (event: WheelEvent) => {
-      if (canLoad() && event.deltaY < 0 && scroller.scrollTop <= 0) this.loadHistory();
-    };
-    const touchStart = (event: TouchEvent) => {
-      pullFrom = scroller.scrollTop <= 0 ? event.touches[0].clientY : null;
-    };
-    const touchMove = (event: TouchEvent) => {
-      if (pullFrom === null || event.touches[0].clientY - pullFrom < PULL_PX) return;
-      pullFrom = null;
-      if (canLoad()) this.loadHistory();
-    };
-    const options = { passive: true };
-    scroller.addEventListener('scroll', scroll, options);
-    scroller.addEventListener('wheel', wheel, options);
-    scroller.addEventListener('touchstart', touchStart, options);
-    scroller.addEventListener('touchmove', touchMove, options);
-    inject(DestroyRef).onDestroy(() => {
-      scroller.removeEventListener('scroll', scroll);
-      scroller.removeEventListener('wheel', wheel);
-      scroller.removeEventListener('touchstart', touchStart);
-      scroller.removeEventListener('touchmove', touchMove);
-    });
-  }
-}
-
-function historyCard(entry: Model.Http.HistoryEntry): CardEpisode {
-  return {
-    tmdb_id: entry.tmdb_id,
-    media_type: entry.media_type,
-    show_title: entry.title,
-    poster_path: entry.poster_path,
-    season_number: entry.season_number,
-    episode_number: entry.episode_number,
-    title: entry.episode_title,
-  };
-}
-
-/** The day something was watched, with the year only when it is not this year. */
-function formatWatched(watchedAt: string): string {
-  const date = new Date(watchedAt);
-  const thisYear = date.getFullYear() === new Date().getFullYear();
-  return new Intl.DateTimeFormat(undefined, {
-    month: 'short',
-    day: 'numeric',
-    year: thisYear ? undefined : 'numeric',
-  }).format(date);
 }

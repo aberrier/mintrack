@@ -9,7 +9,7 @@ export class Confetti {
   private readonly document = inject(DOCUMENT);
 
   launch(): void {
-    if (this.document.defaultView?.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (this.document.defaultView?.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? true) return;
     void this.throw();
   }
 

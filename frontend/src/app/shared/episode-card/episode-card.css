@@ -5,7 +5,7 @@
 /* In a list, a tinted card: the poster inset on the left, the text, then the menu and the check. */
 :host(.list) {
   overflow: hidden;
-  border-radius: 16px;
+  border-radius: var(--mat-sys-corner-large);
 }
 
 .row {
@@ -28,7 +28,7 @@
   min-width: 0;
   color: inherit;
   text-decoration: none;
-  border-radius: 8px;
+  border-radius: var(--mat-sys-corner-small);
 }
 
 .main:focus-visible {
@@ -36,45 +36,16 @@
   outline-offset: 2px;
 }
 
-/* The show's name as a small outlined chip above the episode number. */
+/* The show's name as a small outlined chip above the episode number, cut with an ellipsis. */
 .show-chip {
   max-width: 100%;
   overflow: hidden;
   padding: 0 8px;
   border: 1px solid var(--mat-sys-outline);
-  border-radius: 999px;
-  font: var(--mat-sys-label-medium);
-  letter-spacing: 0.04em;
+  border-radius: var(--mat-sys-corner-full);
+  font: var(--mat-sys-label-large);
   text-overflow: ellipsis;
-  text-transform: uppercase;
   white-space: nowrap;
-}
-
-/* A 48px target around the 36px mark. */
-.check {
-  display: grid;
-  flex: none;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  background: none;
-  border: 0;
-  border-radius: 50%;
-  cursor: pointer;
-}
-
-button.check:active app-check-mark {
-  transform: scale(0.9);
-}
-
-app-check-mark {
-  transition: transform var(--duration-short) var(--ease-standard);
-}
-
-.check:focus-visible {
-  outline: 2px solid var(--mat-sys-primary);
-  outline-offset: -2px;
 }
 
 .swipe-action {
@@ -105,16 +76,18 @@ app-check-mark {
   transform: scale(0.97);
 }
 
-/* The episode number over the bottom of a poster in the grid, clear of the check. */
+/* The episode number over the bottom of a poster in the grid, on a scrim of the page's surface, clear of the check. */
 .grid-code {
   position: absolute;
   inset: auto 0 0;
-  padding: 24px 48px 8px 8px;
-  border-radius: 0 0 8px 8px;
-  background: linear-gradient(transparent, rgb(0 0 0 / 0.75));
-  color: #fff;
+  overflow: hidden;
+  padding: 24px 40px 8px 8px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border-radius: 0 0 var(--mat-sys-corner-small) var(--mat-sys-corner-small);
+  background: linear-gradient(transparent, color-mix(in srgb, var(--mat-sys-surface) 85%, transparent) 60%);
+  color: var(--mat-sys-on-surface);
   font: var(--mat-sys-label-large);
-  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -123,6 +96,17 @@ app-check-mark {
   background: color-mix(in srgb, var(--mat-sys-surface) 70%, transparent);
 }
 
-.on-image app-check-mark {
-  background: color-mix(in srgb, var(--mat-sys-surface) 85%, transparent);
+.on-image {
+  --check-backdrop: color-mix(in srgb, var(--mat-sys-surface) 85%, transparent);
+}
+
+/* On touch screens the grid keeps only the check: a long press opens the menu, anchored where its button is. */
+.tile {
+  -webkit-touch-callout: none;
+}
+
+@media not ((hover: hover) and (pointer: fine)) {
+  .menu-overlay {
+    visibility: hidden;
+  }
 }

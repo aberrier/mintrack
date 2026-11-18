@@ -36,7 +36,7 @@ import { IconName } from '../core/icons/icons';
       width: 64px;
       height: 64px;
       margin-bottom: 8px;
-      border-radius: 50%;
+      border-radius: var(--mat-sys-corner-full);
       background: var(--mat-sys-secondary-container);
       color: var(--mat-sys-on-secondary-container);
     }

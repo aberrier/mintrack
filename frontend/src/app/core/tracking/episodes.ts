@@ -1,162 +1,165 @@
+import { dayIn } from '../dates';
+
 export {
-  ENDED_STATUSES,
-  SPECIALS,
-  backdropUrl,
-  episodeCode,
   followingEpisode,
+  guessNext,
   isAired,
-  isComplete,
   isUpcoming,
   isWatched,
-  nextToWatch,
-  posterUrl,
   previousUnwatched,
+  regularSeasonsBefore,
   seasonProgress,
+  SPECIALS,
 };
 
 const SPECIALS = 0;
-/** TMDB statuses of a show that will air nothing more. */
-const ENDED_STATUSES: readonly (string | null)[] = ['Ended', 'Canceled'];
+
+/** A show's loaded episodes by season number; a season missing here was not loaded yet. */
+export type LoadedSeasons = Readonly<Record<number, Model.Http.Episode[]>>;
 
 export interface SeasonProgress {
   watched: number;
   /** Aired episodes, plus watched ones not aired as far as their date says. */
   aired: number;
-  /** Aired, dated episodes not watched yet: what one tap on the season marks. */
-  toMark: Model.Http.Episode[];
   /** Every aired episode is watched. */
   complete: boolean;
 }
 
-/** Aired at its exact time when known, else on its date in the device's time zone. */
-function isAired(episode: Model.Http.Episode, now: Date): boolean {
+/** Aired at its exact time when known, else on its date in the user's time zone. */
+function isAired(episode: Model.Http.Episode, now: Date, timeZone: string): boolean {
   if (episode.airstamp) return new Date(episode.airstamp) <= now;
-  return episode.air_date !== null && episode.air_date <= localDate(now);
+  return episode.air_date !== null && episode.air_date <= dayIn(timeZone, now);
 }
 
 /** Airs later, as far as its date says; an episode without a date is not upcoming, so it can be marked. */
-function isUpcoming(episode: Model.Http.Episode, now: Date): boolean {
-  return (episode.airstamp !== null || episode.air_date !== null) && !isAired(episode, now);
+function isUpcoming(episode: Model.Http.Episode, now: Date, timeZone: string): boolean {
+  return (episode.airstamp !== null || episode.air_date !== null) && !isAired(episode, now, timeZone);
 }
 
-function isWatched(show: Model.Http.Show, episode: Model.Http.Episode): boolean {
+function isWatched(show: Pick<Model.Http.Show, 'tracking'>, episode: Pick<Model.Http.Episode, 'id'>): boolean {
   return !!show.tracking?.watched[episode.id];
 }
 
-/** The aired regular episodes before `episode` that are not watched, in airing order. */
-function previousUnwatched(show: Model.Http.Show, episode: Model.Http.Episode, now: Date): Model.Http.Episode[] {
-  if (episode.season_number === SPECIALS) return [];
+/** The loaded episodes outside specials, in airing order. */
+function regularEpisodes(loaded: LoadedSeasons): Model.Http.Episode[] {
+  return Object.entries(loaded)
+    .filter(([season]) => Number(season) !== SPECIALS)
+    .flatMap(([, episodes]) => episodes)
+    .sort((a, b) => a.season_number - b.season_number || a.episode_number - b.episode_number);
+}
+
+/** The regular seasons with episodes, in order. */
+function regularSeasons(show: Model.Http.Show): Model.Http.Season[] {
   return show.seasons
-    .filter((season) => season.season_number !== SPECIALS)
-    .flatMap((season) => season.episodes)
-    .filter(
-      (candidate) =>
-        (candidate.season_number < episode.season_number ||
-          (candidate.season_number === episode.season_number && candidate.episode_number < episode.episode_number)) &&
-        isAired(candidate, now) &&
-        !isWatched(show, candidate),
-    );
+    .filter((season) => season.season_number !== SPECIALS && season.episode_count > 0)
+    .sort((a, b) => a.season_number - b.season_number);
+}
+
+/** The regular seasons before `season`, in order. */
+function regularSeasonsBefore(show: Model.Http.Show, season: number): Model.Http.Season[] {
+  return season === SPECIALS ? [] : regularSeasons(show).filter((other) => other.season_number < season);
+}
+
+function isBefore(a: Model.Http.Episode, b: Model.Http.Episode): boolean {
+  return (
+    a.season_number < b.season_number || (a.season_number === b.season_number && a.episode_number < b.episode_number)
+  );
+}
+
+/**
+ * How many aired regular episodes before `episode` are not watched, counted on the loaded seasons and, for the others,
+ * on their counts. Marking them needs the earlier seasons loaded first.
+ */
+function previousUnwatched(
+  show: Model.Http.Show,
+  loaded: LoadedSeasons,
+  episode: Model.Http.Episode,
+  now: Date,
+  timeZone: string,
+): number {
+  if (episode.season_number === SPECIALS) return 0;
+  let count = 0;
+  for (const season of [
+    ...regularSeasonsBefore(show, episode.season_number),
+    ...show.seasons.filter(({ season_number }) => season_number === episode.season_number),
+  ]) {
+    const episodes = loaded[season.season_number];
+    if (!episodes) count += Math.max(0, season.aired_count - season.watched_count);
+    else
+      count += episodes.filter(
+        (other) => isBefore(other, episode) && isAired(other, now, timeZone) && !isWatched(show, other),
+      ).length;
+  }
+  return count;
 }
 
 /**
  * The regular episode after `season`x`episode` once it is watched, if it aired (an undated one counts as aired when a
- * later one of its season has), with the number of aired, unwatched episodes after it.
+ * later one of its season has), with the number of aired, unwatched episodes after it. null when there is none,
+ * undefined when the seasons that would say are not loaded.
  */
 function followingEpisode(
   show: Model.Http.Show,
+  loaded: LoadedSeasons,
   season: number,
   episode: number,
   now: Date,
-): { episode: Model.Http.Episode; remaining: number } | null {
-  const regular = show.seasons
-    .filter((candidate) => candidate.season_number !== SPECIALS)
-    .flatMap((candidate) => candidate.episodes)
-    .sort((a, b) => a.season_number - b.season_number || a.episode_number - b.episode_number);
+  timeZone: string,
+): Model.Http.NextEpisode | null | undefined {
+  const regular = regularEpisodes(loaded);
   const index = regular.findIndex(
     (candidate) =>
       candidate.season_number > season || (candidate.season_number === season && candidate.episode_number > episode),
   );
-  if (index === -1) return null;
-  const next = regular[index];
-  const later = regular.slice(index + 1);
-  const undated = next.air_date === null && next.airstamp === null;
-  const aired =
-    isAired(next, now) ||
-    (undated && later.some((other) => other.season_number === next.season_number && isAired(other, now)));
-  if (!aired) return null;
-  return { episode: next, remaining: later.filter((other) => isAired(other, now) && !isWatched(show, other)).length };
-}
-
-function seasonProgress(show: Model.Http.Show, season: Model.Http.Season, now: Date): SeasonProgress {
-  let watched = 0;
-  let aired = 0;
-  const toMark: Model.Http.Episode[] = [];
-  for (const episode of season.episodes) {
-    const seen = isWatched(show, episode);
-    const out = isAired(episode, now);
-    if (seen) watched++;
-    if (seen || out) aired++;
-    if (out && !seen) toMark.push(episode);
-  }
-  return { watched, aired, toMark, complete: aired > 0 && toMark.length === 0 };
-}
-
-/**
- * The episode to watch next: the regular episode after the latest one watched, or the first one when none is, as long
- * as it aired, with the number of aired, unwatched episodes after it.
- */
-function nextToWatch(show: Model.Http.Show, now: Date): { episode: Model.Http.Episode; remaining: number } | null {
-  let latest: Model.Http.Episode | null = null;
-  for (const season of show.seasons) {
-    if (season.season_number === SPECIALS) continue;
-    for (const episode of season.episodes) {
-      if (
-        isWatched(show, episode) &&
-        (!latest ||
-          episode.season_number > latest.season_number ||
-          (episode.season_number === latest.season_number && episode.episode_number > latest.episode_number))
-      )
-        latest = episode;
-    }
-  }
-  return latest
-    ? followingEpisode(show, latest.season_number, latest.episode_number, now)
-    : followingEpisode(show, SPECIALS, Number.MAX_SAFE_INTEGER, now);
-}
-
-/**
- * An ended show whose dated regular episodes are all watched, as the server decides it is finished; an episode without
- * a date is neither aired nor upcoming.
- */
-function isComplete(show: Model.Http.Show, now: Date): boolean {
-  if (!ENDED_STATUSES.includes(show.tmdb_status)) return false;
-  const episodes = show.seasons
-    .filter((season) => season.season_number !== SPECIALS)
-    .flatMap((season) => season.episodes);
-  return (
-    episodes.some((episode) => isWatched(show, episode)) &&
-    episodes.every((episode) => isWatched(show, episode) || (!isAired(episode, now) && !isUpcoming(episode, now)))
+  const next: Model.Http.Episode | undefined = regular[index];
+  const later = regularSeasons(show).filter((other) => other.season_number >= season);
+  const unknown = later.some(
+    (other) => !loaded[other.season_number] && (!next || other.season_number < next.season_number),
   );
+  if (unknown) return undefined;
+  if (!next) return null;
+  const after = regular.slice(index + 1);
+  const aired = (other: Model.Http.Episode) => isAired(other, now, timeZone);
+  const undated = next.air_date === null && next.airstamp === null;
+  if (!aired(next) && !(undated && after.some((other) => other.season_number === next.season_number && aired(other))))
+    return null;
+  const notLoaded = later
+    .filter((other) => !loaded[other.season_number])
+    .reduce((sum, other) => sum + Math.max(0, other.aired_count - other.watched_count), 0);
+  return {
+    ...next,
+    remaining: after.filter((other) => aired(other) && !isWatched(show, other)).length + notLoaded,
+  };
 }
 
-/** An episode's number as shown on cards: S01 | E05. */
-function episodeCode(season: number, episode: number): string {
-  return `S${pad(season)} | E${pad(episode)}`;
+/** A season row's `watched/aired` from its counts, which the store keeps in step with the marks. */
+function seasonProgress(season: Model.Http.Season): SeasonProgress {
+  const watched = season.watched_count;
+  const aired = Math.max(season.aired_count, watched);
+  return { watched, aired, complete: aired > 0 && watched >= aired };
 }
 
-function posterUrl(path: string | null, width: 'w185' | 'w342' = 'w185'): string | null {
-  return path ? `https://image.tmdb.org/t/p/${width}${path}` : null;
-}
-
-function backdropUrl(path: string | null): string | null {
-  return path ? `https://image.tmdb.org/t/p/w780${path}` : null;
-}
-
-function pad(value: number): string {
-  return String(value).padStart(2, '0');
-}
-
-function localDate(date: Date): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+/**
+ * The episode to watch next as the screen shows it right after a tap, until the server's answer: the regular episode
+ * after the latest one watched, or the first one when none is. undefined when the loaded seasons cannot say.
+ */
+function guessNext(
+  show: Model.Http.Show,
+  loaded: LoadedSeasons,
+  now: Date,
+  timeZone: string,
+): Model.Http.NextEpisode | null | undefined {
+  const latest = regularEpisodes(loaded)
+    .filter((episode) => isWatched(show, episode))
+    .at(-1);
+  const watchedElsewhere = regularSeasons(show).some(
+    (season) =>
+      !loaded[season.season_number] &&
+      season.watched_count > 0 &&
+      (!latest || season.season_number > latest.season_number),
+  );
+  if (watchedElsewhere) return undefined;
+  return latest
+    ? followingEpisode(show, loaded, latest.season_number, latest.episode_number, now, timeZone)
+    : followingEpisode(show, loaded, SPECIALS, Number.MAX_SAFE_INTEGER, now, timeZone);
 }

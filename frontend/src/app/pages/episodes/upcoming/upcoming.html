@@ -3,34 +3,19 @@
 
 <div class="flex flex-col">
   @if (upcoming.error()) {
-    <p role="alert" class="px-4 pt-4 text-error [font:var(--mat-sys-body-large)]">
-      {{ translate('app.upcoming.error') }}
-    </p>
-  } @else if (upcoming.hasValue() && isEmpty()) {
+    <app-load-error [message]="translate('app.upcoming.error')" (retry)="upcoming.reload()" />
+  } @else if (upcoming.hasValue() && days().length === 0) {
     <app-empty-state icon="calendar_month" [title]="translate('app.upcoming.emptyTitle')">
       <span data-testid="empty">{{ translate('app.upcoming.empty') }}</span>
     </app-empty-state>
-  } @else if (!upcoming.hasValue()) {
+  } @else if (!upcoming.hasValue() && days().length === 0) {
     <app-skeleton class="pt-6" [kind]="$mode() === 'grid' ? 'grid' : 'cards'" [count]="$mode() === 'grid' ? 6 : 4" />
   }
 
-  @if (newEpisodes().length) {
-    <section aria-labelledby="upcoming-new" data-testid="new">
-      <h2 id="upcoming-new" class="section-label">{{ translate('app.upcoming.new') }}</h2>
-      <div [class]="$mode() === 'grid' ? 'card-grid' : 'card-list'">
-        @for (item of newEpisodes(); track item.episode.episode_id) {
-          <app-episode-card
-            class="enter"
-            [style.--i]="$index"
-            [episode]="item.episode"
-            [detail]="item.detail"
-            [variant]="$mode()" />
-        }
-      </div>
-    </section>
-  }
-
   @for (day of days(); track day.day) {
+    @if (day.month; as month) {
+      <p class="month-label" data-testid="month">{{ month }}</p>
+    }
     <section [attr.aria-labelledby]="'upcoming-' + day.day" data-testid="day">
       <h2 [id]="'upcoming-' + day.day" class="section-label">{{ day.label }}</h2>
       <div [class]="$mode() === 'grid' ? 'card-grid' : 'card-list'">

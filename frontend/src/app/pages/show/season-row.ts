@@ -1,16 +1,19 @@
 import { ChangeDetectionStrategy, Component, computed, input, output } from '@angular/core';
 import { MatIcon } from '@angular/material/icon';
+import { formatDate } from '../../core/dates';
 import { injectTranslator } from '../../core/i18n';
 import { isUpcoming, isWatched, seasonProgress, SPECIALS } from '../../core/tracking/episodes';
-import { CheckMark } from '../../shared/check-mark';
+import { CheckButton } from '../../shared/check-button';
+import { LoadError } from '../../shared/load-error';
 
 /**
- * A season as one row: its title and `watched/aired`, expanding to its episodes, and a check marking its aired
- * episodes in one tap. The episodes render only while the season is open: a long show has thousands.
+ * A season as one row: its title, `watched/aired` and a bar of the share watched, expanding to its episodes, and a
+ * check marking its aired episodes in one tap. The episodes load when the season first opens and render only while it
+ * is open: a long show has thousands.
  */
 @Component({
   selector: 'app-season-row',
-  imports: [MatIcon, CheckMark],
+  imports: [MatIcon, CheckButton, LoadError],
   template: `
     @let s = season();
     @let progress = $progress();
@@ -32,43 +35,52 @@ import { CheckMark } from '../../shared/check-mark';
       @if (s.season_number !== specials) {
         <button
           type="button"
-          class="check"
-          [class.done]="progress.complete"
+          appCheckButton
+          [done]="progress.complete"
           [disabled]="progress.aired === 0"
           [attr.aria-pressed]="progress.complete"
           [attr.aria-label]="translate('app.show.seasonCheck', { season: s.title })"
-          (click)="check.emit()">
-          <app-check-mark [done]="progress.complete" />
-        </button>
+          (click)="check.emit()"></button>
+      } @else {
+        <span class="check-slot" aria-hidden="true"></span>
       }
     </div>
+    <div class="bar" aria-hidden="true">
+      <span [style.transform]="'scaleX(' + (progress.aired ? progress.watched / progress.aired : 0) + ')'"></span>
+    </div>
     @if (expanded()) {
-      <ul [id]="listId()">
-        @for (episode of s.episodes; track episode.id) {
-          @let watched = isWatched(show(), episode);
-          <li class="episode enter" [style.--i]="$index">
-            <div class="flex min-w-0 flex-col">
-              <span class="truncate [font:var(--mat-sys-body-large)]">
-                <span class="tabular-nums">{{ episode.episode_number }}.</span> {{ episode.title }}
-              </span>
-              @if (episode.air_date) {
-                <span class="text-on-surface-variant [font:var(--mat-sys-body-small)]">{{ episode.air_date }}</span>
-              }
-            </div>
-            <button
-              type="button"
-              class="check"
-              [class.done]="watched"
-              [disabled]="!watched && isUpcoming(episode, now())"
-              [attr.aria-pressed]="watched"
-              [attr.aria-label]="s.title + ', ' + translate('app.show.episode') + ' ' + episode.episode_number"
-              (click)="episodeTap.emit(episode)"
-              data-testid="episode-toggle">
-              <app-check-mark [done]="watched" />
-            </button>
-          </li>
-        }
-      </ul>
+      @if (episodes(); as list) {
+        <ul [id]="listId()">
+          @for (episode of list; track episode.id) {
+            @let watched = isWatched(show(), episode);
+            <li class="episode enter" [style.--i]="$index">
+              <div class="flex min-w-0 flex-col">
+                <span class="truncate [font:var(--mat-sys-body-large)]">
+                  <span class="tabular-nums">{{ episode.episode_number }}.</span> {{ episode.title }}
+                </span>
+                @if (episode.air_date) {
+                  <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{
+                    formatDate(episode.air_date, timeZone())
+                  }}</span>
+                }
+              </div>
+              <button
+                type="button"
+                appCheckButton
+                [done]="watched"
+                [disabled]="!watched && isUpcoming(episode, now(), timeZone())"
+                [attr.aria-pressed]="watched"
+                [attr.aria-label]="s.title + ', ' + translate('app.show.episode') + ' ' + episode.episode_number"
+                (click)="episodeTap.emit(episode)"
+                data-testid="episode-toggle"></button>
+            </li>
+          }
+        </ul>
+      } @else if (failed()) {
+        <app-load-error [id]="listId()" [message]="translate('app.show.seasonFailed')" (retry)="retry.emit()" />
+      } @else {
+        <p [id]="listId()" role="status" class="loading">{{ translate('app.common.loading') }}</p>
+      }
     }
   `,
   styles: `
@@ -104,8 +116,33 @@ import { CheckMark } from '../../shared/check-mark';
     .chevron.open {
       transform: rotate(180deg);
     }
+    /* The check's place on rows without one, so every count ends on the same edge. */
+    .check-slot {
+      flex: none;
+      width: 48px;
+    }
+    /* The share watched, as a thin bar under the row. */
+    .bar {
+      height: 4px;
+      margin: 0 16px 12px;
+      overflow: hidden;
+      border-radius: var(--mat-sys-corner-full);
+      background: var(--mat-sys-surface-container-high);
+    }
+    .bar > span {
+      display: block;
+      height: 100%;
+      background: var(--mat-sys-primary);
+      transform-origin: left;
+      transition: transform var(--duration-medium) var(--ease-emph-decel);
+    }
     ul {
       padding-bottom: 8px;
+    }
+    .loading {
+      padding: 0 16px 16px;
+      color: var(--mat-sys-on-surface-variant);
+      font: var(--mat-sys-body-medium);
     }
     /* The season's episodes on a tinted card, their checks under the season's. */
     .episode {
@@ -119,38 +156,15 @@ import { CheckMark } from '../../shared/check-mark';
       background: var(--mat-sys-surface-container-low);
     }
     .episode:first-child {
-      border-radius: 16px 16px 0 0;
+      border-radius: var(--mat-sys-corner-large-top);
     }
     .episode:last-child {
-      border-radius: 0 0 16px 16px;
+      border-radius: 0 0 var(--mat-sys-corner-large) var(--mat-sys-corner-large);
     }
     .episode:only-child {
-      border-radius: 16px;
+      border-radius: var(--mat-sys-corner-large);
     }
-    /* A 48px target around the 36px mark. */
-    .check {
-      display: grid;
-      flex: none;
-      place-items: center;
-      width: 48px;
-      height: 48px;
-      padding: 0;
-      border: 0;
-      background: none;
-      cursor: pointer;
-    }
-    .check:active app-check-mark {
-      transform: scale(0.9);
-    }
-    app-check-mark {
-      transition: transform var(--duration-short) var(--ease-standard);
-    }
-    .check:disabled {
-      opacity: 0.38;
-      cursor: default;
-    }
-    .toggle:focus-visible,
-    .check:focus-visible {
+    .toggle:focus-visible {
       outline: 2px solid var(--mat-sys-primary);
       outline-offset: -2px;
     }
@@ -162,18 +176,26 @@ export class SeasonRow {
   protected readonly specials = SPECIALS;
   protected readonly isWatched = isWatched;
   protected readonly isUpcoming = isUpcoming;
+  protected readonly formatDate = formatDate;
 
   readonly show = input.required<Model.Http.Show>();
   readonly season = input.required<Model.Http.Season>();
+  /** The season's episodes, once loaded. */
+  readonly episodes = input<Model.Http.Episode[]>();
+  /** Loading the episodes failed. */
+  readonly failed = input(false);
   readonly expanded = input(false);
-  /** Air dates are compared with this time. */
+  /** Air dates are compared with this time, in the user's time zone. */
   readonly now = input.required<Date>();
+  readonly timeZone = input.required<string>();
 
   readonly toggle = output<void>();
   /** The season's check was tapped. */
   readonly check = output<void>();
   readonly episodeTap = output<Model.Http.Episode>();
+  /** Try loading the episodes again. */
+  readonly retry = output<void>();
 
-  protected readonly $progress = computed(() => seasonProgress(this.show(), this.season(), this.now()));
+  protected readonly $progress = computed(() => seasonProgress(this.season()));
   protected readonly listId = computed(() => `season-${this.season().season_number}-episodes`);
 }

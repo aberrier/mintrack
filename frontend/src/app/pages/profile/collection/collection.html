@@ -1,10 +1,13 @@
-<h1 class="px-4 pt-8 [font:var(--mat-sys-headline-small)] font-semibold!">
-  {{ translate(type() === 'tv' ? 'app.library.shows' : 'app.library.movies') }}
-</h1>
+<header class="flex items-center gap-1 ps-1 pe-4 pt-4">
+  <app-back-button [fallback]="routes.profile()" />
+  <h1 class="min-w-0 truncate [font:var(--mat-sys-headline-small)] font-semibold!">
+    {{ translate(type() === 'tv' ? 'app.common.shows' : 'app.common.movies') }}
+  </h1>
+</header>
 
 <div class="flex flex-col gap-1 pt-4 pb-4">
   <h2 id="sort-by" class="px-4 text-on-surface-variant [font:var(--mat-sys-label-large)]">
-    {{ translate('app.library.sortBy') }}
+    {{ translate('app.collection.sortBy') }}
   </h2>
   <div class="chip-row" role="group" aria-labelledby="sort-by">
     @for (option of sorts; track option) {
@@ -20,7 +23,7 @@
   </div>
 
   <h2 id="progress" class="px-4 pt-2 text-on-surface-variant [font:var(--mat-sys-label-large)]">
-    {{ translate('app.library.progress') }}
+    {{ translate('app.collection.progress') }}
   </h2>
   <div class="chip-row" role="group" aria-labelledby="progress">
     <button
@@ -29,7 +32,7 @@
       [class.selected]="$status() === null"
       [attr.aria-pressed]="$status() === null"
       (click)="choose({ progress: null })">
-      {{ translate('app.library.all') }}
+      {{ translate('app.collection.all') }}
     </button>
     @for (option of $progressOptions(); track option) {
       <button
@@ -38,31 +41,33 @@
         [class.selected]="$status() === option"
         [attr.aria-pressed]="$status() === option"
         (click)="choose({ progress: option })">
-        {{ progressLabel(option) }}
+        {{ statusLabel(option) }}
       </button>
     }
   </div>
 </div>
 
-@if ($items(); as items) {
+@if (!$items() && library.error()) {
+  <app-load-error [message]="translate('app.common.loadFailed')" (retry)="library.reload()" />
+} @else if ($items(); as items) {
   @if (items.length === 0) {
     @if ($status() === null) {
       <app-empty-state
         icon="explore"
-        [title]="translate('app.library.emptyTitle')"
+        [title]="translate('app.collection.emptyTitle')"
         [actionLink]="routes.discover()"
         [actionLabel]="translate('app.common.findShows')">
-        {{ translate('app.library.empty') }}
+        {{ translate('app.collection.empty') }}
       </app-empty-state>
     } @else {
-      <app-empty-state icon="explore">{{ translate('app.library.noneWithStatus') }}</app-empty-state>
+      <app-empty-state icon="explore">{{ translate('app.collection.noneWithStatus') }}</app-empty-state>
     }
   }
   <ul class="card-grid">
     @for (item of items; track item.tmdb_id) {
       <li class="enter" [style.--i]="$index">
         <app-media-tile
-          [link]="link(item)"
+          [link]="routes.media(item.media_type, item.tmdb_id)"
           [title]="item.title"
           [posterPath]="item.poster_path"
           [finished]="item.status === 'finished'"
