@@ -31,6 +31,8 @@ export class Shell {
 
   protected readonly navItems: NavItem[] = [
     { route: appRoutes.home(), icon: 'home', label: 'app.nav.home' },
+    { route: appRoutes.upNext(), icon: 'play_circle', label: 'app.nav.upNext' },
+    { route: appRoutes.upcoming(), icon: 'calendar_month', label: 'app.nav.upcoming' },
     { route: appRoutes.library(), icon: 'video_library', label: 'app.nav.library' },
     { route: appRoutes.search(), icon: 'search', label: 'app.nav.search' },
     { route: appRoutes.profile(), icon: 'person', label: 'app.nav.profile' },

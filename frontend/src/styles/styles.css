@@ -7,6 +7,7 @@
   --color-surface-container: var(--mat-sys-surface-container);
   --color-outline-variant: var(--mat-sys-outline-variant);
   --color-error: var(--mat-sys-error);
+  --color-primary: var(--mat-sys-primary);
 }
 
 /* Native app feel on phones: no pull-to-refresh or rubber band on the page, no grey flash on tap, no double-tap zoom

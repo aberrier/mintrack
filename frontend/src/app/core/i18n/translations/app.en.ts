@@ -2,6 +2,8 @@ export default {
   nav: {
     label: 'Main navigation',
     home: 'Home',
+    upNext: 'Up next',
+    upcoming: 'Upcoming',
     library: 'Library',
     search: 'Search',
     profile: 'Profile',
@@ -17,6 +19,19 @@ export default {
       degraded: 'Online, but the database is unavailable',
       offline: 'Cannot reach the server',
     },
+  },
+  upNext: {
+    title: 'Up next',
+    empty: 'Nothing to watch next. The next episode of each show you are watching appears here.',
+    error: 'Cannot load your next episodes.',
+  },
+  upcoming: {
+    title: 'Upcoming',
+    new: 'New episodes',
+    today: 'Today',
+    tomorrow: 'Tomorrow',
+    empty: 'Nothing airs in the next four weeks for the shows you follow.',
+    error: 'Cannot load the upcoming episodes.',
   },
   login: {
     title: 'Log in',

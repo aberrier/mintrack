@@ -1,0 +1,33 @@
+<section class="flex flex-col pb-4">
+  <h1 class="px-4 pt-6 pb-2 [font:var(--mat-sys-headline-small)]">{{ translate('app.upcoming.title') }}</h1>
+
+  @if (upcoming.error()) {
+    <p role="alert" class="px-4 text-error [font:var(--mat-sys-body-large)]">{{ translate('app.upcoming.error') }}</p>
+  } @else if (upcoming.hasValue() && isEmpty()) {
+    <p class="px-4 text-on-surface-variant [font:var(--mat-sys-body-large)]" data-testid="empty">
+      {{ translate('app.upcoming.empty') }}
+    </p>
+  }
+
+  @if (newEpisodes().length) {
+    <section aria-labelledby="upcoming-new" data-testid="new">
+      <h2 id="upcoming-new" class="px-4 pt-4 pb-1 text-primary [font:var(--mat-sys-title-small)]">
+        {{ translate('app.upcoming.new') }}
+      </h2>
+      @for (item of newEpisodes(); track item.episode.episode_id) {
+        <app-episode-card [episode]="item.episode" [detail]="item.detail" />
+      }
+    </section>
+  }
+
+  @for (day of days(); track day.day) {
+    <section [attr.aria-labelledby]="'upcoming-' + day.day" data-testid="day">
+      <h2 [id]="'upcoming-' + day.day" class="px-4 pt-4 pb-1 text-primary [font:var(--mat-sys-title-small)]">
+        {{ day.label }}
+      </h2>
+      @for (item of day.episodes; track item.episode.episode_id) {
+        <app-episode-card [episode]="item.episode" [detail]="item.detail" />
+      }
+    </section>
+  }
+</section>

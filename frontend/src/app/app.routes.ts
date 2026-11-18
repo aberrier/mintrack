@@ -19,6 +19,12 @@ const routesConfig: Routes = [
     canActivate: [signedInGuard, adminGuard],
     loadComponent: () => import('./pages/admin-users/admin-users'),
   },
+  { path: appRoutes.upNext(''), canActivate: [signedInGuard], loadComponent: () => import('./pages/up-next/up-next') },
+  {
+    path: appRoutes.upcoming(''),
+    canActivate: [signedInGuard],
+    loadComponent: () => import('./pages/upcoming/upcoming'),
+  },
   { path: appRoutes.library(''), canActivate: [signedInGuard], loadComponent: () => import('./pages/library/library') },
   { path: appRoutes.search(''), canActivate: [signedInGuard], loadComponent: () => import('./pages/search/search') },
   {
