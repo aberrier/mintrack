@@ -205,3 +205,9 @@ def test_frontend_dist_must_be_the_built_app(env: pytest.MonkeyPatch, tmp_path: 
 
     (tmp_path / "pyproject.toml").unlink()
     assert load_config(env_file=None).server.frontend_dist == tmp_path.resolve()
+
+
+def test_an_empty_tmdb_key_counts_as_unset(env: pytest.MonkeyPatch) -> None:
+    env.setenv("MINTRACK__TMDB__API_KEY", "")
+
+    assert load_config(env_file=None).tmdb.api_key is None

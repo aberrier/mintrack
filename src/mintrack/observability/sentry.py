@@ -1,6 +1,7 @@
 import typing
 
 import sentry_sdk
+from sentry_sdk.integrations.httpx import HttpxIntegration
 from sentry_sdk.types import Breadcrumb, BreadcrumbHint, Event, Hint
 
 from mintrack.config import Config
@@ -41,6 +42,8 @@ def sentry_options(config: Config) -> dict[str, typing.Any]:
         "before_send": scrub_event,
         "before_send_transaction": scrub_event,
         "before_breadcrumb": drop_sensitive_breadcrumb,
+        # Its breadcrumbs and spans hold request query strings, where the TMDB key travels.
+        "disabled_integrations": [HttpxIntegration()],
     }
 
 

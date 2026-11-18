@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintrack.core.accounts.passwords import hash_password
 from mintrack.db.dependencies import get_db_session
 from mintrack.db.models import User
+from mintrack.integrations.tmdb.client import TMDBClient, get_tmdb_client
 from tests.server.conftest import make_client
 
 PASSWORD = "correct horse battery staple"
@@ -22,9 +23,10 @@ class CreateUser(typing.Protocol):
 
 
 @pytest_asyncio.fixture
-async def api_app(app: fastapi.FastAPI, db_session: AsyncSession) -> fastapi.FastAPI:
-    """The app on the test's rolled-back session, so what requests write disappears after the test."""
+async def api_app(app: fastapi.FastAPI, db_session: AsyncSession, tmdb: TMDBClient) -> fastapi.FastAPI:
+    """The app on the test's rolled-back session, so what requests write disappears; TMDB is the fake."""
     app.dependency_overrides[get_db_session] = lambda: db_session
+    app.dependency_overrides[get_tmdb_client] = lambda: tmdb
     return app
 
 
@@ -56,3 +58,12 @@ async def log_in(client: httpx.AsyncClient, username: str = "alice", password: s
 
 def xsrf(client: httpx.AsyncClient) -> dict[str, str]:
     return {"X-XSRF-TOKEN": client.cookies.get("XSRF-TOKEN") or ""}
+
+
+@pytest_asyncio.fixture
+async def signed_in(api: httpx.AsyncClient, create_user: CreateUser) -> httpx.AsyncClient:
+    """The client of a signed-in user, sending the XSRF header on every request."""
+    await create_user()
+    await log_in(api)
+    api.headers.update(xsrf(api))
+    return api

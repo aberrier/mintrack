@@ -10,6 +10,7 @@ from mintrack.config import Config, get_config
 from mintrack.core.accounts.managers import SESSION_IDLE_TIMEOUT, AccountManager
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import User
+from mintrack.integrations.tmdb.client import TMDBClient, get_tmdb_client
 
 XSRF_COOKIE = "XSRF-TOKEN"
 XSRF_HEADER = "X-XSRF-TOKEN"
@@ -109,3 +110,6 @@ async def check_xsrf(request: fastapi.Request) -> None:
     header = request.headers.get(XSRF_HEADER, "")
     if not cookie or not secrets.compare_digest(cookie.encode(), header.encode()):
         raise fastapi.HTTPException(fastapi.status.HTTP_403_FORBIDDEN, "Missing or invalid XSRF token")
+
+
+TMDBClientDepType = typing.Annotated[TMDBClient, fastapi.Depends(get_tmdb_client)]

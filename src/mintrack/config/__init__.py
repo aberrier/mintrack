@@ -8,6 +8,7 @@ import pydantic_settings
 from pydantic.fields import FieldInfo
 
 from mintrack.db.config import DatabaseConfig
+from mintrack.integrations.tmdb.config import TMDBConfig
 from mintrack.observability.config import ObservabilityConfig
 
 from .project import Environment, ProjectConfig
@@ -87,6 +88,7 @@ class Config(pydantic_settings.BaseSettings):
     # Validated even when no variable is set, so each missing field is reported by its own variable name.
     database: DatabaseConfig = pydantic.Field(default_factory=dict, validate_default=True)
     logging: ObservabilityConfig = ObservabilityConfig()
+    tmdb: TMDBConfig = TMDBConfig()
 
     @classmethod
     def settings_customise_sources(
@@ -138,6 +140,7 @@ __all__ = [
     "ProjectConfig",
     "SecurityConfig",
     "ServerConfig",
+    "TMDBConfig",
     "get_config",
     "load_config",
 ]

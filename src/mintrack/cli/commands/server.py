@@ -41,6 +41,8 @@ def main(
         public_url=config.project.public_origin,
         trusted_proxies=config.server.trusted_proxies,
     )
+    if config.tmdb.api_key is None:
+        logger.warning("TMDB is not configured: set MINTRACK__TMDB__API_KEY to enable search and new pages")
     if migrate:
         alembic.upgrade(config.database.url())
     uvicorn.run(**uvicorn_options(config, reload=reload))

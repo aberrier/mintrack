@@ -18,6 +18,8 @@ class ServerConfig(pydantic.BaseModel):
     # The built Angular app (frontend/dist/frontend/browser). Unset: the server answers the API only, as in
     # development where `ng serve` serves the app.
     frontend_dist: pathlib.Path | None = None
+    # Run the background worker inside the server process; false when `mintrack worker` runs as its own service.
+    run_worker: bool = True
 
     @pydantic.field_validator("forwarded_allow_ips", mode="before")
     @classmethod

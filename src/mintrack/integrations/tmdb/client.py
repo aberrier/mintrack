@@ -1,0 +1,98 @@
+import functools
+import itertools
+import typing
+
+import httpx
+
+from mintrack.config import get_config
+from mintrack.db.models import MediaType
+from mintrack.observability.logging import logger
+
+from .config import TMDBConfig
+from .schemas import TMDBMovie, TMDBSearchResult, TMDBSeason, TMDBShow
+
+TIMEOUT_SECONDS = 10
+CONNECT_RETRIES = 3
+# TMDB's limit of append_to_response items per request.
+MAX_APPENDS = 20
+SEARCHED_TYPES = frozenset(MediaType)
+
+
+class TMDBError(Exception):
+    """TMDB cannot be reached or answered with an error."""
+
+
+class TMDBNotConfiguredError(TMDBError):
+    def __init__(self, message: str = "TMDB is not configured: set MINTRACK__TMDB__API_KEY") -> None:
+        super().__init__(message)
+
+
+class TMDBNotFoundError(TMDBError):
+    pass
+
+
+class TMDBClient:
+    def __init__(self, config: TMDBConfig, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self.configured = config.api_key is not None
+        params = {"language": config.language}
+        if config.api_key is not None:
+            params["api_key"] = config.api_key.get_secret_value()
+        self.http = httpx.AsyncClient(
+            base_url=str(config.url).removesuffix("/") + "/",
+            params=params,
+            timeout=TIMEOUT_SECONDS,
+            transport=transport or httpx.AsyncHTTPTransport(retries=CONNECT_RETRIES),
+        )
+
+    async def _get(self, path: str, **params: str | int) -> dict[str, typing.Any]:
+        if not self.configured:
+            raise TMDBNotConfiguredError
+        try:
+            response = await self.http.get(path, params=params)
+        except httpx.HTTPError as error:
+            # The exception names the URL, whose query holds the key: only its type is kept.
+            msg = f"TMDB request failed: {type(error).__name__}"
+            raise TMDBError(msg) from None
+        if response.status_code == httpx.codes.NOT_FOUND:
+            raise TMDBNotFoundError(path)
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            logger.warning("TMDB rejected the API key", path=path)
+            msg = "TMDB rejected the key: check MINTRACK__TMDB__API_KEY"
+            raise TMDBNotConfiguredError(msg)
+        if response.is_error:
+            msg = f"TMDB answered {response.status_code} to {path}"
+            raise TMDBError(msg)
+        return response.json()
+
+    async def search(self, query: str) -> list[TMDBSearchResult]:
+        """Shows and movies of TMDB's first page of results."""
+        data = await self._get("search/multi", query=query, include_adult="false")
+        return [
+            TMDBSearchResult.model_validate(result)
+            for result in data["results"]
+            if result.get("media_type") in SEARCHED_TYPES
+        ]
+
+    async def movie(self, tmdb_id: int) -> TMDBMovie:
+        return TMDBMovie.model_validate(await self._get(f"movie/{tmdb_id}"))
+
+    async def show(self, tmdb_id: int) -> TMDBShow:
+        """The show with every season and its episodes."""
+        data = await self._get(f"tv/{tmdb_id}", append_to_response="external_ids")
+        numbers = [season["season_number"] for season in data.get("seasons") or []]
+        seasons = []
+        for batch in itertools.batched(numbers, MAX_APPENDS, strict=False):
+            appended = await self._get(
+                f"tv/{tmdb_id}", append_to_response=",".join(f"season/{number}" for number in batch)
+            )
+            seasons += [
+                TMDBSeason.model_validate(appended[f"season/{number}"])
+                for number in batch
+                if f"season/{number}" in appended
+            ]
+        return TMDBShow.model_validate({**data, "seasons": seasons})
+
+
+@functools.cache
+def get_tmdb_client() -> TMDBClient:
+    return TMDBClient(get_config().tmdb)
