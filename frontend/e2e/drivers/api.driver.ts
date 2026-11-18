@@ -7,6 +7,15 @@ import { APIResponse, expect, Page } from '@playwright/test';
 export class ApiDriver {
   constructor(private readonly page: Page) {}
 
+  /** Use a password link as the password page does; the session cookies land in the page's browser context. */
+  async usePasswordLink(link: string, password: string): Promise<void> {
+    const timezone = await this.page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const response = await this.page.request.post('/api/auth/password-link/use', {
+      data: { token: new URL(link).hash.slice(1), password, timezone },
+    });
+    if (!response.ok()) throw new Error(`Password link refused: ${response.status()}`);
+  }
+
   async findShow(title: string): Promise<number> {
     const response = await this.page.request.get('/api/search', { params: { query: title, type: 'tv' } });
     const results = (await response.json()) as { tmdb_id: number; media_type: string; title: string }[];

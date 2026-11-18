@@ -64,6 +64,7 @@ export async function takeOut(
 /** Switch list and grid; returns whether the watch list is now a grid. */
 export async function toggleView(viewer: Viewer): Promise<boolean> {
   await viewer.app.viewToggle().click();
+  await viewer.app.rendered();
   return viewer.app.isGrid();
 }
 

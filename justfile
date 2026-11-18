@@ -42,6 +42,15 @@ clean:
 dev-frontend:
     cd frontend && npx ng serve
 
+# Browser tests against this worktree's stack, started or reused (`just e2e --project=phone`, `just e2e --last-failed`)
+e2e *args: dev-db
+    bash scripts/e2e-stack.sh start > /dev/null
+    eval "$(bash scripts/e2e-stack.sh env)" && cd frontend && npx playwright test {{ args }}
+
+# Stop this worktree's browser-test stack
+e2e-stop:
+    bash scripts/e2e-stack.sh stop
+
 # Build the Docker image as ghcr.io/aberrier/mintrack:edge, the tag docker-compose.yml runs
 image:
     docker build --tag ghcr.io/aberrier/mintrack:edge --build-arg COMMIT=$(git rev-parse --short HEAD) .

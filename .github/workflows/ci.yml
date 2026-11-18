@@ -107,7 +107,8 @@ jobs:
           node-version: 24
       - name: Install Playwright
         working-directory: frontend
-        run: npm ci && npx playwright install --with-deps chromium
+        # The tests run headless, which uses only the headless shell.
+        run: npm ci && npx playwright install --with-deps --only-shell chromium
       - name: Browser tests
         working-directory: frontend
         env:

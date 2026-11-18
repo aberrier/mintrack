@@ -110,6 +110,10 @@ npm run build   # fails over the bundle budgets (initial 400 kB, component style
 npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, default http://localhost:8000)
 ```
 
+`just e2e [playwright args]` starts this worktree's stack (built app, fake TMDB, its own database and port) or reuses
+it, then runs Playwright; `just e2e-stop` stops it. While iterating, run `just e2e --project=phone <spec>` and
+`just e2e --last-failed`; run the whole suite once before handing off.
+
 - **Angular:** standalone components, zoneless, `OnPush` everywhere, lazy routes declared in `app.routes.ts` with
   their URL builders in `appRoutes` (`app.paths.ts`, which imports nothing). Signals for state, RxJS for
   asynchronous flows, `toSignal` / `toObservable` at the boundary. No NgRx.

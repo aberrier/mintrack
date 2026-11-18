@@ -1,4 +1,5 @@
-import { Page } from '@playwright/test';
+import { expect, Page } from '@playwright/test';
+import { ApiDriver } from '../drivers/api.driver';
 import { createAdmin } from '../drivers/cli';
 import { AdminUsersPage, LoginPage, Navigation, PasswordPage, ProfilePage } from '../drivers/pages';
 
@@ -23,10 +24,15 @@ export function account(username: string): Account {
   return { username, password: PASSWORD };
 }
 
-/** An admin created with the CLI who set their password through the printed link. */
+/**
+ * An admin created with the CLI who set their password through the printed link, by the API: the password page has
+ * its own scenarios (invitations, resets), so the other tests start on the home page without going through it.
+ */
 export async function signInAsNewAdmin(page: Page): Promise<Account> {
   const username = unique('admin');
-  await acceptLink(page, createAdmin(username));
+  await new ApiDriver(page).usePasswordLink(createAdmin(username), PASSWORD);
+  await new Navigation(page).openBookmark('/');
+  await expect(new Navigation(page).bar()).toBeVisible();
   return account(username);
 }
 
