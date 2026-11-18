@@ -1,29 +1,52 @@
 import { inject } from '@angular/core';
 import { MatIconRegistry } from '@angular/material/icon';
 import { DomSanitizer } from '@angular/platform-browser';
+import add from '@material-symbols/svg-400/outlined/add.svg';
+import block from '@material-symbols/svg-400/outlined/block.svg';
 import calendar_month from '@material-symbols/svg-400/outlined/calendar_month.svg';
-import check_circle from '@material-symbols/svg-400/outlined/check_circle-fill.svg';
+import check from '@material-symbols/svg-400/outlined/check.svg';
+import check_circle_fill from '@material-symbols/svg-400/outlined/check_circle-fill.svg';
+import check_circle from '@material-symbols/svg-400/outlined/check_circle.svg';
 import contentCopy from '@material-symbols/svg-400/outlined/content_copy.svg';
-import home from '@material-symbols/svg-400/outlined/home.svg';
+import explore_fill from '@material-symbols/svg-400/outlined/explore-fill.svg';
+import explore from '@material-symbols/svg-400/outlined/explore.svg';
+import grid_view from '@material-symbols/svg-400/outlined/grid_view.svg';
+import history from '@material-symbols/svg-400/outlined/history.svg';
+import expand_more from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg';
+import live_tv_fill from '@material-symbols/svg-400/outlined/live_tv-fill.svg';
+import live_tv from '@material-symbols/svg-400/outlined/live_tv.svg';
 import more_vert from '@material-symbols/svg-400/outlined/more_vert.svg';
+import person_fill from '@material-symbols/svg-400/outlined/person-fill.svg';
 import person from '@material-symbols/svg-400/outlined/person.svg';
-import play_circle from '@material-symbols/svg-400/outlined/play_circle.svg';
-import radio_button_unchecked from '@material-symbols/svg-400/outlined/radio_button_unchecked.svg';
+import schedule from '@material-symbols/svg-400/outlined/schedule.svg';
 import search from '@material-symbols/svg-400/outlined/search.svg';
-import video_library from '@material-symbols/svg-400/outlined/video_library.svg';
+import view_agenda from '@material-symbols/svg-400/outlined/view_agenda.svg';
 
-/** Icons are bundled SVGs registered by name: no icon font to download, only what is used ships. */
+/**
+ * Icons are bundled SVGs registered by name: no icon font to download, only what is used ships. A `_fill` name is
+ * the filled variant, shown for an active or done state.
+ */
 const icons = {
+  add,
+  block,
   calendar_month,
+  check,
   check_circle,
+  check_circle_fill,
   content_copy: contentCopy,
-  home,
+  expand_more,
+  explore,
+  explore_fill,
+  grid_view,
+  history,
+  live_tv,
+  live_tv_fill,
   more_vert,
   person,
-  play_circle,
-  radio_button_unchecked,
+  person_fill,
+  schedule,
   search,
-  video_library,
+  view_agenda,
 } as const;
 
 export type IconName = keyof typeof icons;

@@ -71,8 +71,8 @@ export class PasswordPage {
     await this.page.getByLabel('New password').fill(password);
     await this.page.getByRole('button', { name: 'Set password and log in' }).click();
     await expect(new Navigation(this.page).bar()).toBeVisible();
-    // The token is gone from the address bar once read.
-    await expect(this.page).not.toHaveURL(/#/);
+    // The app moves on to the watch list; the token is gone from the address bar once read.
+    await expect(this.page).toHaveURL(/\/episodes\/watch-list$/);
   }
 }
 
@@ -81,7 +81,7 @@ export class ProfilePage {
 
   async isShown(): Promise<boolean> {
     const logOut = this.page.getByRole('button', { name: 'Log out', exact: true });
-    await expect(logOut.or(this.page.getByTestId('server-status'))).toBeVisible();
+    await expect(logOut.or(this.page.getByTestId('watch-list'))).toBeVisible();
     return logOut.isVisible();
   }
 

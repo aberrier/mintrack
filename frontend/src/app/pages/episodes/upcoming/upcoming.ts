@@ -1,21 +1,26 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
 import { tap } from 'rxjs';
-import { ApiService } from '../../core/api/api.service';
-import { injectTranslator } from '../../core/i18n';
+import { ApiService } from '../../../core/api/api.service';
+import { injectTranslator } from '../../../core/i18n';
+import { EmptyState } from '../../../shared/empty-state';
+import { EpisodeCard } from '../../../shared/episode-card/episode-card';
+import { Skeleton } from '../../../shared/skeleton';
+import { ViewModes } from '../../../shared/view-toggle';
+import { EpisodesTabs } from '../episodes-tabs';
 import { dayIn, formatDay, formatTime, nextDay } from './air-time';
-import { EpisodeCard } from './episode-card';
 import { UpcomingCache } from './upcoming-cache';
 
 /** The new episodes, then those airing over the coming weeks, by day in the user's time zone. */
 @Component({
   selector: 'app-upcoming',
-  imports: [EpisodeCard],
+  imports: [EpisodeCard, EpisodesTabs, EmptyState, Skeleton],
   templateUrl: './upcoming.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export default class Upcoming {
   protected readonly translate = injectTranslator('app');
+  protected readonly $mode = inject(ViewModes).mode('upcoming');
 
   private readonly api = inject(ApiService);
   private readonly cache = inject(UpcomingCache).upcoming;

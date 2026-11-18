@@ -1,0 +1,76 @@
+<h1 class="px-4 pt-8 [font:var(--mat-sys-headline-small)] font-semibold!">
+  {{ translate(type() === 'tv' ? 'app.library.shows' : 'app.library.movies') }}
+</h1>
+
+<div class="flex flex-col gap-1 pt-4 pb-4">
+  <h2 id="sort-by" class="px-4 text-on-surface-variant [font:var(--mat-sys-label-large)]">
+    {{ translate('app.library.sortBy') }}
+  </h2>
+  <div class="chip-row" role="group" aria-labelledby="sort-by">
+    @for (option of sorts; track option) {
+      <button
+        type="button"
+        class="chip"
+        [class.selected]="sort() === option"
+        [attr.aria-pressed]="sort() === option"
+        (click)="choose({ sort: option })">
+        {{ sortLabel(option) }}
+      </button>
+    }
+  </div>
+
+  <h2 id="progress" class="px-4 pt-2 text-on-surface-variant [font:var(--mat-sys-label-large)]">
+    {{ translate('app.library.progress') }}
+  </h2>
+  <div class="chip-row" role="group" aria-labelledby="progress">
+    <button
+      type="button"
+      class="chip"
+      [class.selected]="$status() === null"
+      [attr.aria-pressed]="$status() === null"
+      (click)="choose({ progress: null })">
+      {{ translate('app.library.all') }}
+    </button>
+    @for (option of $progressOptions(); track option) {
+      <button
+        type="button"
+        class="chip"
+        [class.selected]="$status() === option"
+        [attr.aria-pressed]="$status() === option"
+        (click)="choose({ progress: option })">
+        {{ progressLabel(option) }}
+      </button>
+    }
+  </div>
+</div>
+
+@if ($items(); as items) {
+  @if (items.length === 0) {
+    @if ($status() === null) {
+      <app-empty-state
+        icon="explore"
+        [title]="translate('app.library.emptyTitle')"
+        [actionLink]="routes.discover()"
+        [actionLabel]="translate('app.common.findShows')">
+        {{ translate('app.library.empty') }}
+      </app-empty-state>
+    } @else {
+      <app-empty-state icon="explore">{{ translate('app.library.noneWithStatus') }}</app-empty-state>
+    }
+  }
+  <ul class="card-grid">
+    @for (item of items; track item.tmdb_id) {
+      <li class="enter" [style.--i]="$index">
+        <app-media-tile
+          [link]="link(item)"
+          [title]="item.title"
+          [posterPath]="item.poster_path"
+          [finished]="item.status === 'finished'"
+          [detail]="detail(item)"
+          data-testid="library-item" />
+      </li>
+    }
+  </ul>
+} @else {
+  <app-skeleton kind="grid" [count]="9" />
+}

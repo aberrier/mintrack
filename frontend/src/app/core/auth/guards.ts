@@ -17,7 +17,7 @@ const signedInGuard: CanActivateFn = async (_route, state) => {
 const adminGuard: CanActivateFn = async () => {
   const router = inject(Router);
   const user = await inject(AuthStore).load();
-  return user?.is_admin ? true : router.parseUrl(appRoutes.home());
+  return user?.is_admin ? true : router.parseUrl(appRoutes.watchList());
 };
 
 /**
@@ -43,5 +43,5 @@ const signedOutOn401: HttpInterceptorFn = (request, next) => {
 /** Only a path inside the app is followed after login, never another site. */
 function safeNext(next: string | null | undefined): string {
   const inApp = next?.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\');
-  return inApp ? next! : appRoutes.home();
+  return inApp ? next! : appRoutes.watchList();
 }

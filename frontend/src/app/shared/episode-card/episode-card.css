@@ -1,0 +1,128 @@
+:host {
+  display: block;
+}
+
+/* In a list, a tinted card: the poster inset on the left, the text, then the menu and the check. */
+:host(.list) {
+  overflow: hidden;
+  border-radius: 16px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  padding: 8px 4px 8px 8px;
+  background: var(--mat-sys-surface-container-low);
+  transition: transform var(--duration-short) var(--ease-standard);
+}
+
+.row:has(.main:active) {
+  transform: scale(0.98);
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+  border-radius: 8px;
+}
+
+.main:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 2px;
+}
+
+/* The show's name as a small outlined chip above the episode number. */
+.show-chip {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 8px;
+  border: 1px solid var(--mat-sys-outline);
+  border-radius: 999px;
+  font: var(--mat-sys-label-medium);
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* A 48px target around the 36px mark. */
+.check {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+button.check:active app-check-mark {
+  transform: scale(0.9);
+}
+
+app-check-mark {
+  transition: transform var(--duration-short) var(--ease-standard);
+}
+
+.check:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: -2px;
+}
+
+.swipe-action {
+  display: flex;
+  width: 96px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border: 0;
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+  font: var(--mat-sys-label-medium);
+  cursor: pointer;
+}
+
+.swipe-action + .swipe-action {
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
+}
+
+.tile {
+  position: relative;
+  transition: transform var(--duration-short) var(--ease-standard);
+}
+
+.tile:has(> a:active) {
+  transform: scale(0.97);
+}
+
+/* The episode number over the bottom of a poster in the grid, clear of the check. */
+.grid-code {
+  position: absolute;
+  inset: auto 0 0;
+  padding: 24px 48px 8px 8px;
+  border-radius: 0 0 8px 8px;
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.75));
+  color: #fff;
+  font: var(--mat-sys-label-large);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Controls over a poster stay readable on any image. */
+.overlay .mat-mdc-icon-button {
+  background: color-mix(in srgb, var(--mat-sys-surface) 70%, transparent);
+}
+
+.on-image app-check-mark {
+  background: color-mix(in srgb, var(--mat-sys-surface) 85%, transparent);
+}

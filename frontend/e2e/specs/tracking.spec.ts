@@ -2,17 +2,24 @@ import { expect, test } from '../dsl/fixtures';
 import {
   acceptEarlierEpisodes,
   addShow,
+  answerUnmark,
+  checkWatchNext,
+  confettiShown,
+  finishedBadgeOnProfile,
+  isSeasonWatched,
   isWatched,
   libraryEntry,
   markMovieWatched,
-  markSeason,
   openAndComeBack,
   openMovie,
   openShow,
+  seasonProgress,
   seedShows,
   showStatus,
   tapEpisode,
+  tapSeason,
   uniqueTitle,
+  watchNext,
 } from '../dsl/tracking';
 
 test('someone finds a show and adds it to watch later', async ({ viewer }) => {
@@ -58,18 +65,75 @@ test('someone catches up on the earlier episodes when skipping ahead', async ({ 
   await expect.poll(() => showStatus(viewer)).toBe('Up to date');
 });
 
-test('someone marks whole seasons of an ended show and finishes it', async ({ viewer }) => {
+test('someone marks a season in one tap, and unmarks it only after confirming', async ({ viewer }) => {
+  // Given a running show whose second season still has an episode to air
+  const title = uniqueTitle('Lantern Row');
+  await openShow(viewer, title);
+
+  // When they tap each season's check
+  const first = await tapSeason(viewer, 1);
+  const second = await tapSeason(viewer, 2);
+
+  // Then every aired episode is marked at once, the unaired one is left
+  expect([first, second]).toEqual(['3/3', '2/2']);
+  expect(await isSeasonWatched(viewer, 1)).toBe(true);
+  await expect.poll(() => showStatus(viewer)).toBe('Up to date');
+
+  // When they tap the watched season again, a question comes first: cancelling keeps it
+  await tapSeason(viewer, 1);
+  await answerUnmark(viewer, 'Cancel');
+  expect(await seasonProgress(viewer, 1)).toBe('3/3');
+
+  // And confirming unmarks it
+  await tapSeason(viewer, 1);
+  await answerUnmark(viewer, 'Unmark');
+  expect(await seasonProgress(viewer, 1)).toBe('0/3');
+  await expect.poll(() => showStatus(viewer)).toBe('Watching');
+});
+
+test('finishing an ended show throws confetti and puts the Finished badge on its poster', async ({ viewer }) => {
   // Given an ended show
   const title = uniqueTitle('Quiet Harbour', { ended: true });
   await openShow(viewer, title);
 
-  // When they mark both seasons from the season menus
-  await markSeason(viewer, 1);
-  await markSeason(viewer, 2);
+  // When they mark both seasons, the second holding the last aired episode
+  await tapSeason(viewer, 1);
+  expect(await confettiShown(viewer)).toBe(false);
+  await tapSeason(viewer, 2);
 
-  // Then the show is finished
+  // Then confetti falls, and the show is finished, with the badge on its poster
+  expect(await confettiShown(viewer)).toBe(true);
   await expect.poll(() => showStatus(viewer)).toBe('Finished');
   expect(await libraryEntry(viewer, 'Shows', title)).toBe('6/6 · Finished');
+  expect(await finishedBadgeOnProfile(viewer, title)).toBe(true);
+});
+
+test.describe('with reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' });
+
+  test('finishing a show throws no confetti', async ({ viewer }) => {
+    const title = uniqueTitle('Still Water', { ended: true });
+    await openShow(viewer, title);
+
+    await tapSeason(viewer, 1);
+    await tapSeason(viewer, 2);
+
+    await expect.poll(() => showStatus(viewer)).toBe('Finished');
+    expect(await confettiShown(viewer)).toBe(false);
+  });
+});
+
+test('the Watch next card marks the next episode in one tap', async ({ viewer }) => {
+  // Given a show with its first episode watched
+  const title = uniqueTitle('Copper Line');
+  await openShow(viewer, title);
+  await tapEpisode(viewer, 1, 1);
+  expect(await watchNext(viewer)).toBe('S01|E02+3');
+
+  // When they tap the card's check, it moves on to the next episode
+  await checkWatchNext(viewer);
+  expect(await watchNext(viewer)).toBe('S01|E03+2');
+  expect(await isWatched(viewer, 1, 2)).toBe(true);
 });
 
 test('someone marks a movie watched', async ({ viewer }) => {

@@ -11,6 +11,9 @@ const SHOW: Model.Http.Show = {
   poster_path: null,
   release_date: null,
   tmdb_status: 'Returning Series',
+  backdrop_path: null,
+  network: null,
+  runtime: null,
   seasons: [],
   tracking: null,
 };
@@ -60,12 +63,33 @@ describe('TrackingStore', () => {
   it('shows a resumed show as watching at once', () => {
     store.setWatched(7, ['a'], true);
     http.expectOne('/api/shows/7/watched').flush({ status: 'watching', watched: { a: 'x' } });
-    store.trackShow(7, true);
+    void store.trackShow(7, 'stopped');
     http.expectOne('/api/shows/7/tracking').flush({ status: 'stopped', watched: { a: 'x' } });
 
-    store.trackShow(7, false);
+    void store.trackShow(7, 'watching');
 
     expect(tracking()?.status).toBe('watching');
+  });
+
+  it('puts a show aside at once, and a marked episode brings it back', () => {
+    void store.trackShow(7, 'watch_later');
+    expect(tracking()?.status).toBe('watch_later');
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'watch_later', watched: {} });
+
+    void store.setWatched(7, ['a'], true);
+
+    expect(tracking()?.status).toBe('watching');
+  });
+
+  it('tells each caller whether the server accepted its write', async () => {
+    const accepted = store.setWatched(7, ['a'], true);
+    const refused = store.setWatched(7, ['b'], true);
+
+    http.expectOne('/api/shows/7/watched').flush({ status: 'watching', watched: { a: 'x' } });
+    http.expectOne('/api/shows/7/watched').flush('down', { status: 500, statusText: 'Server Error' });
+
+    expect(await accepted).toBe(true);
+    expect(await refused).toBe(false);
   });
 
   it('goes back to the last confirmed value and says so when the last queued write fails', () => {
@@ -80,5 +104,32 @@ describe('TrackingStore', () => {
 
     expect(tracking()).toEqual({ status: 'watching', watched: { a: 'x' } });
     expect(snackBar.open).toHaveBeenCalledOnce();
+  });
+
+  it('shows a long season marked at once, and sends it in requests of at most 2000 ids, one after the other', async () => {
+    const ids = Array.from({ length: 4500 }, (_, index) => `e${index}`);
+
+    const saved = store.setWatched(7, ids, true);
+
+    expect(Object.keys(tracking()!.watched)).toHaveLength(4500);
+    const sizes: number[] = [];
+    for (let left = 3; left > 0; left--) {
+      const request = http.expectOne('/api/shows/7/watched');
+      http.expectNone('/api/shows/7/watched');
+      sizes.push((request.request.body as { episode_ids: string[] }).episode_ids.length);
+      request.flush({ status: 'watching', watched: Object.fromEntries(ids.map((id) => [id, 'x'])) });
+    }
+    expect(sizes).toEqual([2000, 2000, 500]);
+    expect(await saved).toBe(true);
+  });
+
+  it('keeps each library view apart, by type, sort and progress', () => {
+    store.loadLibrary({ mediaType: 'tv', sort: 'title', status: 'finished' }).subscribe();
+    const request = http.expectOne((r) => r.url === '/api/library');
+
+    expect(request.request.params.toString()).toBe('media_type=tv&sort=title&status=finished');
+    request.flush([]);
+    expect(store.library()['tv:title:finished']).toEqual([]);
+    expect(store.library()['tv:last_watched:all']).toBeUndefined();
   });
 });

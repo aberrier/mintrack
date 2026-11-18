@@ -9,10 +9,12 @@
       <a
         class="nav-item"
         [routerLink]="item.route"
-        routerLinkActive="active"
-        [routerLinkActiveOptions]="activeOptions"
-        ariaCurrentWhenActive="page">
-        <span class="indicator"><mat-icon [svgIcon]="item.icon" aria-hidden="true" /></span>
+        [class.active]="item.$active()"
+        [attr.aria-current]="item.$active() ? 'page' : null">
+        <span class="indicator">
+          <mat-icon class="outlined" [svgIcon]="item.icon" aria-hidden="true" />
+          <mat-icon class="filled" [svgIcon]="item.activeIcon" aria-hidden="true" />
+        </span>
         <span class="label">{{ translate(item.label) }}</span>
       </a>
     }

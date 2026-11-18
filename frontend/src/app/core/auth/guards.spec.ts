@@ -33,7 +33,9 @@ describe('auth guards', () => {
     TestBed.inject(AuthStore).set(alice);
 
     expect(await run(signedInGuard, '/profile')).toBe(true);
-    expect(TestBed.inject(Router).serializeUrl((await run(adminGuard, '/admin/users')) as never)).toBe('/');
+    expect(TestBed.inject(Router).serializeUrl((await run(adminGuard, '/admin/users')) as never)).toBe(
+      '/episodes/watch-list',
+    );
   });
 
   it('signs out and goes to the login page when the session ends', async () => {
@@ -65,9 +67,9 @@ describe('auth guards', () => {
 
   it('follows only paths inside the app after login', () => {
     expect(safeNext('/profile')).toBe('/profile');
-    expect(safeNext('//evil.example')).toBe('/');
-    expect(safeNext('/\\evil.example')).toBe('/');
-    expect(safeNext('https://evil.example')).toBe('/');
-    expect(safeNext(null)).toBe('/');
+    expect(safeNext('//evil.example')).toBe('/episodes/watch-list');
+    expect(safeNext('/\\evil.example')).toBe('/episodes/watch-list');
+    expect(safeNext('https://evil.example')).toBe('/episodes/watch-list');
+    expect(safeNext(null)).toBe('/episodes/watch-list');
   });
 });

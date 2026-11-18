@@ -8,7 +8,7 @@ export { injectTranslator, type TranslationPath };
  *
  * @example
  * ```html
- * <h1>{{ translate('app.home.title') }}</h1>
+ * <h1>{{ translate('app.profile.title') }}</h1>
  * <p>{{ translate('app.adminUsers.link.intro', { username }) }}</p>
  * ```
  *

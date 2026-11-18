@@ -3,13 +3,35 @@
 
 /* Material's tokens as Tailwind colours: bg-surface, text-on-surface... */
 @theme inline {
+  --color-surface: var(--mat-sys-surface);
+  --color-on-surface: var(--mat-sys-on-surface);
   --color-on-surface-variant: var(--mat-sys-on-surface-variant);
+  --color-surface-container-low: var(--mat-sys-surface-container-low);
   --color-surface-container: var(--mat-sys-surface-container);
+  --color-surface-container-high: var(--mat-sys-surface-container-high);
   --color-outline-variant: var(--mat-sys-outline-variant);
   --color-error: var(--mat-sys-error);
   --color-primary: var(--mat-sys-primary);
+  --color-on-primary: var(--mat-sys-on-primary);
+  --color-primary-container: var(--mat-sys-primary-container);
+  --color-on-primary-container: var(--mat-sys-on-primary-container);
   --color-secondary-container: var(--mat-sys-secondary-container);
   --color-on-secondary-container: var(--mat-sys-on-secondary-container);
+}
+
+/* Material 3 motion: easings as ease-* utilities, and both as variables for component styles. */
+@theme static {
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-standard-decel: cubic-bezier(0, 0, 0, 1);
+  --ease-standard-accel: cubic-bezier(0.3, 0, 1, 1);
+  --ease-emph-decel: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-emph-accel: cubic-bezier(0.3, 0, 0.8, 0.15);
+  /* A slight overshoot, for a toggled icon that pops into place. */
+  --ease-pop: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-short: 100ms;
+  --duration-toggle: 200ms;
+  --duration-medium: 300ms;
+  --duration-exit: 150ms;
 }
 
 /* Native app feel on phones: no pull-to-refresh or rubber band on the page, no grey flash on tap, no double-tap zoom
@@ -28,7 +50,58 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Route changes: the page that opens fades in while rising a little. A change of query keeps the page, so tabs and
+   filters do not replay it. */
+.content > router-outlet + * {
+  display: block;
+  animation: rise-in var(--duration-medium) var(--ease-emph-decel) both;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+
+/* Cards and tiles rise in as a list appears, one after the other for the first few. Set --i to the item's index. */
+.enter {
+  animation: rise-in var(--duration-medium) var(--ease-emph-decel) both;
+  animation-delay: calc(min(var(--i, 0), 6) * 40ms);
+}
+
+/* A tap answers at once: the element sinks a little while pressed. */
+.pressable {
+  transition: transform var(--duration-short) var(--ease-standard);
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+/* The shape of content still loading. It appears only after 300ms, so fast answers show no flash, then pulses. */
+.skeleton {
+  border-radius: 8px;
+  background: var(--mat-sys-surface-container-high);
+  animation:
+    fade-in 200ms 300ms both,
+    pulse 1.6s ease-in-out 500ms infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.5;
   }
 }
 
@@ -56,6 +129,13 @@ body {
   z-index: -1;
   border: 1px solid var(--mat-sys-outline-variant);
   border-radius: 8px;
+  transition:
+    background-color var(--duration-toggle) var(--ease-standard),
+    transform var(--duration-short) var(--ease-standard);
+}
+
+.chip:active::after {
+  transform: scale(0.95);
 }
 
 .chip.selected {
@@ -72,16 +152,162 @@ body {
   outline-offset: -6px;
 }
 
-.search-field {
-  min-height: 48px;
-  padding: 0 16px;
-  border-radius: 24px;
-  background: var(--mat-sys-surface-container-high);
-  color: var(--mat-sys-on-surface);
-  font: var(--mat-sys-body-large);
-  outline: none;
+/* A row of chips, scrolling sideways when it does not fit, aligned with the page's text. */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-inline: 16px;
+  scrollbar-width: none;
 }
 
-.search-field:focus-visible {
+/* Tabs under a header: the selected one underlined by a bar that grows in. */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--mat-sys-outline-variant);
+}
+
+.tab {
+  position: relative;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-title-small);
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  text-transform: uppercase;
+  transition: color var(--duration-toggle) var(--ease-standard);
+}
+
+.tab::after {
+  content: '';
+  position: absolute;
+  inset: auto 16px -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--mat-sys-primary);
+  opacity: 0;
+  transform: scaleX(0.4);
+  transition:
+    opacity var(--duration-toggle) var(--ease-standard),
+    transform var(--duration-medium) var(--ease-emph-decel);
+}
+
+.tab.active {
+  color: var(--mat-sys-primary);
+}
+
+.tab.active::after {
+  opacity: 1;
+  transform: none;
+}
+
+.tab:focus-visible {
   outline: 2px solid var(--mat-sys-primary);
+  outline-offset: -4px;
+}
+
+/* A section's title in a list, on the page's left edge. */
+.section-label {
+  padding: 24px 16px 8px;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-title-small);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Cards one under the other, inside the page's margins. */
+.card-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-inline: 16px;
+}
+
+/* Posters three across on phones, more on wider screens. */
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px 12px;
+  padding-inline: 16px;
+}
+
+@media (min-width: 600px) {
+  .card-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1000px) {
+  .card-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+/* A shelf of posters scrolling sideways, two and a half in view so the cut one shows there is more. */
+.poster-row {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  padding: 0 16px 4px;
+  scroll-padding-inline: 16px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.poster-row > li {
+  flex: none;
+  width: clamp(112px, calc((100vw - 56px) / 2.5), 160px);
+  scroll-snap-align: start;
+}
+
+/* A section's title with its link, such as See all, on the same line. */
+.row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-inline: 16px 4px;
+}
+
+/* The watch history's own controls, above its entries. */
+.history-button,
+.history-note {
+  align-self: center;
+  min-height: 48px;
+  padding: 0 16px;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-large);
+}
+
+.history-button {
+  background: none;
+  border: 0;
+  border-radius: 24px;
+  color: var(--mat-sys-primary);
+  cursor: pointer;
+}
+
+.history-button:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: -4px;
+}
+
+.history-note {
+  display: flex;
+  align-items: center;
+}
+
+/* A settings group on the profile: a tinted card. */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--mat-sys-surface-container-low);
 }

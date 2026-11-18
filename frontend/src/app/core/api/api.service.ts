@@ -37,14 +37,17 @@ export class ApiService {
   };
 
   readonly catalog = {
-    search: (query: string) => this.http.get<Model.Http.SearchResult[]>('/api/search', { params: { query } }),
+    search: (query: string, type: Model.Http.MediaType) =>
+      this.http.get<Model.Http.SearchResult[]>('/api/search', { params: { query, type } }),
     show: (tmdbId: number) => this.http.get<Model.Http.Show>(`/api/shows/${tmdbId}`),
     movie: (tmdbId: number) => this.http.get<Model.Http.Movie>(`/api/movies/${tmdbId}`),
+    trending: (type: Model.Http.MediaType) =>
+      this.http.get<Model.Http.SearchResult[]>('/api/discover/trending', { params: { type } }),
   };
 
   readonly tracking = {
-    trackShow: (tmdbId: number, stopped: boolean) =>
-      this.http.put<Model.Http.ShowTracking>(`/api/shows/${tmdbId}/tracking`, { stopped }),
+    trackShow: (tmdbId: number, status: Model.Http.ShowTrackingChoice) =>
+      this.http.put<Model.Http.ShowTracking>(`/api/shows/${tmdbId}/tracking`, { status }),
     untrackShow: (tmdbId: number) => this.http.delete<void>(`/api/shows/${tmdbId}/tracking`),
     setWatched: (tmdbId: number, episodeIds: string[], watched: boolean) =>
       this.http.post<Model.Http.ShowTracking | null>(`/api/shows/${tmdbId}/watched`, {
@@ -54,13 +57,28 @@ export class ApiService {
     trackMovie: (tmdbId: number, watched: boolean) =>
       this.http.put<Model.Http.MovieTracking>(`/api/movies/${tmdbId}/tracking`, { watched }),
     untrackMovie: (tmdbId: number) => this.http.delete<void>(`/api/movies/${tmdbId}/tracking`),
-    library: (mediaType: Model.Http.MediaType) =>
-      this.http.get<Model.Http.LibraryItem[]>('/api/library', { params: { media_type: mediaType } }),
+    library: ({
+      mediaType,
+      sort = 'last_watched',
+      status = null,
+    }: {
+      mediaType: Model.Http.MediaType;
+      sort?: Model.Http.LibrarySort;
+      status?: Model.Http.LibraryStatus | null;
+    }) =>
+      this.http.get<Model.Http.LibraryItem[]>('/api/library', {
+        params: { media_type: mediaType, sort, ...(status ? { status } : {}) },
+      }),
+    /** A page of the watch history, newest first, before the given entry when there is one. */
+    history: (before?: Pick<Model.Http.HistoryEntry, 'watched_at' | 'id'>) =>
+      this.http.get<Model.Http.HistoryResponse>('/api/history', {
+        params: before ? { before: before.watched_at, before_id: before.id } : {},
+      }),
   };
 
   readonly upcoming = {
     get: () => this.http.get<Model.Http.UpcomingResponse>('/api/upcoming'),
-    upNext: () => this.http.get<Model.Http.UpNextResponse>('/api/up-next'),
+    watchList: () => this.http.get<Model.Http.WatchListResponse>('/api/watch-list'),
   };
 
   readonly push = {

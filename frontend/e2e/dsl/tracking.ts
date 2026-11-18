@@ -9,12 +9,12 @@ export function uniqueTitle(base: string, options: { ended?: boolean } = {}): st
 
 export async function openShow(viewer: Viewer, title: string): Promise<void> {
   await viewer.app.search(title);
-  await viewer.app.openResult(title, 'Show');
+  await viewer.app.openResult(title);
 }
 
 export async function openMovie(viewer: Viewer, title: string): Promise<void> {
-  await viewer.app.search(title);
-  await viewer.app.openResult(title, 'Movie');
+  await viewer.app.search(title, 'Movies');
+  await viewer.app.openResult(title);
 }
 
 /** Add the open show to the library and return its status. */
@@ -34,6 +34,7 @@ export async function tapEpisode(viewer: Viewer, season: number, episode: number
 }
 
 export async function isWatched(viewer: Viewer, season: number, episode: number): Promise<boolean> {
+  await viewer.app.openSeason(season);
   return (await viewer.app.episode(season, episode).getAttribute('aria-pressed')) === 'true';
 }
 
@@ -42,12 +43,72 @@ export async function acceptEarlierEpisodes(viewer: Viewer): Promise<string> {
   return viewer.app.acceptPreviousOffer();
 }
 
-export async function markSeason(viewer: Viewer, season: number): Promise<void> {
-  await viewer.app.seasonAction(season, 'Mark aired episodes watched');
+/** One tap on a season's check; returns its `watched/aired` right after, before the server answers. */
+export async function tapSeason(viewer: Viewer, season: number): Promise<string> {
+  await viewer.app.seasonCheck(season).click();
+  return viewer.app.seasonProgress(season);
+}
+
+/** The show page's Watch next card, such as "S01|E02+3". */
+export async function watchNext(viewer: Viewer): Promise<string> {
+  return (await viewer.app.watchNext().getByTestId('episode-code').innerText()).replace(/\s+/g, '');
+}
+
+export async function checkWatchNext(viewer: Viewer): Promise<void> {
+  await viewer.app.checkWatchNext();
+}
+
+export async function seasonProgress(viewer: Viewer, season: number): Promise<string> {
+  return viewer.app.seasonProgress(season);
+}
+
+export async function isSeasonWatched(viewer: Viewer, season: number): Promise<boolean> {
+  return (await viewer.app.seasonCheck(season).getAttribute('aria-pressed')) === 'true';
+}
+
+/** Answer the question a tap on a fully watched season asks. */
+export async function answerUnmark(viewer: Viewer, answer: 'Unmark' | 'Cancel'): Promise<void> {
+  await viewer.app.answerDialog(answer);
+}
+
+/** Whether confetti fell over the screen, within a second of the last tap. */
+export async function confettiShown(viewer: Viewer): Promise<boolean> {
+  return expect(viewer.app.confetti())
+    .toBeAttached({ timeout: 1000 })
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/** Whether the title's poster carries the Finished badge, in the Profile tab's row. */
+export async function finishedBadgeOnProfile(viewer: Viewer, title: string): Promise<boolean> {
+  await viewer.app.openTab('Profile');
+  const item = viewer.app.profileItem('Shows', title);
+  await expect(item).toBeVisible();
+  return viewer.app.finishedBadge(item).isVisible();
+}
+
+/** The header's facts under the title, such as "1h 58m · May 1, 2020". */
+export async function headerFacts(viewer: Viewer): Promise<string> {
+  return (await viewer.app.mediaFacts().innerText()).trim();
+}
+
+/** Tap the movie's check; returns the line saying when it was watched, as the screen shows it at once. */
+export async function tapMovieCheck(viewer: Viewer): Promise<string> {
+  const check = viewer.app.movieCheck();
+  const pressed = await check.getAttribute('aria-pressed');
+  await check.click();
+  await expect(check).toHaveAttribute('aria-pressed', pressed === 'true' ? 'false' : 'true');
+  return (await viewer.app.movieWatched().innerText()).trim();
+}
+
+export async function movieStatus(viewer: Viewer): Promise<string> {
+  return (await viewer.app.status('movie-status').innerText()).trim();
 }
 
 export async function markMovieWatched(viewer: Viewer): Promise<string> {
-  await viewer.app.clickButton('Mark watched');
+  await viewer.app.movieCheck().click();
   await expect(viewer.app.status('movie-status')).toHaveText('Watched');
   return (await viewer.app.status('movie-status').innerText()).trim();
 }
@@ -57,7 +118,7 @@ export async function libraryEntry(viewer: Viewer, type: 'Shows' | 'Movies', tit
   await viewer.app.openLibrary(type);
   const item = viewer.app.libraryItem(title);
   await expect(item).toBeVisible();
-  return (await item.innerText()).replace(title, '').replace(/\s+/g, ' ').trim();
+  return (await item.getByTestId('tile-detail').innerText()).replace(/\s+/g, ' ').trim();
 }
 
 /** Add shows to the library through the API, for a given state the scenario does not exercise. */

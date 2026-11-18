@@ -1,0 +1,97 @@
+<h1 class="sr-only">{{ translate('app.discover.title') }}</h1>
+
+<div class="flex flex-col gap-2 pt-4">
+  <label class="search mx-4">
+    <mat-icon svgIcon="search" aria-hidden="true" />
+    <input
+      type="search"
+      enterkeyhint="search"
+      autocomplete="off"
+      [value]="q()"
+      (input)="onInput($event)"
+      [attr.aria-label]="translate('app.search.label')"
+      [placeholder]="translate(type() === 'tv' ? 'app.search.placeholderShows' : 'app.search.placeholderMovies')" />
+  </label>
+
+  <nav class="chip-row" [attr.aria-label]="translate('app.discover.types')">
+    @for (option of types; track option) {
+      <a
+        class="chip"
+        [class.selected]="type() === option"
+        [routerLink]="routes.discover()"
+        [queryParams]="{ type: option === 'tv' ? null : option }"
+        queryParamsHandling="merge"
+        replaceUrl
+        [attr.aria-current]="type() === option ? 'page' : null"
+        >{{ translate(option === 'tv' ? 'app.discover.shows' : 'app.discover.movies') }}</a
+      >
+    }
+  </nav>
+</div>
+
+<ng-template #message let-state let-kind="kind">
+  @switch (state.kind) {
+    @case ('loading') {
+      <app-skeleton [kind]="kind" [count]="kind === 'grid' ? 9 : 4" [label]="translate('app.search.loading')" />
+    }
+    @case ('failed') {
+      <p role="alert" class="px-4 text-on-surface-variant">{{ translate('app.search.failed') }}</p>
+    }
+    @case ('unconfigured') {
+      <p role="alert" class="px-4 text-on-surface-variant">{{ translate('app.search.unconfigured') }}</p>
+    }
+  }
+</ng-template>
+
+@if (q().trim()) {
+  @let state = $state();
+  <div class="pt-4">
+    <ng-container [ngTemplateOutlet]="message" [ngTemplateOutletContext]="{ $implicit: state, kind: 'grid' }" />
+    @if (state.kind === 'done') {
+      @if (state.results.length === 0) {
+        <app-empty-state icon="search">{{ translate('app.search.noResults') }}</app-empty-state>
+      }
+      <ul class="card-grid" [attr.aria-label]="translate('app.search.results')">
+        @for (result of state.results; track result.media_type + result.tmdb_id) {
+          <li class="enter" [style.--i]="$index">
+            <app-media-tile
+              [link]="link(result)"
+              [title]="result.title"
+              [posterPath]="result.poster_path"
+              [finished]="result.tracking_status === 'finished'"
+              [tracked]="tracked(result)"
+              [detail]="detail(result)"
+              (add)="add(result)"
+              data-testid="search-result" />
+          </li>
+        }
+      </ul>
+    }
+  </div>
+} @else {
+  @for (row of trending; track row.id) {
+    @let state = row.$state();
+    <section class="flex flex-col gap-3 pt-8" [attr.aria-labelledby]="'trending-' + row.id">
+      <h2 [id]="'trending-' + row.id" class="px-4 [font:var(--mat-sys-title-large)] font-semibold!">
+        {{ row.title }}
+      </h2>
+      <ng-container [ngTemplateOutlet]="message" [ngTemplateOutletContext]="{ $implicit: state, kind: 'shelf' }" />
+      @if (state.kind === 'done') {
+        <ul class="poster-row">
+          @for (result of state.results; track result.tmdb_id) {
+            <li class="enter" [style.--i]="$index">
+              <app-media-tile
+                [link]="link(result)"
+                [title]="result.title"
+                [posterPath]="result.poster_path"
+                [finished]="result.tracking_status === 'finished'"
+                [tracked]="tracked(result)"
+                (add)="add(result)"
+                data-testid="trending-item" />
+            </li>
+          }
+        </ul>
+      }
+    </section>
+  }
+}
