@@ -2,7 +2,7 @@ import fastapi
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from mintrack.config import Config, get_config
-from mintrack.server.api import admin_users, auth, catalog, tracking, upcoming
+from mintrack.server.api import admin_users, auth, catalog, push, tracking, upcoming
 from mintrack.server.api.dependencies import check_xsrf, get_current_session
 from mintrack.server.common import healthcheck
 from mintrack.server.common.config import API_PREFIX, get_fastapi_common_config
@@ -29,6 +29,7 @@ def build_api_router() -> fastapi.APIRouter:
     protected.include_router(catalog.router)
     protected.include_router(tracking.router)
     protected.include_router(upcoming.router)
+    protected.include_router(push.router)
     router.include_router(protected)
     return router
 

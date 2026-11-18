@@ -2,6 +2,7 @@ import datetime as dt
 import typing
 import uuid
 
+import httpx
 import procrastinate
 import psycopg
 from procrastinate import builtin_tasks
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import mintrack.worker
 from mintrack.core.catalog.managers import CatalogManager, is_airing
+from mintrack.core.push.managers import PushManager
+from mintrack.core.push.webpush import get_vapid_key
 from mintrack.core.tracking.managers import TrackingManager
 from mintrack.core.upcoming.air_times import refresh_air_times, refresh_show_air_times
 from mintrack.db.database import get_database
@@ -77,6 +80,20 @@ async def refresh_show_air_times_task(media_id: str) -> None:
         show = await session.get(Media, uuid.UUID(media_id))
         if show is not None and is_airing(show):
             await refresh_show_air_times(session, client, show)
+
+
+@blueprint.periodic(cron="*/10 * * * *")
+@blueprint.task(queueing_lock="notify_aired_episodes")
+async def notify_aired_episodes(timestamp: int) -> None:
+    """Send push notifications for the followed episodes that just aired."""
+    key = get_vapid_key()
+    if key is None:
+        return
+    now = dt.datetime.fromtimestamp(timestamp, dt.UTC)
+    async with get_database().session() as session, httpx.AsyncClient() as client:
+        count = await PushManager(session, client, key).notify_aired_episodes(now)
+    if count:
+        logger.info("episode notifications sent", episodes=count)
 
 
 async def defer_refresh(session: AsyncSession, media_id: uuid.UUID) -> None:
