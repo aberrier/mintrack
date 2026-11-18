@@ -1,0 +1,25 @@
+<section class="mx-auto flex max-w-sm flex-col gap-4 p-6">
+  <h1 class="[font:var(--mat-sys-headline-small)]">{{ translate('app.login.title') }}</h1>
+  <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()">
+    <mat-form-field appearance="outline">
+      <mat-label>{{ translate('app.login.username') }}</mat-label>
+      <input
+        matInput
+        formControlName="username"
+        autocomplete="username"
+        autocapitalize="none"
+        spellcheck="false"
+        required />
+    </mat-form-field>
+    <mat-form-field appearance="outline">
+      <mat-label>{{ translate('app.login.password') }}</mat-label>
+      <input matInput type="password" formControlName="password" autocomplete="current-password" required />
+    </mat-form-field>
+    @if ($error(); as error) {
+      <p role="alert" class="text-error">{{ translate(error) }}</p>
+    }
+    <button matButton="filled" type="submit" class="min-h-12" [disabled]="$busy()">
+      {{ translate('app.login.submit') }}
+    </button>
+  </form>
+</section>

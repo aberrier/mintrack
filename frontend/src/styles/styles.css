@@ -4,6 +4,9 @@
 /* Material's tokens as Tailwind colours: bg-surface, text-on-surface... */
 @theme inline {
   --color-on-surface-variant: var(--mat-sys-on-surface-variant);
+  --color-surface-container: var(--mat-sys-surface-container);
+  --color-outline-variant: var(--mat-sys-outline-variant);
+  --color-error: var(--mat-sys-error);
 }
 
 /* Native app feel on phones: no pull-to-refresh or rubber band on the page, no grey flash on tap, no double-tap zoom

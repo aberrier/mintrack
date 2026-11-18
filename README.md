@@ -119,6 +119,16 @@ Pi 3, 4 or 5 with a 64-bit system).
 MinTrack answers on port 8000 (`http://localhost:8000`, or the server's address on your network). `docker compose ps`
 shows it as healthy; if it is not, `docker compose logs server` shows why, with one line per setting to fix.
 
+4. Create the first admin. The command prints a link to open in a browser, where the admin sets their password:
+
+   ```bash
+   docker compose exec server mintrack users create-admin admin
+   ```
+
+   The admin then invites everyone else from Profile > Manage users, and shares each printed link by hand (MinTrack
+   sends no email). A forgotten password needs a new link: from the users page, or for an admin
+   `docker compose exec server mintrack users reset-link USERNAME`.
+
 ### Behind a reverse proxy
 
 HTTPS is needed to install MinTrack on a phone and for push notifications. Put any reverse proxy (Caddy,

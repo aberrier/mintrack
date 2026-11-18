@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
  * Chromium only: it treats localhost as a secure origin for cookies and service workers; WebKit does not.
  */
 export default defineConfig({
-  testDir: './e2e',
+  testDir: './e2e/specs',
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: 0,

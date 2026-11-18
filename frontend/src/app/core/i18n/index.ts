@@ -9,6 +9,7 @@ export { injectTranslator, type TranslationPath };
  * @example
  * ```html
  * <h1>{{ translate('app.home.title') }}</h1>
+ * <p>{{ translate('app.adminUsers.link.intro', { username }) }}</p>
  * ```
  *
  * ```typescript
@@ -18,11 +19,11 @@ export { injectTranslator, type TranslationPath };
  * ```
  */
 function injectTranslator<K extends TranslationKinds[]>(..._kinds: K) {
-  return (path: TranslationPath<K[number]>): string => {
+  return (path: TranslationPath<K[number]>, params: Record<string, string> = {}): string => {
     let target: unknown = translations;
     for (const crumb of path.split('.')) target = (target as Record<string, unknown> | undefined)?.[crumb];
     if (typeof target !== 'string') throw new Error(`Missing translation: ${path}`);
-    return target;
+    return target.replace(/\{(\w+)\}/g, (placeholder, name: string) => params[name] ?? placeholder);
   };
 }
 
