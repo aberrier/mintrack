@@ -9,10 +9,12 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: 0,
-  reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : 'list',
+  // Locally, `dot` prints one character per test, then the failures; pass `--reporter=list` to see every test.
+  reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : 'dot',
   use: {
     baseURL: process.env['MINTRACK_E2E_BASE_URL'] ?? 'http://localhost:8000',
-    trace: 'retain-on-failure',
+    // Recording costs every test; locally, rerun a failure with `--trace on` to get one.
+    trace: process.env['CI'] ? 'retain-on-failure' : 'off',
     // page.route() does not see requests a service worker sends; the PWA spec allows it.
     serviceWorkers: 'block',
   },

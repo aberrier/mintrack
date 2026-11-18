@@ -6,6 +6,11 @@ export type Tab = 'Episodes' | 'Discover' | 'Profile';
 export class AppDriver {
   constructor(private readonly page: Page) {}
 
+  /** Wait for the app to render what the last tap changed: Angular renders on the next frame, not during the tap. */
+  async rendered(): Promise<void> {
+    await this.page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve))));
+  }
+
   async open(): Promise<void> {
     await this.page.goto('/');
     await expect(this.navigation()).toBeVisible();
@@ -157,6 +162,7 @@ export class AppDriver {
     await this.watchNext()
       .getByRole('button', { name: /^Mark .* watched$/ })
       .click();
+    await this.rendered();
   }
 
   seasonToggle(season: number): Locator {

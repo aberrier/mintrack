@@ -46,6 +46,7 @@ export async function acceptEarlierEpisodes(viewer: Viewer): Promise<string> {
 /** One tap on a season's check; returns its `watched/aired` right after, before the server answers. */
 export async function tapSeason(viewer: Viewer, season: number): Promise<string> {
   await viewer.app.seasonCheck(season).click();
+  await viewer.app.rendered();
   return viewer.app.seasonProgress(season);
 }
 
