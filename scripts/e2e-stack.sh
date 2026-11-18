@@ -90,8 +90,22 @@ start_process() {
 
 start() {
   eval "$(print_env)"
+  # Every run starts without the users of earlier runs, whose growing lists slow the Admin screen down.
+  docker exec mintrack-dev-postgres psql -U mintrack -d "$MINTRACK__DATABASE__NAME" -qc 'TRUNCATE users CASCADE' \
+    > /dev/null 2>&1 || true
   cd "$root/frontend"
   # npm writes node_modules/.package-lock.json on install: newer than the lockfile means nothing to do.
+  # A new worktree hard-links the installed modules of another worktree with the same lockfile instead of installing.
+  if [[ ! -d node_modules ]]; then
+    local other
+    for other in $(git worktree list --porcelain | sed -n 's/^worktree //p'); do
+      if [[ $other != "$root" && -f $other/frontend/node_modules/.package-lock.json ]] &&
+        cmp -s "$other/frontend/package-lock.json" package-lock.json; then
+        cp -al "$other/frontend/node_modules" node_modules && touch node_modules/.package-lock.json
+        break
+      fi
+    done
+  fi
   if [[ ! node_modules/.package-lock.json -nt package-lock.json ]]; then
     npm ci --no-audit --no-fund > "$state/npm.log" 2>&1 || { tail -30 "$state/npm.log" >&2; exit 1; }
   fi

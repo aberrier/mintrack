@@ -113,8 +113,11 @@ npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, de
 ```
 
 `just e2e [playwright args]` starts this worktree's stack (built app, fake TMDB and TVmaze, its own database and port,
-state in `.e2e/`) or reuses it, then runs Playwright; `just e2e-stop` stops it. While iterating, run `just e2e --project=phone <spec>` and
-`just e2e --last-failed`; run the whole suite once before handing off.
+state in `.e2e/`) or reuses it, then runs Playwright; `just e2e-stop` stops it. A new worktree hard-links the
+`node_modules` of another worktree with the same lockfile. The whole suite takes about a minute on 8 workers (more
+workers saturate the server and run slower). While iterating, run `just e2e --project=phone <spec>`,
+`just e2e --last-failed` or `just e2e --only-changed`; each run starts with no users, locally a test times out after
+20 s, an assertion after 3 s, and the run stops after five failures. Run the whole suite once before handing off, then `just e2e-stop`.
 
 - **Angular:** standalone components, zoneless, `OnPush` everywhere, lazy routes declared in `app.routes.ts` with
   their URL builders in `appRoutes` (`app.paths.ts`, which imports nothing). Signals for state, RxJS for
