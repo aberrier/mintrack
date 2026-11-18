@@ -35,6 +35,8 @@
     <button matButton="tonal" type="submit" class="min-h-12">{{ translate('app.profile.password.submit') }}</button>
   </form>
 
+  <app-push-settings />
+
   <div class="flex flex-col gap-2">
     @if ($isAdmin()) {
       <a matButton="outlined" class="min-h-12" [routerLink]="appRoutes.adminUsers()">

@@ -149,6 +149,23 @@ nginx, Traefik...) in front, serving MinTrack at the root of its own domain, suc
 Ports Docker publishes bypass host firewalls such as ufw: with the default bind address, port 8000 is open to every
 network the machine is on.
 
+### Install the app and turn on notifications
+
+Notifications need an `https://` `MINTRACK__PROJECT__PUBLIC_URL`; their keys come from
+`MINTRACK__SECURITY__SECRET_KEY`, so there is nothing else to configure. Each device is turned on separately, in
+**Profile > Notifications**, which also has a button to send a test notification. MinTrack notifies you when an
+episode of a show you are watching or up to date with airs: at its air time when known, otherwise at 9:00 in your
+time zone.
+
+- **Android:** open MinTrack in Chrome, then use **Install app** (or **Add to Home screen**) in Chrome's menu.
+  Notifications also work in the browser tab without installing.
+- **iPhone and iPad (iOS 16.4 or later):** notifications only work in the installed app. Open MinTrack in Safari, tap
+  **Share**, then **Add to Home Screen**, and open MinTrack from the Home Screen before turning notifications on.
+- **Desktop:** Chrome, Edge, Firefox and Safari can receive notifications in the browser tab.
+
+Changing the secret key changes the notification keys: each device registers again the next time MinTrack is opened
+on it.
+
 
 ## Operating MinTrack
 

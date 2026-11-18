@@ -133,5 +133,10 @@ declare namespace Model {
     interface UpNextResponse {
       episodes: UpcomingEpisode[];
     }
+
+    interface PushKeyResponse {
+      /** null when the server cannot send push. */
+      public_key: string | null;
+    }
   }
 }

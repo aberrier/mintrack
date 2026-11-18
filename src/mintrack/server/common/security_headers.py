@@ -17,9 +17,10 @@ CONTENT_SECURITY_POLICY = (
     "base-uri 'self'; "
     "form-action 'self'; "
     "frame-ancestors 'none'; "
-    # Trusted Types: only Angular's sanitiser and Material's icon loader may create HTML from strings.
+    # Trusted Types: only Angular's sanitiser and Material's icon loader may create HTML from strings; the default
+    # policy only allows the service worker script.
     "require-trusted-types-for 'script'; "
-    "trusted-types angular angular#unsafe-bypass angular#components"
+    "trusted-types angular angular#unsafe-bypass angular#components default"
 )
 
 SECURITY_HEADERS = {
