@@ -4,7 +4,7 @@ describe('injectTranslator', () => {
   it('returns the English text of a path, available from the first render', () => {
     const translate = injectTranslator('app');
 
-    expect(translate('app.home.status.online')).toBe('Online');
+    expect(translate('app.upcoming.today')).toBe('Today');
   });
 
   it('fills the named placeholders', () => {

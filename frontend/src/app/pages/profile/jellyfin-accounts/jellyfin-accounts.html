@@ -1,8 +1,8 @@
 <section class="flex flex-col gap-4" aria-labelledby="jellyfin-title">
-  <h2 id="jellyfin-title" class="[font:var(--mat-sys-title-large)]">{{ translate('app.profile.jellyfin.title') }}</h2>
+  <h2 id="jellyfin-title" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.title') }}</h2>
 
   @for (account of store.$accounts(); track account.id) {
-    <article class="flex flex-col gap-2 rounded-2xl bg-surface-container p-4" data-testid="jellyfin-account">
+    <article class="flex flex-col gap-2 rounded-xl bg-surface-container p-4" data-testid="jellyfin-account">
       <div class="flex flex-col">
         <span class="[font:var(--mat-sys-title-medium)]">{{ account.username }}</span>
         <span class="break-all text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{

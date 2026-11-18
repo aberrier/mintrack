@@ -1,0 +1,99 @@
+@let ep = episode();
+
+<ng-template #checkButton>
+  @if (checkable()) {
+    <button
+      type="button"
+      class="check"
+      [class.done]="watched()"
+      [attr.aria-label]="checkLabel()"
+      (click)="check.emit()">
+      <app-check-mark [done]="watched()" />
+    </button>
+  } @else if (watched()) {
+    <span class="check" role="img" [attr.aria-label]="translate('app.episodeCard.watched')">
+      <app-check-mark [done]="true" />
+    </span>
+  }
+</ng-template>
+
+<ng-template #menuButton>
+  @if (actions().length) {
+    <button matIconButton type="button" class="size-12!" [matMenuTriggerFor]="menu" [attr.aria-label]="menuLabel()">
+      <mat-icon svgIcon="more_vert" aria-hidden="true" />
+    </button>
+  }
+</ng-template>
+
+@if (variant() === 'list') {
+  <ng-template #row>
+    <div class="row">
+      <a [routerLink]="link()" class="main">
+        <span class="w-16 flex-none"><app-poster [path]="ep.poster_path" /></span>
+        <span class="flex min-w-0 flex-1 flex-col items-start gap-1">
+          <h3 class="show-chip">{{ ep.show_title }}</h3>
+          @if (code(); as code) {
+            <span class="tabular-nums" data-testid="episode-code">
+              <strong class="[font:var(--mat-sys-title-medium)] font-bold!">{{ code }}</strong>
+              @if (ep.remaining) {
+                <span class="ms-1 text-on-surface-variant [font:var(--mat-sys-label-large)]">+{{ ep.remaining }}</span>
+              }
+            </span>
+          }
+          @if (ep.title) {
+            <span
+              class="w-full truncate text-on-surface-variant [font:var(--mat-sys-body-medium)]"
+              data-testid="episode-title"
+              >{{ ep.title }}</span
+            >
+          }
+        </span>
+      </a>
+      @if (detail(); as text) {
+        <span
+          class="flex-none pe-2 text-on-surface-variant tabular-nums [font:var(--mat-sys-label-large)]"
+          data-testid="episode-detail">
+          {{ text }}
+        </span>
+      }
+      <ng-container [ngTemplateOutlet]="menuButton" />
+      <ng-container [ngTemplateOutlet]="checkButton" />
+    </div>
+  </ng-template>
+
+  @if (actions().length) {
+    <app-swipe-actions data-testid="episode">
+      <div swipeAction class="flex h-full">
+        @for (item of actions(); track item.id) {
+          <button type="button" class="swipe-action" (click)="action.emit(item.id)">
+            <mat-icon [svgIcon]="item.icon" aria-hidden="true" />
+            <span>{{ item.label }}</span>
+          </button>
+        }
+      </div>
+      <ng-container [ngTemplateOutlet]="row" />
+    </app-swipe-actions>
+  } @else {
+    <div data-testid="episode"><ng-container [ngTemplateOutlet]="row" /></div>
+  }
+} @else {
+  <div class="tile" data-testid="episode">
+    <a [routerLink]="link()" class="block" [attr.aria-label]="name()">
+      <app-poster [path]="ep.poster_path" width="w342" />
+      @if (code(); as code) {
+        <span class="grid-code" aria-hidden="true">{{ code }}</span>
+      }
+    </a>
+    <span class="overlay absolute top-0 right-0"><ng-container [ngTemplateOutlet]="menuButton" /></span>
+    <span class="on-image absolute right-0 bottom-0"><ng-container [ngTemplateOutlet]="checkButton" /></span>
+  </div>
+}
+
+<mat-menu #menu="matMenu">
+  @for (item of actions(); track item.id) {
+    <button mat-menu-item type="button" (click)="action.emit(item.id)">
+      <mat-icon [svgIcon]="item.icon" aria-hidden="true" />
+      <span>{{ item.label }}</span>
+    </button>
+  }
+</mat-menu>

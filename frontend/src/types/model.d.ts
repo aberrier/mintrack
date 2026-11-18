@@ -38,6 +38,8 @@ declare namespace Model {
     type MediaType = 'movie' | 'tv';
     /** Shows: watch_later, watching, up_to_date, finished, stopped. Movies: watch_later, watched. */
     type TrackingStatus = 'watch_later' | 'watching' | 'up_to_date' | 'finished' | 'stopped' | 'watched';
+    /** What a user sets on a show; the other statuses follow from the episodes watched. */
+    type ShowTrackingChoice = 'watching' | 'watch_later' | 'stopped';
 
     interface SearchResult {
       tmdb_id: number;
@@ -83,6 +85,11 @@ declare namespace Model {
       poster_path: string | null;
       release_date: string | null;
       tmdb_status: string | null;
+      backdrop_path: string | null;
+      /** The show's first network, or null. */
+      network: string | null;
+      /** The movie's length in minutes, or null. */
+      runtime: number | null;
     }
 
     interface Show extends Media {
@@ -94,6 +101,10 @@ declare namespace Model {
       tracking: MovieTracking | null;
     }
 
+    type LibrarySort = 'last_watched' | 'last_added' | 'title';
+    /** A tracking status, or not_started: in the library with nothing watched. */
+    type LibraryStatus = TrackingStatus | 'not_started';
+
     interface LibraryItem {
       tmdb_id: number;
       media_type: MediaType;
@@ -102,6 +113,8 @@ declare namespace Model {
       status: TrackingStatus;
       watched_count: number;
       aired_count: number;
+      added_at: string;
+      last_watched_at: string | null;
     }
 
     interface UpcomingEpisode {
@@ -130,8 +143,39 @@ declare namespace Model {
       days: UpcomingDay[];
     }
 
-    interface UpNextResponse {
-      episodes: UpcomingEpisode[];
+    /** next: watched within 30 days; dormant: not watched since, or never. */
+    type WatchListSection = 'next' | 'dormant';
+
+    interface WatchListEpisode extends UpcomingEpisode {
+      /** Aired regular episodes after this one that the user has not watched. */
+      remaining: number;
+      last_watched_at: string | null;
+      section: WatchListSection;
+    }
+
+    interface WatchListResponse {
+      /** Most recently watched first. */
+      episodes: WatchListEpisode[];
+    }
+
+    interface HistoryEntry {
+      /** The episode's id, or the movie's: with watched_at, the cursor of the next page. */
+      id: string;
+      media_type: MediaType;
+      tmdb_id: number;
+      title: string;
+      poster_path: string | null;
+      /** null for movies. */
+      season_number: number | null;
+      episode_number: number | null;
+      episode_title: string | null;
+      watched_at: string;
+    }
+
+    interface HistoryResponse {
+      /** Newest first. */
+      entries: HistoryEntry[];
+      has_more: boolean;
     }
 
     interface PushKeyResponse {

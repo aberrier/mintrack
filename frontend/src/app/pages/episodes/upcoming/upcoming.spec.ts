@@ -63,9 +63,11 @@ describe('Upcoming', () => {
       new Date(airstamp),
     );
     expect(text(days[0].querySelector('[data-testid="episode-detail"]')!)).toBe(localTime);
-    expect(text(days[1].querySelector('[data-testid="episode"] p')!)).toBe('S02E10 · Pilot');
+    expect(text(days[1].querySelector('[data-testid="episode-code"]')!)).toBe('S02 | E10');
+    expect(text(days[1].querySelector('[data-testid="episode-title"]')!)).toBe('Pilot');
     expect(days[1].querySelector('[data-testid="episode-detail"]')).toBeNull();
-    expect(text(days[2].querySelector('[data-testid="episode"] p')!)).toBe('S01E01');
+    expect(text(days[2].querySelector('[data-testid="episode-code"]')!)).toBe('S01 | E01');
+    expect(days[2].querySelector('[data-testid="episode-title"]')).toBeNull();
     expect(page.querySelector('[data-testid="new"]')).toBeNull();
   });
 

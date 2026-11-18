@@ -15,7 +15,7 @@ import {
 import { expect, test } from '../dsl/fixtures';
 
 test.describe('Accounts', () => {
-  test('an invited user sets a password and lands on the home page', async ({ admin, otherPage }) => {
+  test('an invited user sets a password and lands on the watch list', async ({ admin, otherPage }) => {
     // Given an admin invited a user
     const invitation = await invite(admin.page);
 

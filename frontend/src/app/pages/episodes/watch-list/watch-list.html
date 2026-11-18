@@ -1,0 +1,77 @@
+<app-episodes-tabs active="watchList" />
+<h1 class="sr-only">{{ translate('app.episodes.watchList') }}</h1>
+
+<section #history class="flex flex-col pt-2" aria-labelledby="history-title" data-testid="history">
+  <h2 id="history-title" class="sr-only">{{ translate('app.watchList.history.title') }}</h2>
+  @switch (store.historyState()) {
+    @case ('idle') {
+      <button type="button" class="history-button flex items-center gap-2" (click)="loadHistory()">
+        <mat-icon svgIcon="history" aria-hidden="true" />
+        {{ translate(store.history().length ? 'app.watchList.history.earlier' : 'app.watchList.history.show') }}
+      </button>
+    }
+    @case ('loading') {
+      <p role="status" class="history-note">{{ translate('app.watchList.history.loading') }}</p>
+    }
+    @case ('failed') {
+      <p role="alert" class="history-note">{{ translate('app.watchList.history.failed') }}</p>
+      <button type="button" class="history-button" (click)="loadHistory()">
+        {{ translate('app.watchList.history.retry') }}
+      </button>
+    }
+    @case ('done') {
+      <p class="history-note" data-testid="history-start">{{ translate('app.watchList.history.start') }}</p>
+    }
+  }
+  <div [class]="$mode() === 'grid' ? 'card-grid' : 'card-list'">
+    @for (item of $history(); track item.entry.id) {
+      <app-episode-card
+        class="enter"
+        [episode]="item.card"
+        [variant]="$mode()"
+        [watched]="true"
+        [detail]="item.detail"
+        data-testid="history-entry" />
+    }
+  </div>
+</section>
+
+@if ($failed() && !store.episodes()) {
+  <p role="alert" class="px-4 py-4 text-error [font:var(--mat-sys-body-large)]">
+    {{ translate('app.watchList.error') }}
+  </p>
+} @else if (!store.episodes()) {
+  <app-skeleton class="pt-6" [kind]="$mode() === 'grid' ? 'grid' : 'cards'" [count]="$mode() === 'grid' ? 6 : 4" />
+}
+
+<div class="watch-list" data-testid="watch-list">
+  @for (section of $sections(); track section.id) {
+    <section [attr.aria-labelledby]="'watch-list-' + section.id" [attr.data-testid]="'section-' + section.id">
+      <h2 [id]="'watch-list-' + section.id" class="section-label">{{ section.label }}</h2>
+      <div [class]="$mode() === 'grid' ? 'card-grid' : 'card-list'">
+        @for (episode of section.episodes; track episode.tmdb_id) {
+          <app-episode-card
+            class="enter"
+            [style.--i]="$index"
+            [episode]="episode"
+            [variant]="$mode()"
+            [checkable]="true"
+            [watched]="store.checking().has(episode.episode_id)"
+            [actions]="actions"
+            (check)="store.check(episode)"
+            (action)="onAction(episode, $event)" />
+        }
+      </div>
+    </section>
+  } @empty {
+    @if (store.episodes()) {
+      <app-empty-state
+        icon="check_circle"
+        [title]="translate('app.watchList.emptyTitle')"
+        [actionLink]="routes.discover()"
+        [actionLabel]="translate('app.common.findShows')">
+        <span data-testid="empty">{{ translate('app.watchList.empty') }}</span>
+      </app-empty-state>
+    }
+  }
+</div>

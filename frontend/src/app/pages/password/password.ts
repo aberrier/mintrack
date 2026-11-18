@@ -50,7 +50,7 @@ export default class Password {
     try {
       const user = await firstValueFrom(this.api.auth.useLink(this.token, this.form.getRawValue().password, timezone));
       this.store.set(user);
-      await this.router.navigateByUrl(appRoutes.home());
+      await this.router.navigateByUrl(appRoutes.watchList());
     } catch (error: unknown) {
       const invalid = error instanceof HttpErrorResponse && error.status === 400;
       this.$error.set(invalid ? 'app.password.invalid' : 'app.errors.unknown');

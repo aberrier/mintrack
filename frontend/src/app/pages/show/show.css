@@ -1,35 +1,19 @@
-.episode {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-height: 64px;
-  border-bottom: 1px solid var(--mat-sys-outline-variant);
+/* The show's tracking status as a soft tonal label. */
+.status {
+  padding: 4px 12px;
+  border-radius: 8px;
+  background: var(--mat-sys-secondary-container);
+  color: var(--mat-sys-on-secondary-container);
+  font: var(--mat-sys-label-large);
 }
 
-.check {
+.facts {
   display: grid;
-  flex: none;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  border: 0;
-  border-radius: 50%;
-  background: none;
-  color: var(--mat-sys-outline);
-  cursor: pointer;
-  transition: color 120ms ease-out;
+  grid-template-columns: auto 1fr;
+  gap: 8px 24px;
+  font: var(--mat-sys-body-medium);
 }
 
-.check.watched {
-  color: var(--mat-sys-primary);
-}
-
-.check:disabled {
-  opacity: 0.38;
-  cursor: default;
-}
-
-.check:focus-visible {
-  outline: 2px solid var(--mat-sys-primary);
+.facts dt {
+  color: var(--mat-sys-on-surface-variant);
 }
