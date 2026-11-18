@@ -1,4 +1,5 @@
 import ipaddress
+import pathlib
 import typing
 
 import pydantic
@@ -14,6 +15,9 @@ class ServerConfig(pydantic.BaseModel):
     port: int = pydantic.Field(default=8000, ge=1, le=65535)
     # Peers allowed to set X-Forwarded-For / X-Forwarded-Proto: comma-separated addresses or CIDR ranges.
     forwarded_allow_ips: typing.Annotated[list[IPNetwork], NoDecode] = pydantic.Field(default_factory=list)
+    # The built Angular app (frontend/dist/frontend/browser). Unset: the server answers the API only, as in
+    # development where `ng serve` serves the app.
+    frontend_dist: pathlib.Path | None = None
 
     @pydantic.field_validator("forwarded_allow_ips", mode="before")
     @classmethod
@@ -27,6 +31,20 @@ class ServerConfig(pydantic.BaseModel):
         except ValueError:
             msg = "must be IP addresses or CIDR ranges separated by commas"
             raise ValueError(msg) from None
+
+    @pydantic.field_validator("frontend_dist")
+    @classmethod
+    def _built_app(cls, value: pathlib.Path | None) -> pathlib.Path | None:
+        if value is None:
+            return None
+        if not (value / "index.html").is_file():
+            msg = "must be the folder of the built app, holding index.html"
+            raise ValueError(msg)
+        if (value / "pyproject.toml").exists():
+            # A path mistake that would publish the source tree (and maybe a .env) over HTTP.
+            msg = "points at the repository, not at the built app"
+            raise ValueError(msg)
+        return value.resolve()
 
     @property
     def trusted_proxies(self) -> list[str]:

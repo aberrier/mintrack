@@ -192,3 +192,16 @@ def test_rejected_values_are_never_echoed(env: pytest.MonkeyPatch) -> None:
         Config(_env_file=None)
     assert "not-a-port" not in str(error.value)
     assert "internal-proxy-name" not in str(error.value)
+
+
+def test_frontend_dist_must_be_the_built_app(env: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
+    env.setenv("MINTRACK__SERVER__FRONTEND_DIST", str(tmp_path))
+    assert problems(env) == ["MINTRACK__SERVER__FRONTEND_DIST: must be the folder of the built app, holding index.html"]
+
+    # A path mistake pointing at the repository would publish the sources (and a .env) over HTTP.
+    (tmp_path / "index.html").write_text("<!doctype html>", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[project]", encoding="utf-8")
+    assert problems(env) == ["MINTRACK__SERVER__FRONTEND_DIST: points at the repository, not at the built app"]
+
+    (tmp_path / "pyproject.toml").unlink()
+    assert load_config(env_file=None).server.frontend_dist == tmp_path.resolve()
