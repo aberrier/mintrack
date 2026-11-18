@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: mintrack
+          POSTGRES_PASSWORD: "p@ss/w:rd%#?ci"
+          POSTGRES_DB: mintrack
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U mintrack"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      MINTRACK__DATABASE__HOST: localhost
+      MINTRACK__DATABASE__USER: mintrack
+      MINTRACK__DATABASE__PASSWORD: "p@ss/w:rd%#?ci"
+      MINTRACK__DATABASE__NAME: mintrack
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          version: "0.13.9"
+          enable-cache: false
+      - name: Install
+        run: uv sync --locked
+      - name: Lint and type check
+        run: uvx --from rust-just just check
+      - name: Test
+        run: uvx --from rust-just just test
+      - name: Audit workflows
+        run: uvx zizmor==1.32.0 --offline --config .github/zizmor.yml .github/workflows
