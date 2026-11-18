@@ -21,7 +21,9 @@ _SHARED_PROCESSORS: list[structlog.typing.Processor] = [
 
 def _renderers(log_format: LogFormat) -> list[structlog.typing.Processor]:
     if log_format is LogFormat.CONSOLE:
-        return [structlog.dev.ConsoleRenderer()]
+        # Rich shows frame locals by default, which would print tokens and passwords held by a failing frame.
+        formatter = structlog.dev.RichTracebackFormatter(show_locals=False)
+        return [structlog.dev.ConsoleRenderer(exception_formatter=formatter)]
     return [structlog.processors.format_exc_info, structlog.processors.JSONRenderer()]
 
 
