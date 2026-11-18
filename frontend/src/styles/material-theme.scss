@@ -1,0 +1,24 @@
+@use '@angular/material' as mat;
+
+// Material 3 tokens (--mat-sys-*) for light and dark, picked by the system through light-dark().
+html {
+  color-scheme: light dark;
+
+  @include mat.theme(
+    (
+      color: (
+        primary: mat.$azure-palette,
+        tertiary: mat.$blue-palette,
+        theme-type: color-scheme,
+      ),
+      // System font stack: Roboto on Android, San Francisco on iOS.
+      typography: 'system-ui, -apple-system, Roboto, "Segoe UI", sans-serif',
+    )
+  );
+}
+
+body {
+  background: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-large);
+}

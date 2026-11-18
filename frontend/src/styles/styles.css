@@ -1,0 +1,27 @@
+/* Tailwind's preflight lives in a cascade layer, so Material's unlayered styles win over it. */
+@import 'tailwindcss';
+
+/* Material's tokens as Tailwind colours: bg-surface, text-on-surface... */
+@theme inline {
+  --color-on-surface-variant: var(--mat-sys-on-surface-variant);
+}
+
+/* Native app feel on phones: no pull-to-refresh or rubber band on the page, no grey flash on tap, no double-tap zoom
+   delay. Scroll areas set overscroll-behavior: contain themselves. */
+html,
+body {
+  height: 100%;
+  overscroll-behavior: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

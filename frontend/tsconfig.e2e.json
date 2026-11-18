@@ -1,0 +1,8 @@
+/* Type-checks the Playwright specs and config, which Playwright itself only strips. */
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}
