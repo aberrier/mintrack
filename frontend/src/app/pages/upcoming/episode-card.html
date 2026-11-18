@@ -1,0 +1,17 @@
+<a [routerLink]="link()" class="flex items-center gap-3 px-4 py-2" data-testid="episode">
+  <span class="w-12 flex-none"><app-poster [path]="episode().poster_path" /></span>
+  <div class="min-w-0 flex-1">
+    <h3 class="truncate [font:var(--mat-sys-title-medium)]">{{ episode().show_title }}</h3>
+    <p class="truncate text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+      {{ code() }}
+      @if (episode().title; as title) {
+        · {{ title }}
+      }
+    </p>
+  </div>
+  @if (detail(); as text) {
+    <span class="flex-none text-on-surface-variant [font:var(--mat-sys-label-large)]" data-testid="episode-detail">
+      {{ text }}
+    </span>
+  }
+</a>

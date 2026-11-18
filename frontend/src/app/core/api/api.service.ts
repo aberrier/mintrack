@@ -57,4 +57,9 @@ export class ApiService {
     library: (mediaType: Model.Http.MediaType) =>
       this.http.get<Model.Http.LibraryItem[]>('/api/library', { params: { media_type: mediaType } }),
   };
+
+  readonly upcoming = {
+    get: () => this.http.get<Model.Http.UpcomingResponse>('/api/upcoming'),
+    upNext: () => this.http.get<Model.Http.UpNextResponse>('/api/up-next'),
+  };
 }

@@ -103,5 +103,35 @@ declare namespace Model {
       watched_count: number;
       aired_count: number;
     }
+
+    interface UpcomingEpisode {
+      episode_id: string;
+      tmdb_id: number;
+      show_title: string;
+      poster_path: string | null;
+      season_number: number;
+      episode_number: number;
+      title: string;
+      /** Exact UTC air time, or null when only the day is known. */
+      airstamp: string | null;
+      /** The air day (YYYY-MM-DD) in the user's time zone, or null when unknown. */
+      day: string | null;
+    }
+
+    interface UpcomingDay {
+      day: string;
+      episodes: UpcomingEpisode[];
+    }
+
+    interface UpcomingResponse {
+      /** The user's IANA time zone, in which days are grouped and times shown. */
+      time_zone: string;
+      new: UpcomingEpisode[];
+      days: UpcomingDay[];
+    }
+
+    interface UpNextResponse {
+      episodes: UpcomingEpisode[];
+    }
   }
 }

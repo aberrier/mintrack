@@ -1,0 +1,15 @@
+<section class="flex flex-col pb-4">
+  <h1 class="px-4 pt-6 pb-2 [font:var(--mat-sys-headline-small)]">{{ translate('app.upNext.title') }}</h1>
+
+  @if (upNext.error()) {
+    <p role="alert" class="px-4 text-error [font:var(--mat-sys-body-large)]">{{ translate('app.upNext.error') }}</p>
+  } @else if (episodes(); as episodes) {
+    @for (episode of episodes; track episode.episode_id) {
+      <app-episode-card [episode]="episode" />
+    } @empty {
+      <p class="px-4 text-on-surface-variant [font:var(--mat-sys-body-large)]" data-testid="empty">
+        {{ translate('app.upNext.empty') }}
+      </p>
+    }
+  }
+</section>
