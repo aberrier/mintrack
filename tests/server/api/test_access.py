@@ -52,3 +52,8 @@ async def test_admin_routes_are_refused_to_other_users(
 async def test_the_schema_lists_only_api_routes(api_app: fastapi.FastAPI) -> None:
     """So the checks above see every route that a session opens; /mcp authenticates with API tokens instead."""
     assert all(path.startswith("/api/") for path in api_app.openapi()["paths"])
+
+
+def test_every_schema_has_its_own_name(api_app: fastapi.FastAPI) -> None:
+    # FastAPI prefixes the module path to two models of the same name, which generated clients turn into odd names.
+    assert [name for name in api_app.openapi()["components"]["schemas"] if "__" in name] == []

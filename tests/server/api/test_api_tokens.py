@@ -87,3 +87,9 @@ async def test_revoke_answers_404_for_another_users_token(
 
     assert response.status_code == fastapi.status.HTTP_404_NOT_FOUND
     assert await db_session.get(ApiToken, token.id) is not None
+
+
+async def test_a_name_with_a_nul_character_is_refused(signed_in: httpx.AsyncClient) -> None:
+    response = await signed_in.post("/api/api-tokens", json={"name": "bad\u0000name"})
+
+    assert response.status_code == 422

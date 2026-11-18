@@ -44,13 +44,8 @@ export async function profile(
   viewer: Viewer,
 ): Promise<{ name: string; shows: string[]; movies: string[]; settings: string[] }> {
   await viewer.app.openTab('Profile');
-  const row = async (type: 'Shows' | 'Movies') => {
-    const items = viewer.app.profileRow(type).getByTestId('profile-item');
-    await expect(items.first()).toBeVisible();
-    return (await items.getByRole('link').allInnerTexts()).map((title) => title.trim());
-  };
-  const shows = await row('Shows');
-  const movies = await row('Movies');
+  const shows = await viewer.app.profileTitles('Shows');
+  const movies = await viewer.app.profileTitles('Movies');
   return {
     name: (await viewer.app.heading().innerText()).trim(),
     shows,
@@ -77,6 +72,13 @@ export async function titles(viewer: Viewer): Promise<string[]> {
 /** Which Sort by and Progress choices are selected. */
 export async function choices(viewer: Viewer): Promise<string[]> {
   return viewer.app.selectedLibraryChoices();
+}
+
+/** Open a title of the collection, then go back to it. */
+export async function openAndGoBack(viewer: Viewer, title: string): Promise<void> {
+  await viewer.app.openLibraryItem(title);
+  await viewer.app.back();
+  await expect(viewer.app.libraryItem(title)).toBeVisible();
 }
 
 export async function reload(viewer: Viewer): Promise<void> {

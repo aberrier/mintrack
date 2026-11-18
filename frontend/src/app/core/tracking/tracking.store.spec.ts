@@ -2,7 +2,8 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
-import { TrackingStore } from './tracking.store';
+import { Confetti } from '../../shared/confetti';
+import { EpisodeRef, TrackingStore } from './tracking.store';
 
 const SHOW: Model.Http.Show = {
   tmdb_id: 7,
@@ -16,6 +17,26 @@ const SHOW: Model.Http.Show = {
   runtime: null,
   seasons: [],
   tracking: null,
+  next_episode: null,
+};
+
+const ref = (id: string): EpisodeRef => ({ id, season_number: 1 });
+
+const aired = (id: string, number: number): Model.Http.Episode => ({
+  id,
+  season_number: 1,
+  episode_number: number,
+  title: '',
+  air_date: '2020-01-01',
+  airstamp: null,
+});
+
+const SEASON: Model.Http.Season = {
+  season_number: 1,
+  title: 'Season 1',
+  episode_count: 3,
+  watched_count: 1,
+  aired_count: 3,
 };
 
 describe('TrackingStore', () => {
@@ -26,7 +47,12 @@ describe('TrackingStore', () => {
   beforeEach(() => {
     snackBar = { open: vi.fn() };
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: MatSnackBar, useValue: snackBar }],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: Confetti, useValue: { launch: vi.fn() } },
+      ],
     });
     store = TestBed.inject(TrackingStore);
     http = TestBed.inject(HttpTestingController);
@@ -36,8 +62,25 @@ describe('TrackingStore', () => {
 
   const tracking = () => store.shows()[7].tracking;
 
+  /** A show of three aired episodes, the first watched, its season loaded or not. */
+  function loadShow8(withEpisodes: boolean): void {
+    store.loadShow(8).subscribe();
+    http.expectOne('/api/shows/8').flush({
+      ...SHOW,
+      tmdb_id: 8,
+      seasons: [SEASON],
+      tracking: { status: 'watching', watched: { a: 'x' } },
+      next_episode: { ...aired('b', 2), remaining: 1 },
+    });
+    if (!withEpisodes) return;
+    store.loadSeason(8, 1).subscribe();
+    http
+      .expectOne('/api/shows/8/seasons/1')
+      .flush({ season_number: 1, episodes: [aired('a', 1), aired('b', 2), aired('c', 3)] });
+  }
+
   it('shows a tap before the server answers, then the server answer', () => {
-    store.setWatched(7, ['a'], true);
+    store.setWatched(7, [ref('a')], true);
 
     expect(tracking()?.status).toBe('watching');
     expect(Object.keys(tracking()!.watched)).toEqual(['a']);
@@ -47,8 +90,8 @@ describe('TrackingStore', () => {
   });
 
   it('sends writes to the same show one after the other', () => {
-    store.setWatched(7, ['a'], true);
-    store.setWatched(7, ['b'], true);
+    store.setWatched(7, [ref('a')], true);
+    store.setWatched(7, [ref('b')], true);
 
     const first = http.expectOne('/api/shows/7/watched');
     http.expectNone('/api/shows/7/watched');
@@ -60,8 +103,12 @@ describe('TrackingStore', () => {
     expect(tracking()?.watched).toEqual({ a: 'x', b: 'y' });
   });
 
-  it('shows a resumed show as watching at once', () => {
-    store.setWatched(7, ['a'], true);
+  it('shows a resumed show as watching at once, and one with nothing watched as not started', () => {
+    void store.trackShow(7, 'watching');
+    expect(tracking()?.status).toBe('not_started');
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'not_started', watched: {} });
+
+    store.setWatched(7, [ref('a')], true);
     http.expectOne('/api/shows/7/watched').flush({ status: 'watching', watched: { a: 'x' } });
     void store.trackShow(7, 'stopped');
     http.expectOne('/api/shows/7/tracking').flush({ status: 'stopped', watched: { a: 'x' } });
@@ -76,14 +123,14 @@ describe('TrackingStore', () => {
     expect(tracking()?.status).toBe('watch_later');
     http.expectOne('/api/shows/7/tracking').flush({ status: 'watch_later', watched: {} });
 
-    void store.setWatched(7, ['a'], true);
+    void store.setWatched(7, [ref('a')], true);
 
     expect(tracking()?.status).toBe('watching');
   });
 
   it('tells each caller whether the server accepted its write', async () => {
-    const accepted = store.setWatched(7, ['a'], true);
-    const refused = store.setWatched(7, ['b'], true);
+    const accepted = store.setWatched(7, [ref('a')], true);
+    const refused = store.setWatched(7, [ref('b')], true);
 
     http.expectOne('/api/shows/7/watched').flush({ status: 'watching', watched: { a: 'x' } });
     http.expectOne('/api/shows/7/watched').flush('down', { status: 500, statusText: 'Server Error' });
@@ -93,10 +140,10 @@ describe('TrackingStore', () => {
   });
 
   it('goes back to the last confirmed value and says so when the last queued write fails', () => {
-    store.setWatched(7, ['a'], true);
+    store.setWatched(7, [ref('a')], true);
     http.expectOne('/api/shows/7/watched').flush({ status: 'watching', watched: { a: 'x' } });
-    store.setWatched(7, ['b'], true);
-    store.setWatched(7, ['c'], true);
+    store.setWatched(7, [ref('b')], true);
+    store.setWatched(7, [ref('c')], true);
 
     http.expectOne('/api/shows/7/watched').flush('down', { status: 500, statusText: 'Server Error' });
     expect(snackBar.open).not.toHaveBeenCalled();
@@ -109,7 +156,7 @@ describe('TrackingStore', () => {
   it('shows a long season marked at once, and sends it in requests of at most 2000 ids, one after the other', async () => {
     const ids = Array.from({ length: 4500 }, (_, index) => `e${index}`);
 
-    const saved = store.setWatched(7, ids, true);
+    const saved = store.setWatched(7, ids.map(ref), true);
 
     expect(Object.keys(tracking()!.watched)).toHaveLength(4500);
     const sizes: number[] = [];
@@ -121,6 +168,68 @@ describe('TrackingStore', () => {
     }
     expect(sizes).toEqual([2000, 2000, 500]);
     expect(await saved).toBe(true);
+  });
+
+  it('guesses the next episode and the season count at once, and puts both back on an error', () => {
+    loadShow8(true);
+
+    store.setWatched(8, [aired('b', 2)], true);
+    expect(store.shows()[8].next_episode).toMatchObject({ id: 'c', remaining: 0 });
+    expect(store.shows()[8].seasons[0].watched_count).toBe(2);
+
+    http.expectOne('/api/shows/8/watched').flush('down', { status: 500, statusText: 'Server Error' });
+    expect(store.shows()[8].next_episode).toMatchObject({ id: 'b', remaining: 1 });
+    expect(store.shows()[8].seasons[0].watched_count).toBe(1);
+    expect(store.shows()[8].tracking?.watched).toEqual({ a: 'x' });
+  });
+
+  it('loads the show again once its writes are saved, for the server’s next episode', async () => {
+    loadShow8(false);
+
+    const saved = store.setWatched(8, [aired('b', 2)], true);
+    http.expectOne('/api/shows/8/watched').flush({ status: 'watching', watched: { a: 'x', b: 'y' } });
+    await saved;
+
+    http.expectOne('/api/shows/8').flush({
+      ...SHOW,
+      tmdb_id: 8,
+      seasons: [{ ...SEASON, watched_count: 2 }],
+      tracking: { status: 'watching', watched: { a: 'x', b: 'y' } },
+      next_episode: { ...aired('c', 3), remaining: 0 },
+    });
+    expect(store.shows()[8].next_episode?.id).toBe('c');
+  });
+
+  it('marks a season not loaded at once by its count, then loads it and sends its aired episodes left', () => {
+    loadShow8(false);
+
+    void store.markSeason(8, 1, true);
+
+    expect(store.shows()[8].seasons[0].watched_count).toBe(3);
+    http
+      .expectOne('/api/shows/8/seasons/1')
+      .flush({ season_number: 1, episodes: [aired('a', 1), aired('b', 2), aired('c', 3)] });
+    const request = http.expectOne('/api/shows/8/watched');
+    expect(request.request.body).toEqual({ episode_ids: ['b', 'c'], watched: true });
+  });
+
+  it('asks the server for a season only once', () => {
+    loadShow8(true);
+
+    store.loadSeason(8, 1).subscribe();
+
+    http.expectNone('/api/shows/8/seasons/1');
+    expect(store.episodes()[8][1]).toHaveLength(3);
+  });
+
+  it('marks a title added from the results at once, and unmarks it when the server refuses', async () => {
+    const added = store.addFromResults('movie', 9);
+
+    expect(store.added()['movie:9']).toBe(true);
+    http.expectOne('/api/movies/9').flush('down', { status: 500, statusText: 'Server Error' });
+
+    expect(await added).toBe(false);
+    expect(store.added()['movie:9']).toBe(false);
   });
 
   it('keeps each library view apart, by type, sort and progress', () => {

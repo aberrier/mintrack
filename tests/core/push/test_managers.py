@@ -83,9 +83,27 @@ async def test_an_episode_is_notified_once_when_it_airs(
     assert message["notification"]["title"] == "Severance"
     assert message["notification"]["body"] == "S02E01 · Episode 1"
     assert message["notification"]["data"]["onActionClick"]["default"] == {
-        "operation": "focusLastFocusedOrOpen",
-        "url": "/",
+        "operation": "navigateLastFocusedOrOpen",
+        "url": f"/shows/{show.tmdb_id}",
     }
+
+
+async def test_a_user_whose_time_zone_postgresql_does_not_know_leaves_the_others_notified(
+    world: World, push_service: FakePushService, device: Device
+) -> None:
+    # Stored before time zones were checked against PostgreSQL.
+    stranded = await world.user("Not/A_Zone")
+    stranded_device = Device("https://fcm.googleapis.com/fcm/send/stranded")
+    await world.episode(await world.show(stranded, title="Andor"), 1, air_date=NOW.date())
+    await world.subscribe(stranded, stranded_device)
+    user = await world.user()
+    await world.episode(await world.show(user), 1, airstamp=NOW - dt.timedelta(minutes=5))
+    await world.subscribe(user, device)
+
+    assert await world.run_job() == 1
+
+    assert len(push_service.received_by(device)) == 1
+    assert push_service.received_by(stranded_device) == []
 
 
 async def test_only_episodes_that_aired_within_the_window_are_notified(
@@ -148,6 +166,7 @@ async def test_without_an_air_time_the_episode_airs_at_nine_in_the_user_time_zon
     [
         (TrackingStatus.WATCHING, 1),
         (TrackingStatus.UP_TO_DATE, 1),
+        (TrackingStatus.NOT_STARTED, 1),
         (TrackingStatus.WATCH_LATER, 0),
         (TrackingStatus.FINISHED, 0),
         (TrackingStatus.STOPPED, 0),

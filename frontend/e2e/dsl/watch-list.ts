@@ -1,4 +1,4 @@
-import { expect, Page } from '@playwright/test';
+import { expect } from '@playwright/test';
 import { Viewer } from './fixtures';
 import { uniqueTitle } from './tracking';
 
@@ -19,6 +19,13 @@ export async function showWatchedUpTo(viewer: Viewer, base: string, season: numb
   return title;
 }
 
+/** An ended show the viewer watched to its end, under a title no other test uses. */
+export async function finishedShow(viewer: Viewer, base: string): Promise<string> {
+  const title = uniqueTitle(base, { ended: true });
+  await viewer.api.markWatched(title, [...AIRED, [2, 3]]);
+  return title;
+}
+
 /** Shows entirely watched, for a history of `count` × 5 episodes. */
 export async function watchedShows(viewer: Viewer, count: number): Promise<void> {
   for (let index = 0; index < count; index++) await viewer.api.markWatched(uniqueTitle(`History ${index}`), AIRED);
@@ -34,50 +41,129 @@ export async function nextEpisodeOf(viewer: Viewer, show: string): Promise<strin
   return viewer.app.cardEpisode(show);
 }
 
-export async function sectionOf(viewer: Viewer, show: string): Promise<string | null> {
-  for (const name of ['Watch next', 'Haven’t watched for a while']) {
-    if ((await viewer.app.watchListSection(name).getByTestId('episode').filter({ hasText: show }).count()) > 0)
-      return name;
-  }
-  return null;
+/** The title of the section holding the show's card, such as "Watch next". */
+export async function sectionOf(viewer: Viewer, show: string): Promise<string> {
+  return viewer.app.cardSection(show);
+}
+
+/** The watch list as the server would send it, for a state the scenario does not build. */
+export async function serveWatchList(viewer: Viewer, response: object): Promise<void> {
+  await viewer.app.serveWatchList(response);
+}
+
+/** Take a show out through its card's menu with the keyboard only; returns whether its focus ring showed. */
+export async function takeOutByKeyboard(viewer: Viewer, show: string, action: 'Watch later' | 'Stop watching') {
+  return viewer.app.cardActionByKeyboard(show, action);
+}
+
+/** The snackbar's message once a show is taken out, then its Undo used. */
+export async function undo(viewer: Viewer): Promise<string> {
+  const message = (await viewer.app.snackBar().innerText()).trim();
+  await viewer.app.snackBarAction('Undo');
+  return message;
+}
+
+/** Whether the Profile tab's Watch later row holds the show. */
+export async function onWatchLaterShelf(viewer: Viewer, show: string): Promise<boolean> {
+  await viewer.app.openTab('Profile');
+  return expect(viewer.app.profileItem('Watch later', show))
+    .toBeVisible()
+    .then(
+      () => true,
+      () => false,
+    );
 }
 
 export async function check(viewer: Viewer, show: string): Promise<void> {
   await viewer.app.checkCard(show);
 }
 
+/** The watch list's section headings with their counts, such as "Watch next 2", in order. */
+export async function sectionHeaders(viewer: Viewer): Promise<string[]> {
+  await expect(viewer.app.sectionToggles().first()).toBeVisible();
+  // The text as written, not as styled (the headings show in capitals): the title, then the count.
+  return viewer.app.sectionToggles().evaluateAll((toggles) =>
+    toggles.map((toggle) =>
+      [...toggle.children]
+        .map((part) => part.textContent?.trim())
+        .filter(Boolean)
+        .join(' '),
+    ),
+  );
+}
+
+/** Fold or unfold a section of the watch list from its heading. */
+export async function toggleSection(viewer: Viewer, name: string): Promise<void> {
+  await viewer.app.sectionToggle(name).click();
+}
+
+export async function isSectionOpen(viewer: Viewer, name: string): Promise<boolean> {
+  return (await viewer.app.sectionToggle(name).getAttribute('aria-expanded')) === 'true';
+}
+
 export async function isOnWatchList(viewer: Viewer, show: string): Promise<boolean> {
   return (await viewer.app.card(show).count()) > 0;
 }
 
-/** Take a show out of the watch list the way a phone user does (swipe) or a desktop user does (menu). */
-export async function takeOut(
-  viewer: Viewer,
-  page: Page,
-  show: string,
-  action: 'Watch later' | 'Stop watching',
-): Promise<void> {
-  const touch = await page.evaluate(() => navigator.maxTouchPoints > 0);
-  await viewer.app.cardAction(show, action, touch ? 'swipe' : 'menu');
+/** Load the watch list again, as when coming back later. */
+export async function reopenWatchList(viewer: Viewer): Promise<void> {
+  await viewer.app.reloadWatchList();
 }
 
-/** Switch list and grid; returns whether the watch list is now a grid. */
-export async function toggleView(viewer: Viewer): Promise<boolean> {
-  await viewer.app.viewToggle().click();
-  await viewer.app.rendered();
+/** A server that holds the next writes of watched episodes until the returned function is called. */
+export async function slowServer(viewer: Viewer): Promise<() => void> {
+  let answer!: () => void;
+  await viewer.app.holdRequests('/watched', new Promise<void>((resolve) => (answer = resolve)));
+  return answer;
+}
+
+/** A server that refuses to save watched episodes. */
+export async function refusingServer(viewer: Viewer): Promise<void> {
+  await viewer.app.failRequests('/watched');
+}
+
+/** Whether the first card of the watch list is on screen. */
+export async function firstCardOnScreen(viewer: Viewer): Promise<boolean> {
+  return expect(viewer.app.cards().first())
+    .toBeInViewport()
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+/** Take a show out of the watch list the way a phone user does (swipe) or a desktop user does (menu). */
+export async function takeOut(viewer: Viewer, show: string, action: 'Watch later' | 'Stop watching'): Promise<void> {
+  await viewer.app.cardAction(show, action, (await viewer.app.isTouch()) ? 'swipe' : 'menu');
+}
+
+/** Switch list and grid. */
+export async function toggleView(viewer: Viewer): Promise<void> {
+  await viewer.app.toggleView();
+}
+
+/** Whether the watch list shows a grid of posters rather than rows. */
+export async function isGrid(viewer: Viewer): Promise<boolean> {
   return viewer.app.isGrid();
 }
 
 /** Scroll up past the top of the watch list, and wait for the history page it loads. */
-export async function scrollUpIntoHistory(viewer: Viewer, page: Page): Promise<number> {
+export async function scrollUpIntoHistory(viewer: Viewer): Promise<number> {
   const before = await viewer.app.historyEntries().count();
-  const touch = await page.evaluate(() => navigator.maxTouchPoints > 0);
-  if (before === 0) await viewer.app.scrollUpFromTop(touch);
+  if (before === 0) await viewer.app.scrollUpFromTop(await viewer.app.isTouch());
   else await viewer.app.scrollToTop();
   await expect(viewer.app.historyEntries()).not.toHaveCount(before);
   return viewer.app.historyEntries().count();
 }
 
+/** Whether the history's entries of the show carry the Finished badge on their poster. */
+export async function finishedInHistory(viewer: Viewer, show: string): Promise<boolean> {
+  const entry = viewer.app.historyEntry(show).first();
+  // The badge renders with the entry's poster.
+  await expect(entry).toBeVisible();
+  return (await viewer.app.finishedBadge(entry).count()) > 0;
+}
+
 export async function historyReachedItsStart(viewer: Viewer): Promise<boolean> {
-  return viewer.app.history().getByTestId('history-start').isVisible();
+  return viewer.app.historyStart().isVisible();
 }

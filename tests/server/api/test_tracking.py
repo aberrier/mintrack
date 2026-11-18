@@ -9,7 +9,12 @@ from tests.fakes.tmdb import media_id
 async def show_page(signed_in: httpx.AsyncClient, title: str) -> tuple[int, dict]:
     await signed_in.get("/api/search", params={"query": title})
     tmdb_id = media_id("tv", title)
-    return tmdb_id, (await signed_in.get(f"/api/shows/{tmdb_id}")).json()
+    show = (await signed_in.get(f"/api/shows/{tmdb_id}")).json()
+    # The page loads a season's episodes when it opens.
+    for season in show["seasons"]:
+        path = f"/api/shows/{tmdb_id}/seasons/{season['season_number']}"
+        season["episodes"] = (await signed_in.get(path)).json()["episodes"]
+    return tmdb_id, show
 
 
 def episode_id(show: dict, season: int, episode: int) -> str:
@@ -27,7 +32,25 @@ async def test_marking_an_episode_adds_the_show_and_answers_its_tracking(signed_
     assert marked.status_code == fastapi.status.HTTP_200_OK
     assert marked.json()["status"] == "watching"
     assert list(marked.json()["watched"]) == [first]
-    assert unmarked.json() == {"status": "watch_later", "watched": {}}
+    assert unmarked.json() == {"status": "not_started", "watched": {}}
+
+
+async def test_a_show_tracking_request_with_an_unknown_field_is_refused(signed_in: httpx.AsyncClient) -> None:
+    tmdb_id, _ = await show_page(signed_in, "Strict Show")
+
+    response = await signed_in.put(f"/api/shows/{tmdb_id}/tracking", json={"stopped": True})
+
+    assert response.status_code == fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_a_show_followed_with_nothing_watched_is_not_started(signed_in: httpx.AsyncClient) -> None:
+    tmdb_id, _ = await show_page(signed_in, "Fresh Show")
+
+    followed = await signed_in.put(f"/api/shows/{tmdb_id}/tracking", json={"status": "watching"})
+    aside = await signed_in.put(f"/api/shows/{tmdb_id}/tracking", json={"status": "watch_later"})
+
+    assert followed.json()["status"] == "not_started"
+    assert aside.json()["status"] == "watch_later"
 
 
 async def test_episodes_of_another_show_are_rejected(signed_in: httpx.AsyncClient) -> None:
@@ -91,3 +114,30 @@ async def test_following_a_show_still_airing_defers_one_air_times_refresh(
         )
     )
     assert list(deferred) == [airing]
+
+
+async def test_an_episode_airing_later_cannot_be_marked(signed_in: httpx.AsyncClient) -> None:
+    # The fake show S02E03 airs in a week.
+    tmdb_id, show = await show_page(signed_in, "Early Bird")
+
+    response = await signed_in.post(
+        f"/api/shows/{tmdb_id}/watched", json={"episode_ids": [episode_id(show, 2, 3)], "watched": True}
+    )
+
+    assert response.status_code == fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert response.json()["detail"] == "Some episodes have not aired yet"
+
+
+async def test_the_show_page_names_the_next_episode_to_watch(signed_in: httpx.AsyncClient) -> None:
+    tmdb_id, show = await show_page(signed_in, "Next Up")
+    before = show["next_episode"]
+    await signed_in.post(
+        f"/api/shows/{tmdb_id}/watched", json={"episode_ids": [episode_id(show, 1, 1)], "watched": True}
+    )
+
+    after = (await signed_in.get(f"/api/shows/{tmdb_id}")).json()["next_episode"]
+
+    # S01E02, then S01E03, S02E01 and S02E02 aired; S02E03 airs in a week.
+    assert before is None
+    second = next(e for e in show["seasons"][0]["episodes"] if e["episode_number"] == 2)
+    assert after == {**second, "remaining": 3}

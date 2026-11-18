@@ -1,4 +1,4 @@
-import { expect } from '@playwright/test';
+import { expect, Locator } from '@playwright/test';
 import { Viewer } from './fixtures';
 
 /** A title no other test uses: the fake TMDB serves one show and one movie per searched title. */
@@ -52,7 +52,7 @@ export async function tapSeason(viewer: Viewer, season: number): Promise<string>
 
 /** The show page's Watch next card, such as "S01|E02+3". */
 export async function watchNext(viewer: Viewer): Promise<string> {
-  return (await viewer.app.watchNext().getByTestId('episode-code').innerText()).replace(/\s+/g, '');
+  return viewer.app.watchNextEpisode();
 }
 
 export async function checkWatchNext(viewer: Viewer): Promise<void> {
@@ -72,14 +72,9 @@ export async function answerUnmark(viewer: Viewer, answer: 'Unmark' | 'Cancel'):
   await viewer.app.answerDialog(answer);
 }
 
-/** Whether confetti fell over the screen, within a second of the last tap. */
-export async function confettiShown(viewer: Viewer): Promise<boolean> {
-  return expect(viewer.app.confetti())
-    .toBeAttached({ timeout: 1000 })
-    .then(
-      () => true,
-      () => false,
-    );
+/** Whether confetti fell over the screen once the server saved what `tap` marked. */
+export async function confettiAfter(viewer: Viewer, tap: () => Promise<unknown>): Promise<boolean> {
+  return viewer.app.confettiAfter(tap);
 }
 
 /** Whether the title's poster carries the Finished badge, in the Profile tab's row. */
@@ -87,10 +82,10 @@ export async function finishedBadgeOnProfile(viewer: Viewer, title: string): Pro
   await viewer.app.openTab('Profile');
   const item = viewer.app.profileItem('Shows', title);
   await expect(item).toBeVisible();
-  return viewer.app.finishedBadge(item).isVisible();
+  return shown(viewer.app.finishedBadge(item));
 }
 
-/** The header's facts under the title, such as "1h 58m · May 1, 2020". */
+/** The header's facts under the title, such as "1h 58m · 1 May 2020". */
 export async function headerFacts(viewer: Viewer): Promise<string> {
   return (await viewer.app.mediaFacts().innerText()).trim();
 }
@@ -102,6 +97,12 @@ export async function tapMovieCheck(viewer: Viewer): Promise<string> {
   await check.click();
   await expect(check).toHaveAttribute('aria-pressed', pressed === 'true' ? 'false' : 'true');
   return (await viewer.app.movieWatched().innerText()).trim();
+}
+
+/** Today as the app writes a date of this year in the user's time zone, such as "18 Nov". */
+export async function today(viewer: Viewer): Promise<string> {
+  const timeZone = await viewer.api.timeZone();
+  return new Intl.DateTimeFormat('en-GB', { month: 'short', day: 'numeric', timeZone }).format(new Date());
 }
 
 export async function movieStatus(viewer: Viewer): Promise<string> {
@@ -117,9 +118,8 @@ export async function markMovieWatched(viewer: Viewer): Promise<string> {
 /** A title's library card without its title: progress and status, such as "0/5 · Watch later". */
 export async function libraryEntry(viewer: Viewer, type: 'Shows' | 'Movies', title: string): Promise<string> {
   await viewer.app.openLibrary(type);
-  const item = viewer.app.libraryItem(title);
-  await expect(item).toBeVisible();
-  return (await item.getByTestId('tile-detail').innerText()).replace(/\s+/g, ' ').trim();
+  await expect(viewer.app.libraryItem(title)).toBeVisible();
+  return viewer.app.libraryItemDetail(title);
 }
 
 /** Add shows to the library through the API, for a given state the scenario does not exercise. */
@@ -142,15 +142,27 @@ export async function openAndComeBack(
   const item = viewer.app.libraryItem(title);
   await item.scrollIntoViewIfNeeded();
   const scrolled = await viewer.app.content().evaluate((element) => element.scrollTop);
-  await item.click();
-  await expect(viewer.app.status('show-status')).toBeVisible();
+  await viewer.app.openLibraryItem(title);
   await viewer.app.back();
   // Other tests share the library and may add cards above it meanwhile: the card is checked on screen, not the pixel.
-  const cardOnScreen = await expect(item)
+  return { scrolled, cardOnScreen: await inViewport(item) };
+}
+
+/** Whether the element shows, waiting for it as an expectation does. */
+export function shown(locator: Locator): Promise<boolean> {
+  return expect(locator)
+    .toBeVisible()
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+function inViewport(locator: Locator): Promise<boolean> {
+  return expect(locator)
     .toBeInViewport()
     .then(
       () => true,
       () => false,
     );
-  return { scrolled, cardOnScreen };
 }

@@ -1,21 +1,41 @@
 import { expect, test } from '../dsl/fixtures';
+import {
+  dayOf,
+  emptyMessage,
+  episodeOn,
+  fitsTheWidth,
+  months,
+  openUpcoming,
+  posterShown,
+  serveUpcoming,
+  toggleView,
+} from '../dsl/upcoming';
+import { openWatchList, showWatchedUpTo } from '../dsl/watch-list';
 
-test('someone following no show is told what Watch list and Upcoming will show', async ({
-  viewer,
-  admin: { page },
-}) => {
-  await viewer.app.openWatchList();
-  await expect(page.getByTestId('empty')).toContainText('Nothing to watch next');
+test('someone following no show is told what Watch list and Upcoming will show', async ({ viewer }) => {
+  await openWatchList(viewer);
+  expect(await emptyMessage(viewer)).toContain('Nothing to watch next');
 
-  await viewer.app.openUpcoming();
-  await expect(viewer.app.episodesTabs().getByRole('link', { name: 'Upcoming' })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
-  await expect(page.getByTestId('empty')).toContainText('Nothing airs in the next four weeks');
+  expect(await openUpcoming(viewer)).toBe(true);
+  expect(await emptyMessage(viewer)).toContain('Nothing airs in the next four weeks');
 });
 
-test('upcoming episodes fit the screen, grouped by day, in a list or a grid', async ({ viewer, admin: { page } }) => {
+test('a followed show’s next episode is listed under its air day, named by its date beyond this week', async ({
+  viewer,
+}) => {
+  // Given a show being watched whose last episode airs in a week
+  const show = await showWatchedUpTo(viewer, 'Coming Soon', 1, 1);
+
+  // When they open Upcoming
+  await openUpcoming(viewer);
+
+  // Then the episode is under its day, which, a week away, is past Sunday: a date such as "26 November"
+  const day = await dayOf(viewer, show);
+  expect(day).toMatch(/^\d{1,2} [A-Z][a-z]+( \d{4})?$/);
+  expect((await episodeOn(viewer, day, show)).code).toBe('S02|E03');
+});
+
+test('upcoming episodes fit the screen, by day and month, in a list or a grid', async ({ viewer }) => {
   const episode = {
     tmdb_id: 1,
     poster_path: null,
@@ -25,26 +45,18 @@ test('upcoming episodes fit the screen, grouped by day, in a list or a grid', as
     airstamp: '2099-01-02T20:00:00Z',
     day: '2099-01-02',
   };
-  await page.route('/api/upcoming', (route) =>
-    route.fulfill({
-      json: {
-        time_zone: 'UTC',
-        new: [{ ...episode, episode_id: 'missed', show_title: 'Missed show', airstamp: null, day: '2098-12-30' }],
-        days: [{ day: '2099-01-02', episodes: [{ ...episode, episode_id: 'next', show_title: 'Next show' }] }],
-      },
-    }),
-  );
+  await serveUpcoming(viewer, {
+    time_zone: 'UTC',
+    days: [{ day: '2099-01-02', episodes: [{ ...episode, episode_id: 'next', show_title: 'Next show' }] }],
+  });
 
-  await viewer.app.openUpcoming();
+  await openUpcoming(viewer);
 
-  await expect(page.getByRole('region', { name: 'New episodes' })).toContainText('Missed show');
-  const day = page.getByRole('region', { name: 'Friday, January 2' });
-  await expect(day).toContainText('Next show');
-  await expect(day.getByTestId('episode-detail')).toHaveText(/8:00\s?PM/);
-  const viewport = page.viewportSize()!;
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  expect(await months(viewer)).toEqual(['January 2099']);
+  expect(await episodeOn(viewer, '2 January 2099', 'Next show')).toEqual({ code: 'S01|E02', time: '20:00' });
+  expect(await fitsTheWidth(viewer)).toBe(true);
 
-  await viewer.app.viewToggle().click();
-  await expect(day.getByRole('link', { name: 'Next show, S01 | E02, An episode title' })).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(viewport.width);
+  await toggleView(viewer);
+  expect(await posterShown(viewer, '2 January 2099', 'Next show, season 1 episode 2, An episode title')).toBe(true);
+  expect(await fitsTheWidth(viewer)).toBe(true);
 });

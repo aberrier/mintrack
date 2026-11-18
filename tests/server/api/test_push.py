@@ -1,4 +1,5 @@
 import collections.abc
+import datetime as dt
 
 import fastapi
 import httpx
@@ -8,9 +9,13 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.push.webpush import VapidKey, get_vapid_key
-from mintrack.db.models import PushSubscription
+from mintrack.db.models import ApiToken, PushSubscription
 from mintrack.server.api.push import get_push_client
 from tests.push_service import Device, FakePushService
+from tests.server.api.conftest import PASSWORD, CreateUser, log_in, xsrf
+from tests.server.conftest import make_client
+
+NOW = dt.datetime(2026, 11, 18, tzinfo=dt.UTC)
 
 
 @pytest_asyncio.fixture
@@ -111,6 +116,7 @@ async def test_a_push_service_failure_answers_502(
         ("endpoint", "https://169.254.169.254/latest/meta-data"),
         ("endpoint", "http://fcm.googleapis.com/fcm/send/x"),
         ("endpoint", "https://fcm.googleapis.com/" + "x" * 2048),
+        ("endpoint", "https://fcm.googleapis.com/send/\x00"),
         ("p256dh", "BAAA"),
         ("p256dh", "not base64 !"),
         ("auth", "c2hvcnQ"),
@@ -134,3 +140,27 @@ async def test_invalid_subscriptions_are_refused(
 
     assert response.status_code == fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT
     assert await endpoints(db_session) == []
+
+
+async def test_signing_out_removes_the_device_it_registered_and_api_tokens_stay(
+    push_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
+) -> None:
+    user = await create_user()
+    db_session.add(ApiToken(user_id=user.id, name="assistant", token_hash=b"hash", created_at=NOW))
+    phones = [Device(f"https://fcm.googleapis.com/fcm/send/phone-{number}") for number in range(3)]
+    async with make_client(push_app) as first, make_client(push_app) as second, make_client(push_app) as third:
+        for client, phone in zip((first, second, third), phones, strict=True):
+            await log_in(client)
+            client.headers.update(xsrf(client))
+            await client.post("/api/push/subscriptions", json=phone.as_json())
+
+        await first.post("/api/auth/logout")
+        assert sorted(await endpoints(db_session)) == [phones[1].endpoint, phones[2].endpoint]
+
+        new_password = {"current_password": PASSWORD, "new_password": "another long passphrase"}
+        assert (await second.post("/api/auth/password", json=new_password)).status_code == 204
+        assert await endpoints(db_session) == [phones[1].endpoint]
+
+        await second.post("/api/auth/logout-all")
+        assert await endpoints(db_session) == []
+    assert await db_session.scalar(sa.select(sa.func.count()).select_from(ApiToken)) == 1

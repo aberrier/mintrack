@@ -1,6 +1,6 @@
-import { expect, Locator, Page } from '@playwright/test';
+import { expect, Locator, Page, Request } from '@playwright/test';
 
-export type Tab = 'Episodes' | 'Discover' | 'Profile';
+export type Tab = 'Episodes' | 'Discover' | 'Profile' | 'Admin';
 
 /** MinTrack's pages as a user reaches them: bottom navigation, links, buttons. Locators live only here. */
 export class AppDriver {
@@ -14,6 +14,42 @@ export class AppDriver {
   async open(): Promise<void> {
     await this.page.goto('/');
     await expect(this.navigation()).toBeVisible();
+  }
+
+  /** Open an address typed in or bookmarked. */
+  async openAddress(address: string): Promise<void> {
+    await this.page.goto(address);
+  }
+
+  /** The address the app shows: path and query. */
+  address(): string {
+    const url = new URL(this.page.url());
+    return url.pathname + url.search;
+  }
+
+  /** The browser tab's title. */
+  title(): Promise<string> {
+    return this.page.title();
+  }
+
+  /** True when nothing overflows the viewport horizontally. */
+  fitsWidth(): Promise<boolean> {
+    return this.page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+  }
+
+  /** Whether the device has a touch screen, as a phone does. */
+  isTouch(): Promise<boolean> {
+    return this.page.evaluate(() => navigator.maxTouchPoints > 0);
+  }
+
+  /** The bottom navigation's tabs, in order. */
+  tabLinks(): Locator {
+    return this.navigation().getByRole('link');
+  }
+
+  /** The tab of the open screen. */
+  activeTab(): Locator {
+    return this.navigation().locator('[aria-current="page"]');
   }
 
   async openTab(tab: Tab): Promise<void> {
@@ -64,7 +100,7 @@ export class AppDriver {
     const region = this.page.getByRole('region', { name: 'Settings' });
     await expect(region).toBeVisible();
     return region
-      .locator('h2, h3, mat-label, button, a[href]')
+      .locator('h2, h3, h4, h5, mat-label, button, a[href]')
       .evaluateAll((elements) => elements.map((element) => element.textContent!.trim()).filter(Boolean));
   }
 
@@ -81,6 +117,53 @@ export class AppDriver {
         await route.continue();
       },
     );
+  }
+
+  /** Every API request fails, as when the server cannot be reached. */
+  async cutOffApi(): Promise<void> {
+    await this.page.route('/api/**', (route) => route.abort());
+  }
+
+  /** The message the app shows instead of a page when the server cannot be reached. */
+  unreachable(): Locator {
+    return this.page.getByTestId('unreachable');
+  }
+
+  /** The upcoming episodes the server sends, replaced by `response`. */
+  async serveUpcoming(response: object): Promise<void> {
+    await this.page.route('/api/upcoming', (route) => route.fulfill({ json: response }));
+  }
+
+  /** The watch list the server sends, replaced by `response`. */
+  async serveWatchList(response: object): Promise<void> {
+    await this.page.route('/api/watch-list', (route) => route.fulfill({ json: response }));
+  }
+
+  /** Answer the server's error for requests whose URL ends with `suffix`. */
+  async failRequests(suffix: string): Promise<void> {
+    await this.page.route(
+      (url) => url.pathname.endsWith(suffix),
+      (route) => route.fulfill({ status: 500, body: 'down' }),
+    );
+  }
+
+  /** Upcoming's days, each a region named after its day: Today, Tomorrow, a weekday or a date. */
+  upcomingDays(): Locator {
+    return this.page.getByTestId('day');
+  }
+
+  upcomingDay(name: string): Locator {
+    return this.page.getByRole('region', { name, exact: true });
+  }
+
+  /** Upcoming's month names, where a new month starts. */
+  upcomingMonths(): Locator {
+    return this.page.getByTestId('month');
+  }
+
+  /** The Admin tab's users. */
+  adminUsers(): Locator {
+    return this.page.getByTestId('users').getByRole('listitem');
   }
 
   /** The next response to a request whose URL ends with `suffix`. */
@@ -112,6 +195,33 @@ export class AppDriver {
   /** Discover without a query: a row of trending titles, such as "Trending shows". */
   trendingRow(name: string): Locator {
     return this.page.getByRole('region', { name });
+  }
+
+  trendingItems(name: string): Locator {
+    return this.trendingRow(name).getByTestId('trending-item');
+  }
+
+  /** The titles of a trending row, once it has loaded. */
+  async trendingTitles(name: string): Promise<string[]> {
+    await expect(this.trendingItems(name).first()).toBeVisible();
+    return trimmed(await this.trendingItems(name).getByRole('link').allInnerTexts());
+  }
+
+  /** The pages a trending row's posters link to, once it has loaded. */
+  async trendingLinks(name: string): Promise<string[]> {
+    await expect(this.trendingItems(name).first()).toBeVisible();
+    return this.trendingItems(name)
+      .getByRole('link')
+      .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
+  }
+
+  /** Empty Discover's search field, as with the field's clear button or the keyboard. */
+  async clearSearch(): Promise<void> {
+    await this.page.getByRole('searchbox', { name: 'Search shows and movies' }).fill('');
+  }
+
+  async searchResultTitles(): Promise<string[]> {
+    return trimmed(await this.searchResults().getByRole('link').allInnerTexts());
   }
 
   /** The `+` of a poster, then a check once the title is in the library. */
@@ -154,8 +264,18 @@ export class AppDriver {
     await this.page.getByRole('navigation', { name: 'Show sections' }).getByRole('link', { name }).click();
   }
 
+  /** The show page's text, where the About tab lists facts such as the network. */
+  showText(text: string): Locator {
+    return this.content().getByText(text).last();
+  }
+
   watchNext(): Locator {
     return this.page.getByTestId('watch-next');
+  }
+
+  /** The episode the show page's Watch next card offers, such as "S01|E02+3". */
+  async watchNextEpisode(): Promise<string> {
+    return compact(await this.watchNext().getByTestId('episode-code').innerText());
   }
 
   async checkWatchNext(): Promise<void> {
@@ -189,6 +309,35 @@ export class AppDriver {
     return this.page.getByTestId('confetti');
   }
 
+  /**
+   * Run `write`, which marks episodes, until the server answered it; returns whether confetti fell. The confetti
+   * library loads on the first throw: without a script asked for and without a canvas once the answer is handled,
+   * none is coming.
+   */
+  async confettiAfter(write: () => Promise<unknown>): Promise<boolean> {
+    const scripts: string[] = [];
+    const onRequest = (request: Request) => {
+      if (request.resourceType() === 'script') scripts.push(request.url());
+    };
+    this.page.on('request', onRequest);
+    try {
+      const answered = this.nextResponse('/watched');
+      await write();
+      await answered;
+      await this.rendered();
+      await this.rendered();
+    } finally {
+      this.page.off('request', onRequest);
+    }
+    if (scripts.length === 0 && (await this.confetti().count()) === 0) return false;
+    return expect(this.confetti())
+      .toBeAttached()
+      .then(
+        () => true,
+        () => false,
+      );
+  }
+
   episode(season: number, episode: number): Locator {
     return this.page.getByRole('button', { name: `Season ${season}, episode ${episode}`, exact: true });
   }
@@ -220,13 +369,30 @@ export class AppDriver {
     return this.page.locator('mat-snack-bar-container');
   }
 
-  /** The Profile tab's row of shows or movies. */
-  profileRow(type: 'Shows' | 'Movies'): Locator {
-    return this.page.getByRole('region', { name: type });
+  /** The snackbar's action, such as Undo. */
+  async snackBarAction(name: string): Promise<void> {
+    await this.snackBar().getByRole('button', { name }).click();
   }
 
-  profileItem(type: 'Shows' | 'Movies', title: string): Locator {
+  /** The Profile tab's row of shows, movies or shows to watch later. */
+  profileRow(type: 'Shows' | 'Movies' | 'Watch later'): Locator {
+    return this.page.getByRole('region', { name: type, exact: true });
+  }
+
+  profileItem(type: 'Shows' | 'Movies' | 'Watch later', title: string): Locator {
     return this.profileRow(type).getByTestId('profile-item').filter({ hasText: title });
+  }
+
+  /** The titles of a row of the Profile tab, once it has loaded. */
+  async profileTitles(type: 'Shows' | 'Movies' | 'Watch later'): Promise<string[]> {
+    const items = this.profileRow(type).getByTestId('profile-item');
+    await expect(items.first()).toBeVisible();
+    return trimmed(await items.getByRole('link').allInnerTexts());
+  }
+
+  /** The Profile tab's Log out button. */
+  logOutButton(): Locator {
+    return this.page.getByRole('button', { name: 'Log out', exact: true });
   }
 
   /** All the user's shows or movies, from See all on the Profile tab. */
@@ -256,10 +422,29 @@ export class AppDriver {
     return this.page.getByTestId('library-item').filter({ hasText: title });
   }
 
+  /** A library card's line under its title: progress and status, such as "0/5 · Watch later". */
+  async libraryItemDetail(title: string): Promise<string> {
+    return (await this.libraryItem(title).getByTestId('tile-detail').innerText()).replace(/\s+/g, ' ').trim();
+  }
+
+  async openLibraryItem(title: string): Promise<void> {
+    await this.libraryItem(title).getByRole('link').click();
+    await expect(this.status('show-status')).toBeVisible();
+  }
+
   /** Open the app on the watch list, as when coming back to it. */
   async openWatchList(): Promise<void> {
     await this.page.goto('/episodes/watch-list');
     await expect(this.watchList()).toBeVisible();
+  }
+
+  /** Load the watch list again, as when coming back later, and wait until the server's list is on screen. */
+  async reloadWatchList(): Promise<void> {
+    const loaded = this.nextResponse('/api/watch-list');
+    await this.page.reload();
+    await loaded;
+    await expect(this.watchList()).toBeVisible();
+    await this.rendered();
   }
 
   async openUpcoming(): Promise<void> {
@@ -271,6 +456,24 @@ export class AppDriver {
     return this.page.getByRole('navigation', { name: 'Episodes' });
   }
 
+  episodesTab(name: 'Watch list' | 'Upcoming'): Locator {
+    return this.episodesTabs().getByRole('link', { name });
+  }
+
+  /** What a list says when it has nothing to show. */
+  emptyState(): Locator {
+    return this.page.getByTestId('empty');
+  }
+
+  /** An upcoming episode's line under its title: its air time. */
+  upcomingEpisodeDetail(day: Locator): Locator {
+    return day.getByTestId('episode-detail');
+  }
+
+  upcomingEpisode(day: Locator, name: string): Locator {
+    return day.getByRole('link', { name });
+  }
+
   watchList(): Locator {
     return this.page.getByTestId('watch-list');
   }
@@ -278,6 +481,20 @@ export class AppDriver {
   /** A section of the watch list by its title, such as "Watch next". */
   watchListSection(name: string): Locator {
     return this.watchList().getByRole('region', { name });
+  }
+
+  /** The watch list's cards, top first. */
+  cards(): Locator {
+    return this.watchList().getByTestId('episode');
+  }
+
+  /** The title of the watch list section holding the show's card, such as "Watch next". */
+  async cardSection(show: string): Promise<string> {
+    await expect(this.card(show)).toBeVisible();
+    return this.card(show).evaluate((card) => {
+      const labelledBy = card.closest('section')?.getAttribute('aria-labelledby');
+      return (labelledBy && document.getElementById(labelledBy)?.textContent?.trim()) || '';
+    });
   }
 
   /** The watch list's card of a show. */
@@ -289,13 +506,49 @@ export class AppDriver {
 
   /** The episode a list card shows, such as "S01 | E02+3". */
   async cardEpisode(show: string): Promise<string> {
-    return (await this.card(show).getByTestId('episode-code').innerText()).replace(/\s+/g, '');
+    return compact(await this.card(show).getByTestId('episode-code').innerText());
+  }
+
+  /** The check of a show's card. */
+  cardCheck(show: string): Locator {
+    return this.card(show).getByRole('button', { name: new RegExp(`^Mark .* of ${show} watched$`) });
   }
 
   async checkCard(show: string): Promise<void> {
-    await this.card(show)
-      .getByRole('button', { name: new RegExp(`^Mark .* of ${show} watched$`) })
-      .click();
+    await this.cardCheck(show).click();
+  }
+
+  /** The watch list's section headings, each a button folding its section. */
+  sectionToggles(): Locator {
+    return this.watchList().locator('h2 > button[aria-expanded]');
+  }
+
+  sectionToggle(name: string): Locator {
+    return this.sectionToggles().filter({ hasText: name });
+  }
+
+  /**
+   * Reach a card's menu with the keyboard only (Tab from its link), open it with Enter, move to the action with the
+   * arrow keys and pick it with Enter. Returns whether a focus ring showed around the menu button while focused.
+   */
+  async cardActionByKeyboard(show: string, action: string): Promise<boolean> {
+    await this.card(show).getByRole('link').first().focus();
+    await this.page.keyboard.press('Tab');
+    const menuButton = this.card(show).getByRole('button', { name: `More for ${show}` });
+    await expect(menuButton).toBeFocused();
+    const ring = await menuButton.evaluate((button) => {
+      const indicator = button.querySelector('.mat-focus-indicator') ?? button;
+      const style = getComputedStyle(indicator, '::before');
+      return style.display !== 'none' && style.content !== 'none' && parseFloat(style.borderTopWidth) > 0;
+    });
+    await this.page.keyboard.press('Enter');
+    const item = this.page.getByRole('menuitem', { name: action });
+    await expect(this.page.getByRole('menuitem').first()).toBeFocused();
+    for (let step = 0; step < 5 && !(await item.evaluate((element) => element === document.activeElement)); step++)
+      await this.page.keyboard.press('ArrowDown');
+    await expect(item).toBeFocused();
+    await this.page.keyboard.press('Enter');
+    return ring;
   }
 
   /** Swipe a card left with a finger, or open its menu with a mouse or keyboard, then pick an action. */
@@ -322,12 +575,27 @@ export class AppDriver {
     return (await this.watchList().locator('.card-grid').count()) > 0;
   }
 
+  /** Switch the screen's list between rows and a grid. */
+  async toggleView(): Promise<void> {
+    await this.viewToggle().click();
+    await this.rendered();
+  }
+
   history(): Locator {
     return this.page.getByTestId('history');
   }
 
+  /** The mark at the top of the history once its oldest entry has loaded. */
+  historyStart(): Locator {
+    return this.history().getByTestId('history-start');
+  }
+
   historyEntries(): Locator {
     return this.history().getByTestId('history-entry');
+  }
+
+  historyEntry(title: string): Locator {
+    return this.historyEntries().filter({ hasText: title });
   }
 
   /** At the top of the content, scroll further up: a wheel on desktop, a finger pulling down on a phone. */
@@ -361,20 +629,42 @@ export class AppDriver {
     await this.page.goBack();
   }
 
-  /** A real touch drag, through the browser's input layer, in steps like a finger. */
+  /**
+   * A real touch drag, through the browser's input layer, in steps 16 ms apart like a finger. The events carry their
+   * own times: the finger rests 150 ms before lifting, so the page does not fling on, and the test does not wait.
+   */
   private async touchDrag(from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
     const session = await this.page.context().newCDPSession(this.page);
     const point = (x: number, y: number) => [{ x: Math.round(x), y: Math.round(y) }];
-    await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(from.x, from.y) });
+    const start = Date.now() / 1000;
+    const touch = (type: 'touchStart' | 'touchMove' | 'touchEnd', at: number, x = to.x, y = to.y) =>
+      session.send('Input.dispatchTouchEvent', {
+        type,
+        touchPoints: type === 'touchEnd' ? [] : point(x, y),
+        timestamp: start + at,
+      });
     const steps = 8;
+    await touch('touchStart', 0, from.x, from.y);
     for (let step = 1; step <= steps; step++) {
-      const x = from.x + ((to.x - from.x) * step) / steps;
-      const y = from.y + ((to.y - from.y) * step) / steps;
-      await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: point(x, y) });
+      await touch(
+        'touchMove',
+        step * 0.016,
+        from.x + ((to.x - from.x) * step) / steps,
+        from.y + ((to.y - from.y) * step) / steps,
+      );
     }
-    // The finger rests before lifting, so the page does not fling on.
-    await this.page.waitForTimeout(150);
-    await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    const rest = steps * 0.016 + 0.15;
+    await touch('touchMove', rest);
+    await touch('touchEnd', rest + 0.01);
     await session.detach();
   }
+}
+
+function trimmed(texts: string[]): string[] {
+  return texts.map((text) => text.trim());
+}
+
+/** Text without its spaces, as an episode code reads: "S01|E02+3". */
+function compact(text: string): string {
+  return text.replace(/\s+/g, '');
 }

@@ -146,3 +146,20 @@ async def test_a_body_over_the_size_limit_is_refused_before_it_is_read(imports: 
     )
 
     assert response.status_code == 413
+
+
+async def test_an_import_body_may_pass_the_default_1_mb_limit_up_to_20_mb(imports: ImportsDriver) -> None:
+    over_the_default = await imports.upload("yamtrack", b"x" * (2 * 1024 * 1024))
+    over_the_import_limit = await imports.client.post(
+        "/api/imports",
+        content=b"x" * (imports_api.MAX_IMPORT_REQUEST_BYTES + 1),
+        headers={"content-type": "multipart/form-data; boundary=x"},
+    )
+
+    # Read whole and refused for what it is, not for its size.
+    assert over_the_default.status_code == 422
+    # Refused by the body limit before the endpoint reads it.
+    assert (over_the_import_limit.status_code, over_the_import_limit.json()) == (
+        413,
+        {"detail": "The request body is too large."},
+    )

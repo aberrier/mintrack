@@ -55,19 +55,30 @@ export class ApiDriver {
     const tmdbId = await this.findShow(title);
     const response = await this.loadShow(tmdbId);
     expect(response.ok(), `Loading show "${title}"`).toBe(true);
-    const show = (await response.json()) as {
-      seasons: { episodes: { id: string; season_number: number; episode_number: number }[] }[];
-    };
-    const ids = show.seasons
-      .flatMap((season) => season.episodes)
-      .filter((episode) => episodes.some(([s, e]) => episode.season_number === s && episode.episode_number === e))
-      .map((episode) => episode.id);
+    // The show lists its seasons; each season's episodes come from its own endpoint.
+    const ids: string[] = [];
+    for (const season of new Set(episodes.map(([s]) => s))) {
+      const loaded = await this.page.request.get(`/api/shows/${tmdbId}/seasons/${season}`);
+      expect(loaded.ok(), `Loading season ${season} of "${title}"`).toBe(true);
+      const { episodes: listed } = (await loaded.json()) as {
+        episodes: { id: string; season_number: number; episode_number: number }[];
+      };
+      for (const episode of listed)
+        if (episodes.some(([s, e]) => episode.season_number === s && episode.episode_number === e))
+          ids.push(episode.id);
+    }
     const marked = await this.page.request.post(`/api/shows/${tmdbId}/watched`, {
       data: { episode_ids: ids, watched: true },
       headers: await this.xsrf(),
     });
     expect(marked.ok(), `Marking episodes of "${title}"`).toBe(true);
     return tmdbId;
+  }
+
+  /** The signed-in user's time zone, in which the app shows days. */
+  async timeZone(): Promise<string> {
+    const response = await this.page.request.get('/api/auth/me');
+    return ((await response.json()) as { timezone: string }).timezone;
   }
 
   private async xsrf(): Promise<Record<string, string>> {

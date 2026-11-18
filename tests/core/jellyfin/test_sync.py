@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintrack.core.jellyfin import managers
 from mintrack.core.jellyfin.managers import JellyfinManager
 from mintrack.db.models import Episode, JellyfinAccount, JellyfinSyncStatus, Media, User, WatchedEpisode, WatchedMovie
+from mintrack.integrations.jellyfin import client
 from mintrack.integrations.tmdb.client import TMDBClient
 from tests.fakes.jellyfin import SERVER_URL, FakeJellyfin
 from tests.fakes.tmdb import FakeTMDB
@@ -190,3 +191,89 @@ async def test_a_failing_batch_keeps_the_batches_before_it(
     await db_session.refresh(account)
     assert account.synced_until == DAY_1 + dt.timedelta(days=4)
     assert account.last_sync_status == JellyfinSyncStatus.FAILED
+
+
+async def test_a_server_with_endless_history_fails_the_sync_instead_of_filling_the_memory(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(managers, "MAX_PLAYED_ITEMS", 1)
+    jellyfin.play_movie(bob, {"Tmdb": "603"}, DAY_1)
+    jellyfin.play_movie(bob, {"Tmdb": "604"}, DAY_2)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert account.last_sync_status is JellyfinSyncStatus.FAILED
+    assert await watched_ids(db_session, user) == set()
+
+
+@pytest.mark.parametrize("fails", [False, True])
+async def test_an_account_unlinked_during_its_sync_ends_it_quietly(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fails: bool,
+) -> None:
+    jellyfin.play_movie(bob, {"Tmdb": "603"}, DAY_1)
+    account = await link(db_session, user)
+    played_items = client.JellyfinClient.played_items
+
+    async def unlinked_meanwhile(self: client.JellyfinClient, user_id: str, start_index: int) -> client.ItemsPage:
+        await db_session.execute(sa.delete(JellyfinAccount).where(JellyfinAccount.id == account.id))
+        await db_session.commit()
+        if fails:
+            raise RuntimeError
+        return await played_items(self, user_id, start_index)
+
+    monkeypatch.setattr(client.JellyfinClient, "played_items", unlinked_meanwhile)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await db_session.scalar(sa.select(JellyfinAccount).where(JellyfinAccount.id == account.id)) is None
+
+
+async def test_a_play_dated_after_now_is_recorded_now(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
+) -> None:
+    jellyfin.play_movie(bob, {"Tmdb": "603"}, NOW + dt.timedelta(hours=2))
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == {(603, None, None, NOW)}
+
+
+async def test_a_full_sync_never_moves_the_cursor_back(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(managers, "BATCH_SIZE", 1)
+    jellyfin.play_movie(bob, {"Tmdb": "603"}, DAY_1)
+    jellyfin.play_movie(bob, {"Tmdb": "604"}, DAY_3)
+    account = await link(db_session, user)
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    async def find(*_: object) -> int | None:
+        raise RuntimeError
+
+    # The full pass commits its first batch, played on DAY_1, then fails on the next one.
+    jellyfin.play_movie(bob, {"Imdb": "tt1"}, DAY_2)
+    monkeypatch.setattr(managers, "tmdb_finder", lambda _tmdb: find)
+    with pytest.raises(RuntimeError):
+        await JellyfinManager(db_session).sync(account, tmdb, NOW, full=True)
+
+    await db_session.refresh(account)
+    assert account.synced_until == DAY_3

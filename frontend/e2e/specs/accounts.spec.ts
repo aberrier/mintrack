@@ -1,18 +1,23 @@
 import {
   acceptLink,
   account,
+  canDisable,
   disable,
   invite,
   isLinkRefused,
   isOnProfile,
   isSignedInAfterReload,
   logIn,
+  logOut,
   logOutEverywhere,
   newLink,
   openSignedOut,
+  profileShows,
+  tabNames,
   tryLogIn,
 } from '../dsl/accounts';
 import { expect, test } from '../dsl/fixtures';
+import { uniqueTitle } from '../dsl/tracking';
 
 test.describe('Accounts', () => {
   test('an invited user sets a password and lands on the watch list', async ({ admin, otherPage }) => {
@@ -40,6 +45,9 @@ test.describe('Accounts', () => {
     expect(await isSignedInAfterReload(otherPage)).toBe(false);
     expect(await tryLogIn(otherPage, account(invitation.username))).toBe(false);
     expect(await isLinkRefused(otherPage, reset)).toBe(true);
+
+    // And the admin is never offered to disable their own account, which would lock them out
+    expect(await canDisable(admin.page, admin.account.username)).toBe(false);
   });
 
   test('user logs out everywhere', async ({ admin, otherPage }) => {
@@ -52,6 +60,29 @@ test.describe('Accounts', () => {
 
     // Then the other device is signed out too
     expect(await isSignedInAfterReload(otherPage)).toBe(false);
+  });
+
+  test('the next person to log in on the same tab sees nothing of the previous one', async ({
+    admin,
+    viewer,
+    otherPage,
+  }) => {
+    // Given the admin follows a show and saw it on their profile, and invited someone who set a password
+    const show = uniqueTitle('Private Pier');
+    await viewer.api.markWatched(show, [[1, 1]]);
+    expect(await profileShows(admin.page)).toContain(show);
+    const invitation = await invite(admin.page);
+    await acceptLink(otherPage, invitation.link);
+
+    // When the admin logs out and the other person logs in on the same tab
+    await logOut(admin.page);
+    await logIn(admin.page, account(invitation.username));
+
+    // Then none of the admin's shows shows, nor the Admin tab
+    const shows = await profileShows(admin.page);
+    expect(shows).toContain('No shows yet');
+    expect(shows).not.toContain(show);
+    expect(await tabNames(admin.page)).toEqual(['Episodes', 'Discover', 'Profile']);
   });
 
   test('a signed-out visitor logs in and gets the page they asked for', async ({ admin, otherPage }) => {

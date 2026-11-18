@@ -3,14 +3,20 @@ import { expect, test } from '../dsl/fixtures';
 import {
   accessibilityViolations,
   activeTab,
-  addressAfterOpening,
+  currentAddress,
   fitsTheScreen,
+  openAddress,
   openEveryScreen,
+  openWhileServerUnreachable,
+  pageTitle,
   smallTargets,
   tabs,
 } from '../dsl/navigation';
 
-test('after login the app opens on Episodes › Watch list, with three tabs of 48px', async ({ admin, otherPage }) => {
+test('after login the app opens on Episodes › Watch list, with tabs of 48px, Admin for admins', async ({
+  admin,
+  otherPage,
+}) => {
   // Given a signed-out visitor opening the app
   await openSignedOut(otherPage);
 
@@ -21,20 +27,31 @@ test('after login the app opens on Episodes › Watch list, with three tabs of 4
   await expect(otherPage).toHaveURL(/\/episodes\/watch-list$/);
   expect(await activeTab(otherPage)).toBe('Episodes');
   const bar = await tabs(otherPage);
-  expect(bar.map((tab) => tab.name)).toEqual(['Episodes', 'Discover', 'Profile']);
+  expect(bar.map((tab) => tab.name)).toEqual(['Episodes', 'Discover', 'Profile', 'Admin']);
   for (const tab of bar) {
     expect(tab.height, tab.name).toBeGreaterThanOrEqual(48);
     expect(tab.bottom, tab.name).toBeLessThanOrEqual(otherPage.viewportSize()!.height);
   }
 });
 
-test('old addresses lead to their new place', async ({ admin: { page } }) => {
-  expect(await addressAfterOpening(page, '/')).toBe('/episodes/watch-list');
-  expect(await addressAfterOpening(page, '/up-next')).toBe('/episodes/watch-list');
-  expect(await addressAfterOpening(page, '/upcoming')).toBe('/episodes/upcoming');
-  expect(await addressAfterOpening(page, '/library?type=movie')).toBe('/profile/collection?type=movie');
-  expect(await addressAfterOpening(page, '/search')).toBe('/discover');
-  expect(await addressAfterOpening(page, '/no/such/page')).toBe('/episodes/watch-list');
+test('the root and unknown addresses lead to the watch list', async ({ admin: { page } }) => {
+  const leadsTo = async (address: string, place: string) => {
+    await openAddress(page, address);
+    await expect.poll(() => currentAddress(page), address).toBe(place);
+  };
+  await leadsTo('/', '/episodes/watch-list');
+  await leadsTo('/episodes', '/episodes/watch-list');
+  await leadsTo('/no/such/page', '/episodes/watch-list');
+  // Signed in, the login page leads home.
+  await leadsTo('/login', '/episodes/watch-list');
+});
+
+test.describe('when the server cannot be reached', () => {
+  test.use({ allowedConsoleErrors: [/ERR_FAILED/] });
+
+  test('the app says so instead of a blank screen', async ({ page }) => {
+    expect(await openWhileServerUnreachable(page)).toContain('MinTrack cannot be reached');
+  });
 });
 
 test('every screen fits a 360px phone and the desktop, with 48px targets and no accessibility violation', async ({
@@ -44,6 +61,7 @@ test('every screen fits a 360px phone and the desktop, with 48px targets and no 
 
   for (const screen of await openEveryScreen(page)) {
     await screen.open();
+    await expect.poll(() => pageTitle(page), screen.name).toBe(screen.title);
     expect(await fitsTheScreen(page), screen.name).toBe(true);
     expect(await smallTargets(page), screen.name).toEqual([]);
     expect(await accessibilityViolations(page), screen.name).toEqual([]);

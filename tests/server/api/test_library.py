@@ -23,13 +23,13 @@ def moment(value: str | None) -> dt.datetime | None:
 
 @pytest_asyncio.fixture
 async def alice(api: httpx.AsyncClient, create_user: CreateUser, db_session: AsyncSession) -> User:
-    """A signed-in user with four shows: two watched, one never started, one stopped before starting."""
+    """A signed-in user with four shows: two watched, one not started, one stopped before starting."""
     user = await create_user()
     await log_in(api)
     shows = {
         "Bravo": (TrackingStatus.WATCHING, days_ago(10), days_ago(1)),
         "alpha": (TrackingStatus.UP_TO_DATE, days_ago(5), days_ago(3)),
-        "Charlie": (TrackingStatus.WATCH_LATER, days_ago(2), None),
+        "Charlie": (TrackingStatus.NOT_STARTED, days_ago(2), None),
         "Delta": (TrackingStatus.STOPPED, days_ago(20), None),
     }
     for title, (status, added_at, watched_at) in shows.items():
@@ -53,7 +53,7 @@ async def titles(api: httpx.AsyncClient, **params: str) -> list[str]:
         ({}, ["Bravo", "alpha", "Charlie", "Delta"]),
         ({"sort": "last_added"}, ["Charlie", "alpha", "Bravo", "Delta"]),
         ({"sort": "title"}, ["alpha", "Bravo", "Charlie", "Delta"]),
-        ({"status": "not_started"}, ["Charlie", "Delta"]),
+        ({"status": "not_started"}, ["Charlie"]),
         ({"status": "stopped"}, ["Delta"]),
         ({"status": "watching", "sort": "title"}, ["Bravo"]),
     ],
@@ -95,10 +95,10 @@ async def test_library_items_tell_when_they_were_added_and_last_watched(
     await db_session.flush()
 
     movies = (await api.get("/api/library", params={"media_type": "movie"})).json()
-    not_started = await titles(api, media_type="movie", status="not_started")
+    later_titles = await titles(api, media_type="movie", status="watch_later")
 
     assert [(movie["title"], moment(movie["added_at"]), moment(movie["last_watched_at"])) for movie in movies] == [
         ("Heat", days_ago(9), days_ago(4)),
         ("Ronin", days_ago(1), None),
     ]
-    assert not_started == ["Ronin"]
+    assert later_titles == ["Ronin"]

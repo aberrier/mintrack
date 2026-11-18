@@ -1,5 +1,5 @@
-import type { Page } from '@playwright/test';
-import { Navigation } from '../drivers/pages';
+import { ImportsSection, Navigation } from '../drivers/pages';
+import { ScreenDriver } from '../drivers/screen.driver';
 import { expect, test } from '../dsl/fixtures';
 
 const YAMTRACK_EXPORT = [
@@ -20,24 +20,9 @@ const job = (changes: object) => ({
   ...changes,
 });
 
-/** The import API as the server answers it: no import yet, then the uploaded job's states, one per read. */
-async function serveImports(page: Page, states: object[]): Promise<{ uploads: string[] }> {
-  const uploads: string[] = [];
-  let latest: object | null = null;
-  await page.route('/api/imports/latest', (route) => {
-    if (latest !== null && states.length) latest = states.shift()!;
-    return route.fulfill({ json: latest });
-  });
-  await page.route('/api/imports', (route) => {
-    uploads.push(route.request().postData() ?? '');
-    latest = states.shift()!;
-    return route.fulfill({ status: 202, json: latest });
-  });
-  return { uploads };
-}
-
 test('someone imports a Yamtrack export from their profile and reads the report', async ({ admin: { page } }) => {
-  const api = await serveImports(page, [
+  const imports = new ImportsSection(page);
+  const api = await imports.serveImports([
     job({ status: 'pending' }),
     job({ status: 'running', total: 2, processed: 1 }),
     job({
@@ -54,34 +39,29 @@ test('someone imports a Yamtrack export from their profile and reads the report'
   ]);
   await new Navigation(page).openProfile();
 
-  await page.getByTestId('import-file').setInputFiles({
+  await imports.upload({
     name: 'yamtrack.csv',
     mimeType: 'text/csv',
     buffer: Buffer.from(YAMTRACK_EXPORT),
   });
 
-  await expect(page.getByTestId('import-status')).toContainText('Importing… 1 / 2');
-  const report = page.getByTestId('import-report');
-  await expect(report).toContainText('Added1');
-  await expect(page.getByText('Some Game: not a movie or show on TMDB')).toBeVisible();
+  await expect(imports.status()).toContainText('Importing… 1 / 2');
+  await expect(imports.report()).toContainText('Added1');
+  await expect(imports.line('Some Game: not a movie or show on TMDB')).toBeVisible();
   expect(api.uploads[0]).toContain('name="source"\r\n\r\nyamtrack');
   expect(api.uploads[0]).toContain('filename="yamtrack.csv"');
 });
 
 test('someone choosing TV Time sees which export files to upload', async ({ admin: { page } }) => {
-  await serveImports(page, []);
+  const imports = new ImportsSection(page);
+  await imports.serveImports([]);
   await new Navigation(page).openProfile();
 
-  await page.getByRole('radio', { name: 'TV Time' }).click();
+  await imports.chooseSource('TV Time');
 
-  await expect(page.getByText('tracking-prod-records-v2.csv')).toBeVisible();
-  for (const target of [
-    page.getByRole('radio', { name: 'TV Time' }),
-    page.getByRole('button', { name: 'Choose a file and import' }),
-  ]) {
+  await expect(imports.line('tracking-prod-records-v2.csv')).toBeVisible();
+  for (const target of [imports.source('TV Time'), imports.chooseFile()]) {
     expect((await target.boundingBox())!.height).toBeGreaterThanOrEqual(48);
   }
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-    page.viewportSize()!.width,
-  );
+  expect(await new ScreenDriver(page).fitsWidth()).toBe(true);
 });

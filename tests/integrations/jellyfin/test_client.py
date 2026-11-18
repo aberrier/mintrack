@@ -1,5 +1,6 @@
 import asyncio
 import ipaddress
+import socket
 import uuid
 
 import httpx
@@ -86,6 +87,48 @@ async def test_an_oversized_response_is_refused(respx_mock: respx.Router, monkey
             await client.played_items("u", 0)
 
 
+async def test_a_hostile_server_cannot_fill_the_memory(
+    respx_mock: respx.Router, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    item = {"Id": "i", "Type": "Movie", "UserData": {"LastPlayedDate": "2026-11-01T20:00:00Z"}}
+    noisy = {**item, "ProviderIds": {"Tmdb": "603", **{f"Junk{n}": "x" * 100 for n in range(100)}}}
+    respx_mock.get(f"{URL}/Items").mock(
+        side_effect=[
+            httpx.Response(200, json={"Items": [noisy], "TotalRecordCount": 1}),
+            httpx.Response(200, json={"Items": [item] * (jellyfin_client.PAGE_SIZE + 1), "TotalRecordCount": 9999}),
+            httpx.Response(200, json={"Items": [item], "TotalRecordCount": 1}),
+        ]
+    )
+
+    async with JellyfinClient(URL, device_id=DEVICE, token="t") as client:
+        [kept] = (await client.played_items("u", 0)).items
+        with pytest.raises(JellyfinError, match="more items"):
+            await client.played_items("u", 0)
+        monkeypatch.setattr(jellyfin_client, "MAX_TOTAL_BYTES", 10)
+        with pytest.raises(JellyfinError, match="too large"):
+            await client.played_items("u", 0)
+
+    # Only the provider ids matching uses are kept.
+    assert kept.provider_ids == {"Tmdb": "603"}
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        {"Id": "user\x00", "Name": "bob"},
+        {"Id": "user", "Name": "b" * 513},
+    ],
+)
+async def test_server_text_with_nul_or_too_long_is_a_bad_response(respx_mock: respx.Router, answer: dict) -> None:
+    respx_mock.post(f"{URL}/Users/AuthenticateByName").respond(
+        200, json={"AccessToken": "t", "ServerId": "s", "User": answer}
+    )
+
+    with pytest.raises(JellyfinError):
+        async with JellyfinClient(URL, device_id=DEVICE) as client:
+            await client.authenticate("bob", "secret")
+
+
 async def test_items_are_fetched_in_batches_of_ids(respx_mock: respx.Router) -> None:
     def answer(request: httpx.Request) -> httpx.Response:
         ids = request.url.params["Ids"].split(",")
@@ -114,3 +157,19 @@ async def test_a_server_answering_too_slowly_counts_as_unreachable(
     with pytest.raises(JellyfinUnreachableError):
         async with JellyfinClient(URL, device_id=DEVICE, token="t") as client:
             await client.played_items("u", 0)
+
+
+async def test_requests_go_to_the_checked_address_under_the_server_name(
+    respx_mock: respx.Router, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def resolve(host: str, port: int, **_: object) -> list[tuple]:
+        assert host == "jellyfin.test"
+        return [(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", ("127.0.0.1", port))]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", resolve)
+    route = respx_mock.post("http://127.0.0.1:8096/Sessions/Logout").respond(204)
+
+    async with JellyfinClient("http://jellyfin.test:8096", device_id=DEVICE, token="t0ken") as client:
+        await client.logout()
+
+    assert route.calls.last.request.headers["Host"] == "jellyfin.test:8096"

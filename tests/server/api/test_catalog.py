@@ -20,7 +20,7 @@ async def test_search_finds_only_the_chosen_type_with_the_users_status(signed_in
     movies = await signed_in.get("/api/search", params={"query": "Orbit Kitchen", "type": "movie"})
 
     assert shows.status_code == movies.status_code == fastapi.status.HTTP_200_OK
-    assert [(r["media_type"], r["year"], r["tracking_status"]) for r in shows.json()] == [("tv", 2024, "watch_later")]
+    assert [(r["media_type"], r["year"], r["tracking_status"]) for r in shows.json()] == [("tv", 2024, "not_started")]
     assert [(r["media_type"], r["year"], r["tracking_status"]) for r in movies.json()] == [("movie", None, None)]
 
 
@@ -64,7 +64,27 @@ async def test_a_show_page_lists_seasons_with_specials_last(signed_in: httpx.Asy
     show = response.json()
     assert response.status_code == fastapi.status.HTTP_200_OK
     assert (show["title"], show["tracking"]) == ("Night Shift", None)
-    assert [(s["season_number"], len(s["episodes"])) for s in show["seasons"]] == [(1, 3), (2, 3), (0, 1)]
+    # S02E03 airs in a week.
+    assert [
+        (s["season_number"], s["episode_count"], s["watched_count"], s["aired_count"]) for s in show["seasons"]
+    ] == [(1, 3, 0, 3), (2, 3, 0, 2), (0, 1, 0, 1)]
+    assert all("episodes" not in season for season in show["seasons"])
+
+
+async def test_a_season_lists_its_episodes_in_order(signed_in: httpx.AsyncClient) -> None:
+    show_id = media_id("tv", "Night Shift")
+    await signed_in.get(f"/api/shows/{show_id}")
+
+    season = await signed_in.get(f"/api/shows/{show_id}/seasons/2")
+    missing = await signed_in.get(f"/api/shows/{show_id}/seasons/9")
+    never_loaded = await signed_in.get(f"/api/shows/{media_id('tv', 'Never Opened')}/seasons/1")
+
+    assert season.status_code == fastapi.status.HTTP_200_OK
+    body = season.json()
+    assert body["season_number"] == 2
+    assert [(e["season_number"], e["episode_number"]) for e in body["episodes"]] == [(2, 1), (2, 2), (2, 3)]
+    assert set(body["episodes"][0]) == {"id", "season_number", "episode_number", "title", "air_date", "airstamp"}
+    assert missing.status_code == never_loaded.status_code == fastapi.status.HTTP_404_NOT_FOUND
 
 
 async def test_a_stale_page_defers_one_refresh_in_its_transaction(

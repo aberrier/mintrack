@@ -32,7 +32,6 @@ async def test_someone_sees_coming_episodes_on_their_local_day(
     assert response.status_code == fastapi.status.HTTP_200_OK
     body = response.json()
     assert body["time_zone"] == "Europe/Paris"
-    assert body["new"] == []
     paris_day = tomorrow.astimezone(zoneinfo.ZoneInfo("Europe/Paris")).date().isoformat()
     assert body["days"] == [
         {
@@ -57,17 +56,26 @@ async def test_someone_sees_coming_episodes_on_their_local_day(
 async def test_someone_sees_what_to_watch_next(alice: User, db_session: AsyncSession, api: httpx.AsyncClient) -> None:
     last_week = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=7)
     show, episodes = await add_show(db_session, {(1, 1): last_week, (1, 2): last_week}, title="Andor")
+    fresh, fresh_episodes = await add_show(db_session, {(1, 1): last_week, (2, 1): None}, title="Fresh")
     await follow(db_session, alice, show, TrackingStatus.WATCHING)
+    await follow(db_session, alice, fresh, TrackingStatus.NOT_STARTED)
     await watch(db_session, alice, episodes[1, 1], dt.datetime.now(dt.UTC))
 
-    up_next = await api.get("/api/up-next")
     watch_list = await api.get("/api/watch-list")
 
-    assert up_next.status_code == watch_list.status_code == fastapi.status.HTTP_200_OK
-    assert [(episode["show_title"], episode["episode_number"]) for episode in up_next.json()["episodes"]] == [
-        ("Andor", 2)
-    ]
+    assert watch_list.status_code == fastapi.status.HTTP_200_OK
+    cards = watch_list.json()["episodes"]
     assert [
         (episode["show_title"], episode["episode_number"], episode["remaining"], episode["section"])
-        for episode in watch_list.json()["episodes"]
-    ] == [("Andor", 2, 0, "next")]
+        for episode in cards
+    ] == [("Andor", 2, 0, "next"), ("Fresh", 1, 0, "not_started")]
+    # The episode after the card's, across the season end; none after the last one.
+    assert cards[0]["following"] is None
+    assert cards[1]["following"] == {
+        "id": str(fresh_episodes[2, 1].id),
+        "season_number": 2,
+        "episode_number": 1,
+        "title": fresh_episodes[2, 1].title,
+        "air_date": None,
+        "airstamp": None,
+    }

@@ -9,9 +9,7 @@ type Row = 'Trending shows' | 'Trending movies';
 /** The titles of a trending row, from the Discover tab without a query. */
 export async function trending(viewer: Viewer, row: Row): Promise<string[]> {
   await viewer.app.openTab('Discover');
-  const items = viewer.app.trendingRow(row).getByTestId('trending-item');
-  await expect(items.first()).toBeVisible();
-  return (await items.getByRole('link').allInnerTexts()).map((title) => title.trim());
+  return viewer.app.trendingTitles(row);
 }
 
 /**
@@ -35,6 +33,26 @@ export async function addFromTrending(
   return { checkAtOnce, checkAfter: await shown(viewer.app.posterAdded(within, title)) };
 }
 
+/** Which kinds of page a trending row's posters open: show, movie or both. */
+export async function trendingKinds(viewer: Viewer, row: Row): Promise<('show' | 'movie')[]> {
+  const links = await viewer.app.trendingLinks(row);
+  return [...new Set(links.map((link) => (link.startsWith('/shows/') ? 'show' : 'movie')))];
+}
+
+/** Whether the title's poster still shows the check once Discover is loaded again from the server. */
+export async function addedAfterReload(viewer: Viewer, row: Row, title: string): Promise<boolean> {
+  await viewer.app.reload();
+  await viewer.app.openTab('Discover');
+  return shown(viewer.app.posterAdded(viewer.app.trendingRow(row), title));
+}
+
+/** Empty the search field; returns how many results are left and the trending shows shown again. */
+export async function clearSearch(viewer: Viewer): Promise<{ results: number; trending: string[] }> {
+  await viewer.app.clearSearch();
+  const trending = await viewer.app.trendingTitles('Trending shows');
+  return { results: await viewer.app.searchResults().count(), trending };
+}
+
 function shown(locator: Locator): Promise<boolean> {
   return expect(locator)
     .toBeVisible()
@@ -51,8 +69,7 @@ export async function searchAmong(
   query: string,
 ): Promise<{ results: string[]; address: string }> {
   await viewer.app.search(query, type);
-  const results = (await viewer.app.searchResults().getByRole('link').allInnerTexts()).map((title) => title.trim());
-  return { results, address: new URL(viewer.app.url()).search };
+  return { results: await viewer.app.searchResultTitles(), address: new URL(viewer.app.url()).search };
 }
 
 /** Open the first search result and say which kind of page opened. */

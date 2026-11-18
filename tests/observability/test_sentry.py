@@ -64,3 +64,11 @@ def test_breadcrumbs_from_access_and_sql_logs_are_dropped(category: str, *, kept
     crumb = {"category": category, "message": '203.0.113.7:0 - "GET /api/x?token=abc HTTP/1.1" 500'}
 
     assert (options["before_breadcrumb"](crumb, {}) is not None) is kept
+
+
+def test_the_release_names_the_commit_of_the_image() -> None:
+    config = config_with_dsn()
+    project = config.project.model_copy(update={"commit": "abc1234"})
+
+    assert sentry_options(config.model_copy(update={"project": project}))["release"].endswith("+abc1234")
+    assert "+" not in sentry_options(config)["release"]

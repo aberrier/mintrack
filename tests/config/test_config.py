@@ -4,7 +4,7 @@ import pydantic
 import pytest
 
 import mintrack.config
-from mintrack.config import Config, ConfigError, Environment, SecurityConfig, load_config
+from mintrack.config import Config, ConfigError, Environment, SecurityConfig, get_config, load_config
 from mintrack.config.security import SECRET_KEY_PLACEHOLDER
 from tests.conftest import DATABASE_PASSWORD
 
@@ -170,6 +170,12 @@ def test_dotenv_file_is_read(env: pytest.MonkeyPatch, tmp_path: pathlib.Path) ->
     (tmp_path / ".env").write_text("MINTRACK__DATABASE__PASSWORD=from-dotenv\n", encoding="utf-8")
 
     assert load_config().database.password.get_secret_value() == "from-dotenv"
+
+
+def test_the_tests_never_read_a_dotenv_file(env: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:
+    (tmp_path / ".env").write_text("MINTRACK__TMDB__API_KEY=from-dotenv\n", encoding="utf-8")
+
+    assert get_config().tmdb.api_key is None
 
 
 def test_a_file_variable_naming_binary_data_is_reported(env: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> None:

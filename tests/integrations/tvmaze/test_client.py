@@ -3,6 +3,7 @@ import datetime as dt
 import httpx
 import pytest
 
+from mintrack.config import get_config
 from mintrack.integrations.tvmaze import client as tvmaze
 from tests.fakes.tvmaze import TVMAZE_URL, FakeTvmaze, tvmaze_episode
 
@@ -49,3 +50,19 @@ async def test_rate_limit_gives_up_after_three_attempts(monkeypatch: pytest.Monk
 
     with pytest.raises(httpx.HTTPStatusError):
         await client.episodes(10)
+
+
+async def test_the_client_calls_the_configured_address_as_mintrack_and_follows_the_lookup_redirect(
+    env: pytest.MonkeyPatch,
+) -> None:
+    env.setenv("MINTRACK__TVMAZE__URL", "http://tvmaze.test")
+    fake = FakeTvmaze(shows={81189: (169, [tvmaze_episode(1, 1, "2026-11-20T02:00:00+00:00")])})
+
+    async with tvmaze.tvmaze_client(fake.transport()) as client:
+        tvmaze_id = await client.lookup_show(81189)
+        episodes = await client.episodes(169)
+
+    assert (tvmaze_id, len(episodes)) == (169, 1)
+    assert fake.requests == ["/lookup/shows?thetvdb=81189", "/shows/169", "/shows/169/episodes"]
+    assert fake.hosts == {"tvmaze.test"}
+    assert fake.user_agents == {f"MinTrack/{get_config().project.version}"}
