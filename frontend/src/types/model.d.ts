@@ -184,5 +184,16 @@ declare namespace Model {
       created_at: string;
       finished_at: string | null;
     }
+
+    interface ApiToken {
+      id: string;
+      name: string;
+      created_at: string;
+      last_used_at: string | null;
+    }
+
+    interface CreatedApiToken extends ApiToken {
+      token: string;
+    }
   }
 }

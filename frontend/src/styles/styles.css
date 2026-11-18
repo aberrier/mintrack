@@ -8,6 +8,8 @@
   --color-outline-variant: var(--mat-sys-outline-variant);
   --color-error: var(--mat-sys-error);
   --color-primary: var(--mat-sys-primary);
+  --color-secondary-container: var(--mat-sys-secondary-container);
+  --color-on-secondary-container: var(--mat-sys-on-secondary-container);
 }
 
 /* Native app feel on phones: no pull-to-refresh or rubber band on the page, no grey flash on tap, no double-tap zoom
