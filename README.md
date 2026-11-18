@@ -35,12 +35,115 @@ Your Jellyfin servers fill in your history on their own.
 No social network, no recommendations, no ratings or reviews, no other media
 types (books, games, music) and no integrations other than Jellyfin.
 
-## Planned stack
+## Install
+
+Docker Compose is the recommended way to run MinTrack. Images are published for x86-64 and 64-bit ARM (a Raspberry
+Pi 3, 4 or 5 with a 64-bit system).
+
+1. In an empty folder, create `docker-compose.yml`:
+
+   ```yaml
+   name: mintrack
+
+   services:
+     db:
+       # Follows PostgreSQL 18 patch releases on every docker compose pull.
+       image: postgres:18
+       restart: unless-stopped
+       environment:
+         POSTGRES_USER: mintrack
+         POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+         POSTGRES_DB: mintrack
+       volumes:
+         - db:/var/lib/postgresql
+       healthcheck:
+         test: ["CMD", "pg_isready", "-U", "mintrack"]
+         interval: 5s
+         timeout: 5s
+         retries: 10
+       security_opt: [no-new-privileges:true]
+       logging: { driver: local }
+
+     server:
+       image: ghcr.io/aberrier/mintrack:edge
+       restart: unless-stopped
+       depends_on:
+         db:
+           condition: service_healthy
+       env_file: .env
+       environment:
+         MINTRACK__DATABASE__HOST: db
+         MINTRACK__DATABASE__USER: mintrack
+         MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+         MINTRACK__DATABASE__NAME: mintrack
+       ports:
+         - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
+       read_only: true
+       tmpfs: [/tmp]
+       cap_drop: [ALL]
+       security_opt: [no-new-privileges:true]
+       logging: { driver: local }
+
+   networks:
+     default:
+       name: mintrack
+       # A proxy on the host reaches MinTrack from the gateway address.
+       ipam:
+         config:
+           - subnet: 172.30.0.0/24
+             gateway: 172.30.0.1
+
+   volumes:
+     db:
+   ```
+
+2. Next to it, create `.env` and keep it private (`chmod 600 .env`). Generate each secret with
+   `openssl rand -hex 32`:
+
+   ```dotenv
+   POSTGRES_PASSWORD=<a random password>
+   MINTRACK__SECURITY__SECRET_KEY=<another random value>
+   MINTRACK__PROJECT__PUBLIC_URL=http://localhost:8000
+   ```
+
+   `MINTRACK__PROJECT__PUBLIC_URL` is the address you open MinTrack at. Every other setting is listed with its
+   default in [`.env.example`](.env.example); each can also be read from a file through a `_FILE` variant, for
+   Docker secrets.
+
+3. Start it:
+
+   ```bash
+   docker compose up -d
+   ```
+
+MinTrack answers on port 8000 (`http://localhost:8000`, or the server's address on your network). `docker compose ps`
+shows it as healthy; if it is not, `docker compose logs server` shows why, with one line per setting to fix.
+
+### Behind a reverse proxy
+
+HTTPS is needed to install MinTrack on a phone and for push notifications. Put any reverse proxy (Caddy,
+nginx, Traefik...) in front, serving MinTrack at the root of its own domain, such as `https://mintrack.example.com`
+(not under a path). Set HSTS on the proxy. Then, in `.env`:
+
+- `MINTRACK__PROJECT__PUBLIC_URL=https://mintrack.example.com`
+- `MINTRACK__SERVER__FORWARDED_ALLOW_IPS` to the proxy's exact address, so MinTrack sees the real client address:
+  `172.30.0.1` for a proxy on the same host; for a proxy container, give it a fixed address on the `mintrack` network
+  and trust that.
+  Never a whole shared subnet: any container on it could pretend to be any client.
+- `MINTRACK_BIND=127.0.0.1` when the proxy runs on the same host, so port 8000 is not reachable from outside. Trust
+  the proxy address only together with this setting: otherwise clients reaching port 8000 directly can come from
+  that same address and forge their own.
+
+Ports Docker publishes bypass host firewalls such as ufw: with the default bind address, port 8000 is open to every
+network the machine is on.
+
+
+## Stack
 
 - **Backend:** Python, FastAPI, SQLAlchemy and Alembic on PostgreSQL, with
   Procrastinate for background jobs (no Redis).
 - **Frontend:** Angular with Angular Material, shipped as an installable web
-  app (PWA) with Web Push. It will live in `frontend/`.
+  app (PWA) with Web Push, in `frontend/`.
 - **Metadata:** TMDB, plus TVmaze for episode air times.
 - **Deployment:** one Docker image and a docker-compose file with PostgreSQL.
 
