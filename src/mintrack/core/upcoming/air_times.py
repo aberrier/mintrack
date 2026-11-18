@@ -1,25 +1,30 @@
-import asyncio
+import datetime as dt
+import uuid
 
-import httpx
-import pydantic
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import ENDED_STATUSES
 from mintrack.db.models import Episode, Media, MediaType, TrackingStatus, UserMedia
-from mintrack.integrations.tvmaze import TvmazeClient
-from mintrack.observability.logging import logger
+from mintrack.integrations.tvmaze.client import TvmazeClient
+from mintrack.worker.defer import defer_air_times_refresh
 
-FOLLOWED_STATUSES = (TrackingStatus.WATCH_LATER, TrackingStatus.WATCHING, TrackingStatus.UP_TO_DATE)
+FOLLOWED_STATUSES = (
+    TrackingStatus.NOT_STARTED,
+    TrackingStatus.WATCH_LATER,
+    TrackingStatus.WATCHING,
+    TrackingStatus.UP_TO_DATE,
+)
 # Keeps a refresh of many shows under TVmaze's rate limit.
 SECONDS_BETWEEN_SHOWS = 1
 
 
-async def refresh_air_times(session: AsyncSession, client: TvmazeClient) -> None:
-    """Refresh the exact air times of the followed shows still airing; a failed show is retried on the next run."""
+async def defer_air_times_refreshes(session: AsyncSession) -> int:
+    """Defer a refresh of the exact air times of each followed show still airing, one show a second; returns how
+    many. Each show's job holds the show's lock and is retried on its own."""
     followed = sa.exists().where(UserMedia.media_id == Media.id, UserMedia.status.in_(FOLLOWED_STATUSES))
     shows = await session.scalars(
-        sa.select(Media)
+        sa.select(Media.id)
         .where(
             Media.media_type == MediaType.TV,
             Media.tvdb_id.is_not(None),
@@ -28,13 +33,10 @@ async def refresh_air_times(session: AsyncSession, client: TvmazeClient) -> None
         )
         .order_by(Media.id)
     )
-    for index, show in enumerate(shows.all()):
-        if index:
-            await asyncio.sleep(SECONDS_BETWEEN_SHOWS)
-        try:
-            await refresh_show_air_times(session, client, show)
-        except (httpx.HTTPError, pydantic.ValidationError, KeyError, ValueError) as error:
-            logger.warning("tvmaze: air times not refreshed", media_id=str(show.id), error=type(error).__name__)
+    media_ids: list[uuid.UUID] = list(shows)
+    for index, media_id in enumerate(media_ids):
+        await defer_air_times_refresh(session, media_id, after=dt.timedelta(seconds=index * SECONDS_BETWEEN_SHOWS))
+    return len(media_ids)
 
 
 async def refresh_show_air_times(session: AsyncSession, client: TvmazeClient, show: Media) -> None:

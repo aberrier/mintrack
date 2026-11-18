@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintrack.db.models import Episode, Media, MediaType, Season, TrackingStatus, User, UserMedia, WatchedEpisode
 from mintrack.integrations.tmdb.client import TMDBClient
 from mintrack.integrations.tmdb.schemas import TMDBMovie, TMDBSearchResult, TMDBShow
+from mintrack.worker.defer import defer_refresh
 
 type Rows = collections.abc.Sequence[collections.abc.Mapping[str, object]]
 
@@ -24,6 +25,11 @@ INSERT_BATCH = 1000
 
 def is_airing(media: Media) -> bool:
     return media.media_type is MediaType.TV and media.tmdb_status not in ENDED_STATUSES
+
+
+def episode_code(season_number: int, episode_number: int) -> str:
+    """An episode's number as shows are usually labelled: S01E05."""
+    return f"S{season_number:02}E{episode_number:02}"
 
 
 def is_stale(media: Media, now: dt.datetime) -> bool:
@@ -71,8 +77,11 @@ class CatalogManager:
         return [SearchHit(result, statuses.get((result.media_type, result.id))) for result in results]
 
     async def get_or_fetch(self, media_type: MediaType, tmdb_id: int, now: dt.datetime) -> Media:
-        """The cached media, fetched from TMDB on its first request."""
+        """The cached media, fetched from TMDB on its first request; a stale one gets a refresh deferred in the
+        session's transaction."""
         if media := await find_media(self.session, media_type, tmdb_id):
+            if self.tmdb.configured and is_stale(media, now):
+                await defer_refresh(self.session, media.id)
             return media
         # Ends the read transaction, so no pooled connection waits on TMDB.
         await self.session.commit()

@@ -8,7 +8,7 @@ import fastapi
 
 from mintrack.config import Config, Environment
 from mintrack.db.database import get_database
-from mintrack.worker import get_worker_app
+from mintrack.worker.app import get_worker_app
 
 API_PREFIX = "/api"
 

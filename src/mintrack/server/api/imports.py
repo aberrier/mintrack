@@ -11,10 +11,10 @@ from mintrack.core.imports.parsers import MAX_IMPORT_BYTES, ImportFileError
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import ImportReport, ImportSource, ImportStatus
 from mintrack.server.api.dependencies import CurrentUserDepType, TMDBClientDepType
-from mintrack.worker.tasks import defer_import
 
 # Room for the multipart boundaries and the source field around the file.
 FORM_OVERHEAD_BYTES = 64 * 1024
+MAX_IMPORT_REQUEST_BYTES = MAX_IMPORT_BYTES + FORM_OVERHEAD_BYTES
 
 router = fastapi.APIRouter(prefix="/imports", tags=["imports"])
 
@@ -72,7 +72,7 @@ async def create_import(
         if source not in list(ImportSource) or not isinstance(upload, UploadFile):
             raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, "Send a source and a file.")
         data = await upload.read(MAX_IMPORT_BYTES + 1)
-        filename = upload.filename or ""
+        filename = (upload.filename or "").replace("\x00", "")
     if len(data) > MAX_IMPORT_BYTES:
         raise _too_large()
     if not data:
@@ -84,7 +84,6 @@ async def create_import(
         raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, str(error)) from error
     except ImportInProgressError as error:
         raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, "An import is already running.") from error
-    await defer_import(session, job.id, user.id)
     await session.commit()
     await session.refresh(job)
     return ImportJobResponse.model_validate(job)

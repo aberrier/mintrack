@@ -2,6 +2,7 @@ import collections.abc
 import dataclasses
 import datetime as dt
 import enum
+import itertools
 import uuid
 import zoneinfo
 
@@ -9,23 +10,41 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.catalog.managers import ENDED_STATUSES
+from mintrack.core.catalog.managers import ENDED_STATUSES, INSERT_BATCH, is_airing
 from mintrack.db.models import (
     Episode,
     Media,
     MediaType,
+    Season,
     TrackingStatus,
     User,
     UserMedia,
     WatchedEpisode,
     WatchedMovie,
 )
+from mintrack.worker.defer import defer_air_times_refresh
 
 from .statuses import SPECIALS_SEASON, EpisodeProgress, air_time_known, is_aired, show_status
 
 
 class UnknownEpisodesError(Exception):
     """Some episode ids do not belong to the show."""
+
+
+class UnairedEpisodesError(Exception):
+    """Some episodes air later."""
+
+
+class FutureWatchError(Exception):
+    """A watch dated after now."""
+
+
+class ShowTrackingChoice(enum.StrEnum):
+    """The statuses a user sets on a show; the others follow from the episodes watched."""
+
+    WATCHING = enum.auto()
+    WATCH_LATER = enum.auto()
+    STOPPED = enum.auto()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -46,16 +65,14 @@ class LibrarySort(enum.StrEnum):
     TITLE = enum.auto()
 
 
-class LibraryStatus(enum.StrEnum):
-    """A tracking status, or not started: in the library with nothing watched."""
-
-    WATCH_LATER = enum.auto()
-    WATCHING = enum.auto()
-    UP_TO_DATE = enum.auto()
-    FINISHED = enum.auto()
-    STOPPED = enum.auto()
-    WATCHED = enum.auto()
-    NOT_STARTED = enum.auto()
+@dataclasses.dataclass(frozen=True)
+class SeasonSummary:
+    season_number: int
+    title: str
+    episode_count: int
+    watched_count: int
+    # Aired episodes, and watched ones not aired as far as their date says.
+    aired_count: int
 
 
 @dataclasses.dataclass(frozen=True)
@@ -82,6 +99,8 @@ class HistoryEntry:
     episode_number: int | None
     episode_title: str | None
     watched_at: dt.datetime
+    # The user finished the show; always False for movies.
+    finished: bool
 
 
 class TrackingManager:
@@ -90,28 +109,65 @@ class TrackingManager:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def mark_watched(self, user: User, episode: Episode, at: dt.datetime) -> ShowTracking:
-        media = await self.session.get_one(Media, episode.media_id)
-        return await self.mark_episodes(user, media, [episode.id], at)
-
-    async def unmark_watched(self, user: User, episode: Episode, now: dt.datetime) -> ShowTracking | None:
-        media = await self.session.get_one(Media, episode.media_id)
-        return await self.unmark_episodes(user, media, [episode.id], now)
-
     async def mark_episodes(
-        self, user: User, media: Media, episode_ids: collections.abc.Collection[uuid.UUID], at: dt.datetime
+        self,
+        user: User,
+        media: Media,
+        episode_ids: collections.abc.Collection[uuid.UUID],
+        at: dt.datetime,
+        *,
+        now: dt.datetime,
     ) -> ShowTracking:
-        """Mark episodes watched at `at`; the show joins the library and leaves stopped or watch later."""
+        """Mark episodes watched at `at`; the show joins the library and leaves stopped or watch later.
+
+        Raises `UnknownEpisodesError`, `UnairedEpisodesError` for an episode airing after `now`, and
+        `FutureWatchError` when `at` is after `now`.
+        """
+        if at > now:
+            raise FutureWatchError
         await self._check_episodes(media, episode_ids)
-        await self.session.execute(
-            insert(WatchedEpisode)
-            .values([{"user_id": user.id, "episode_id": episode_id, "watched_at": at} for episode_id in episode_ids])
-            .on_conflict_do_nothing()
-        )
+        await self._check_aired(user, media, episode_ids, now)
+        await self._insert_watches([(episode_id, at) for episode_id in episode_ids], user)
         user_media = await self._track(user, media, at)
-        if user_media.status in (TrackingStatus.STOPPED, TrackingStatus.WATCH_LATER):
-            user_media.status = TrackingStatus.WATCHING
-        return await self._update_show_status(user, media, user_media, at)
+        user_media.updated_at = max(user_media.updated_at, at)
+        _resume(user_media)
+        return await self._update_show_status(user, media, user_media, now, touch=False)
+
+    async def record_watches(
+        self,
+        user: User,
+        shows: collections.abc.Mapping[Media, collections.abc.Mapping[uuid.UUID, dt.datetime]],
+        *,
+        now: dt.datetime,
+        keep_aside: collections.abc.Container[uuid.UUID] = (),
+    ) -> None:
+        """Mark many episodes of many shows, each `{episode id: watched at}` from the show's own episodes, in a few
+        statements: a date after `now` is now's, each show joins the library, resumes unless its media id is in
+        `keep_aside`, and gets its status once."""
+        watches = [(episode_id, min(at, now)) for episodes in shows.values() for episode_id, at in episodes.items()]
+        for batch in itertools.batched(watches, INSERT_BATCH, strict=False):
+            await self._insert_watches(batch, user)
+        for media, episodes in shows.items():
+            dates = [min(at, now) for at in episodes.values()]
+            user_media = await self._track(user, media, min(dates))
+            # Imports mark with past dates: the library keeps its most recent activity first.
+            user_media.updated_at = max(user_media.updated_at, *dates)
+            if media.id not in keep_aside:
+                _resume(user_media)
+            await self._update_show_status(user, media, user_media, now, touch=False)
+
+    async def _insert_watches(
+        self, watches: collections.abc.Sequence[tuple[uuid.UUID, dt.datetime]], user: User
+    ) -> None:
+        """A watch already recorded keeps its date."""
+        if watches:
+            await self.session.execute(
+                insert(WatchedEpisode)
+                .values(
+                    [{"user_id": user.id, "episode_id": episode_id, "watched_at": at} for episode_id, at in watches]
+                )
+                .on_conflict_do_nothing()
+            )
 
     async def unmark_episodes(
         self, user: User, media: Media, episode_ids: collections.abc.Collection[uuid.UUID], now: dt.datetime
@@ -126,31 +182,40 @@ class TrackingManager:
         user_media = await self._locked(user, media)
         return await self._update_show_status(user, media, user_media, now) if user_media else None
 
-    async def track_show(self, user: User, media: Media, *, stopped: bool, now: dt.datetime) -> ShowTracking:
-        """Add the show to the library, stop it or resume it."""
+    async def set_show_status(
+        self, user: User, media: Media, status: ShowTrackingChoice, now: dt.datetime
+    ) -> ShowTracking:
+        """Add the show to the library, put it aside to watch later (out of the watch list until an episode is marked
+        or the show is resumed), stop it or resume it."""
         user_media = await self._track(user, media, now)
-        user_media.status = TrackingStatus.STOPPED if stopped else TrackingStatus.WATCHING
+        user_media.status = {
+            ShowTrackingChoice.WATCHING: TrackingStatus.WATCHING,
+            ShowTrackingChoice.WATCH_LATER: TrackingStatus.WATCH_LATER,
+            ShowTrackingChoice.STOPPED: TrackingStatus.STOPPED,
+        }[status]
+        if status is ShowTrackingChoice.WATCHING and is_airing(media):
+            # Exact air times, before the next daily refresh.
+            await defer_air_times_refresh(self.session, media.id)
         return await self._update_show_status(user, media, user_media, now)
 
-    async def watch_later(self, user: User, media: Media, now: dt.datetime) -> ShowTracking:
-        """Put the show aside, out of the watch list, until an episode is marked or the show is resumed."""
-        user_media = await self._track(user, media, now)
-        user_media.status = TrackingStatus.WATCH_LATER
-        return await self._update_show_status(user, media, user_media, now)
-
-    async def set_movie_watched(self, user: User, media: Media, *, watched: bool, now: dt.datetime) -> MovieTracking:
-        """Add the movie to the library, as watched at `now` or to watch later."""
-        user_media = await self._track(user, media, now)
+    async def set_movie_watched(
+        self, user: User, media: Media, *, watched: bool, at: dt.datetime, now: dt.datetime
+    ) -> MovieTracking:
+        """Add the movie to the library, as watched at `at` or to watch later; `FutureWatchError` when `at` is after
+        `now`."""
+        if watched and at > now:
+            raise FutureWatchError
+        user_media = await self._track(user, media, at)
         if watched:
             await self.session.execute(
-                insert(WatchedMovie).values(user_id=user.id, media_id=media.id, watched_at=now).on_conflict_do_nothing()
+                insert(WatchedMovie).values(user_id=user.id, media_id=media.id, watched_at=at).on_conflict_do_nothing()
             )
         else:
             await self.session.execute(
                 sa.delete(WatchedMovie).where(WatchedMovie.user_id == user.id, WatchedMovie.media_id == media.id)
             )
         user_media.status = TrackingStatus.WATCHED if watched else TrackingStatus.WATCH_LATER
-        user_media.updated_at = max(user_media.updated_at, now)
+        user_media.updated_at = max(user_media.updated_at, at)
         await self.session.flush()
         return MovieTracking(status=user_media.status, watched_at=await self._movie_watched_at(user, media))
 
@@ -171,6 +236,35 @@ class TrackingManager:
             return None
         return ShowTracking(status=user_media.status, watched=await self._watched(user, media))
 
+    async def seasons(self, user: User, media: Media, now: dt.datetime) -> list[SeasonSummary]:
+        """The show's seasons with their episode counts for the user, specials last as on TMDB."""
+        watched = WatchedEpisode.episode_id.is_not(None)
+        counts = (
+            sa.select(
+                Episode.season_number,
+                sa.func.count().label("episode_count"),
+                sa.func.count().filter(watched).label("watched_count"),
+                sa.func.count().filter(sa.or_(watched, _aired(user, now))).label("aired_count"),
+            )
+            .outerjoin(WatchedEpisode, (WatchedEpisode.episode_id == Episode.id) & (WatchedEpisode.user_id == user.id))
+            .where(Episode.media_id == media.id)
+            .group_by(Episode.season_number)
+            .subquery()
+        )
+        rows = await self.session.execute(
+            sa.select(
+                Season.season_number,
+                Season.title,
+                sa.func.coalesce(counts.c.episode_count, 0),
+                sa.func.coalesce(counts.c.watched_count, 0),
+                sa.func.coalesce(counts.c.aired_count, 0),
+            )
+            .outerjoin(counts, counts.c.season_number == Season.season_number)
+            .where(Season.media_id == media.id)
+            .order_by(Season.season_number == SPECIALS_SEASON, Season.season_number)
+        )
+        return [SeasonSummary(*row) for row in rows]
+
     async def movie_tracking(self, user: User, media: Media) -> MovieTracking | None:
         user_media = await self.session.get(UserMedia, (user.id, media.id))
         if user_media is None:
@@ -185,6 +279,10 @@ class TrackingManager:
             sa.select(User, UserMedia)
             .join(UserMedia, UserMedia.user_id == User.id)
             .where(UserMedia.media_id == media.id)
+            .order_by(UserMedia.user_id)
+            # A status set concurrently (stopped, put aside) waits for this transaction, then applies.
+            .with_for_update(of=UserMedia)
+            .execution_options(populate_existing=True)
         )
         for user, user_media in rows:
             await self._update_show_status(user, media, user_media, now, touch=False)
@@ -196,49 +294,52 @@ class TrackingManager:
         now: dt.datetime,
         *,
         sort: LibrarySort = LibrarySort.LAST_WATCHED,
-        status: LibraryStatus | None = None,
+        status: TrackingStatus | None = None,
     ) -> list[LibraryItem]:
-        today = now.astimezone(zoneinfo.ZoneInfo(user.timezone)).date()
-        regular = sa.and_(Episode.media_id == Media.id, Episode.season_number != SPECIALS_SEASON)
-        aired = sa.case((Episode.airstamp.is_not(None), Episode.airstamp <= now), else_=Episode.air_date <= today)
-        aired_count = sa.select(sa.func.count()).where(regular, aired).scalar_subquery()
-        watched_count = (
-            sa.select(sa.func.count())
-            .select_from(WatchedEpisode)
-            .join(Episode, Episode.id == WatchedEpisode.episode_id)
-            .where(regular, aired, WatchedEpisode.user_id == user.id)
-            .scalar_subquery()
-        )
         if media_type is MediaType.MOVIE:
-            last_watched_at = (
-                sa.select(WatchedMovie.watched_at)
-                .where(WatchedMovie.user_id == user.id, WatchedMovie.media_id == Media.id)
-                .scalar_subquery()
+            counts = (
+                sa.select(
+                    WatchedMovie.media_id,
+                    sa.literal(0).label("watched_count"),
+                    sa.literal(0).label("aired_count"),
+                    WatchedMovie.watched_at.label("last_watched_at"),
+                )
+                .where(WatchedMovie.user_id == user.id)
+                .subquery()
             )
         else:
-            last_watched_at = (
-                sa.select(sa.func.max(WatchedEpisode.watched_at))
-                .join(Episode, Episode.id == WatchedEpisode.episode_id)
-                .where(WatchedEpisode.user_id == user.id, Episode.media_id == Media.id)
-                .scalar_subquery()
+            regular_aired = sa.and_(Episode.season_number != SPECIALS_SEASON, _aired(user, now))
+            counts = (
+                sa.select(
+                    Episode.media_id,
+                    sa.func.count(WatchedEpisode.episode_id).filter(regular_aired).label("watched_count"),
+                    sa.func.count().filter(regular_aired).label("aired_count"),
+                    sa.func.max(WatchedEpisode.watched_at).label("last_watched_at"),
+                )
+                .outerjoin(
+                    WatchedEpisode, (WatchedEpisode.episode_id == Episode.id) & (WatchedEpisode.user_id == user.id)
+                )
+                .where(Episode.media_id.in_(sa.select(UserMedia.media_id).where(UserMedia.user_id == user.id)))
+                .group_by(Episode.media_id)
+                .subquery()
             )
+        last_watched_at = counts.c.last_watched_at
         query = (
             sa.select(
                 Media,
                 UserMedia.status,
-                watched_count,
-                aired_count,
+                sa.func.coalesce(counts.c.watched_count, 0),
+                sa.func.coalesce(counts.c.aired_count, 0),
                 UserMedia.updated_at,
                 UserMedia.added_at,
                 last_watched_at,
             )
             .join(UserMedia, UserMedia.media_id == Media.id)
+            .outerjoin(counts, counts.c.media_id == Media.id)
             .where(UserMedia.user_id == user.id, Media.media_type == media_type)
         )
-        if status is LibraryStatus.NOT_STARTED:
-            query = query.where(last_watched_at.is_(None))
-        elif status is not None:
-            query = query.where(UserMedia.status == TrackingStatus(status))
+        if status is not None:
+            query = query.where(UserMedia.status == status)
         order_by = {
             LibrarySort.LAST_WATCHED: (last_watched_at.desc().nulls_last(), UserMedia.updated_at.desc()),
             LibrarySort.LAST_ADDED: (UserMedia.added_at.desc(),),
@@ -262,9 +363,11 @@ class TrackingManager:
                 Episode.episode_number,
                 Episode.title.label("episode_title"),
                 WatchedEpisode.watched_at,
+                sa.func.coalesce(UserMedia.status == TrackingStatus.FINISHED, sa.false()).label("finished"),
             )
             .join(Episode, Episode.id == WatchedEpisode.episode_id)
             .join(Media, Media.id == Episode.media_id)
+            .outerjoin(UserMedia, (UserMedia.user_id == user.id) & (UserMedia.media_id == Media.id))
             .where(WatchedEpisode.user_id == user.id)
         )
         movies = (
@@ -274,10 +377,11 @@ class TrackingManager:
                 Media.tmdb_id,
                 Media.title,
                 Media.poster_path,
-                sa.cast(sa.null(), sa.Integer),
-                sa.cast(sa.null(), sa.Integer),
-                sa.cast(sa.null(), sa.TEXT),
+                sa.cast(sa.null(), sa.Integer).label("season_number"),
+                sa.cast(sa.null(), sa.Integer).label("episode_number"),
+                sa.cast(sa.null(), sa.TEXT).label("episode_title"),
                 WatchedMovie.watched_at,
+                sa.false().label("finished"),
             )
             .join(Media, Media.id == WatchedMovie.media_id)
             .where(WatchedMovie.user_id == user.id)
@@ -286,7 +390,10 @@ class TrackingManager:
             cursor = sa.tuple_(sa.literal(before[0], sa.TIMESTAMP(timezone=True)), sa.literal(before[1], sa.Uuid))
             episodes = episodes.where(sa.tuple_(WatchedEpisode.watched_at, WatchedEpisode.episode_id) < cursor)
             movies = movies.where(sa.tuple_(WatchedMovie.watched_at, WatchedMovie.media_id) < cursor)
-        watched = sa.union_all(episodes, movies).subquery()
+        # Each side reads only its page from its (user, watched at, id) index before the union is sorted.
+        episodes = episodes.order_by(WatchedEpisode.watched_at.desc(), WatchedEpisode.episode_id.desc()).limit(limit)
+        movies = movies.order_by(WatchedMovie.watched_at.desc(), WatchedMovie.media_id.desc()).limit(limit)
+        watched = sa.union_all(sa.select(episodes.subquery()), sa.select(movies.subquery())).subquery()
         rows = await self.session.execute(
             sa.select(watched).order_by(watched.c.watched_at.desc(), watched.c.id.desc()).limit(limit)
         )
@@ -294,8 +401,9 @@ class TrackingManager:
 
     async def _track(self, user: User, media: Media, now: dt.datetime) -> UserMedia:
         """The library row, created when missing and locked like `_locked`."""
+        status = TrackingStatus.NOT_STARTED if media.media_type is MediaType.TV else TrackingStatus.WATCH_LATER
         statement = insert(UserMedia).values(
-            user_id=user.id, media_id=media.id, status=TrackingStatus.WATCH_LATER, added_at=now, updated_at=now
+            user_id=user.id, media_id=media.id, status=status, added_at=now, updated_at=now
         )
         result = await self.session.scalars(
             # An update that changes nothing, so the row is returned and locked whether it existed or not.
@@ -313,6 +421,22 @@ class TrackingManager:
         )
         if not episode_ids or known != len(set(episode_ids)):
             raise UnknownEpisodesError
+
+    async def _check_aired(
+        self, user: User, media: Media, episode_ids: collections.abc.Collection[uuid.UUID], now: dt.datetime
+    ) -> None:
+        """Raise `UnairedEpisodesError` when an episode airs after `now`; one without a date may have aired."""
+        timezone = zoneinfo.ZoneInfo(user.timezone)
+        episodes = await self.session.execute(
+            sa.select(Episode.air_date, Episode.airstamp).where(
+                Episode.id.in_(episode_ids), Episode.media_id == media.id
+            )
+        )
+        if any(
+            air_time_known(air_date, airstamp) and not is_aired(air_date, airstamp, now, timezone)
+            for air_date, airstamp in episodes
+        ):
+            raise UnairedEpisodesError
 
     async def _movie_watched_at(self, user: User, media: Media) -> dt.datetime | None:
         return await self.session.scalar(
@@ -353,7 +477,18 @@ class TrackingManager:
             progress.append(EpisodeProgress(aired=aired, upcoming=upcoming, watched=episode_id in watched))
         user_media.status = show_status(user_media.status, progress, ended=media.tmdb_status in ENDED_STATUSES)
         if touch:
-            # Imports mark with past dates: the library keeps its most recent activity first.
             user_media.updated_at = max(user_media.updated_at, now)
         await self.session.flush()
         return ShowTracking(status=user_media.status, watched=watched)
+
+
+def _aired(user: User, now: dt.datetime) -> sa.ColumnElement[bool]:
+    """`is_aired` in SQL: NULL, which counts as not aired, without a date."""
+    today = now.astimezone(zoneinfo.ZoneInfo(user.timezone)).date()
+    return sa.case((Episode.airstamp.is_not(None), Episode.airstamp <= now), else_=Episode.air_date <= today)
+
+
+def _resume(user_media: UserMedia) -> None:
+    """A show stopped or put aside is watched again."""
+    if user_media.status in (TrackingStatus.STOPPED, TrackingStatus.WATCH_LATER):
+        user_media.status = TrackingStatus.WATCHING

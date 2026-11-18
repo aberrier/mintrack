@@ -34,7 +34,7 @@ def show_status(current: TrackingStatus | None, episodes: list[EpisodeProgress],
     if current in (TrackingStatus.STOPPED, TrackingStatus.WATCH_LATER):
         return current
     if not any(episode.watched for episode in episodes):
-        return TrackingStatus.WATCH_LATER
+        return TrackingStatus.NOT_STARTED
     if any(episode.aired and not episode.watched for episode in episodes):
         return TrackingStatus.WATCHING
     if ended and not any(episode.upcoming and not episode.watched for episode in episodes):

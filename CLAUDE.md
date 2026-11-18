@@ -30,7 +30,7 @@ just test       # pytest (needs just dev-db for the database tests)
 just format     # apply ruff fixes and formatting
 just dev        # mintrack server --reload
 just dev-frontend  # ng serve on :4200, proxying /api to just dev
-just image      # build the Docker image as ghcr.io/aberrier/mintrack:edge, which docker compose up then runs
+just image      # build the Docker image as ghcr.io/aberrier/mintrack:edge; MINTRACK_VERSION=edge docker compose up runs it
 ```
 
 Always run Python tools through `uv run`. Run `just` (check and test) before committing. Install just with
@@ -41,22 +41,24 @@ Always run Python tools through `uv run`. Run `just` (check and test) before com
 ```
 src/mintrack/
   __main__.py      # config errors -> readable message; logging, Sentry, CLI
-  cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | worker | db | healthcheck | users
+  cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | worker | db | healthcheck | users | import
   config/          # Config(BaseSettings): MINTRACK__SECTION__FIELD variables, *_FILE variants, .env
-  core/<domain>/   # business logic: accounts (users, sessions, password links, login limit), catalog (TMDB cache), tracking (watched episodes, statuses)
+  core/<domain>/   # business logic: accounts (users, sessions, password links, login limit), api_tokens, catalog (TMDB cache),
+                   # imports (Yamtrack, TV Time), jellyfin (sync), push, tracking (watched episodes, statuses), upcoming (watch list, air times)
   db/              # DatabaseModel, models/, DatabaseManager, Alembic config built in code, migrations/
-  integrations/    # clients of outside services: tmdb/
+  integrations/    # clients of outside services: tmdb/, tvmaze/ (air times), jellyfin/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)
   server/          # build_app(): /api router (public and session-protected), middlewares
   server/mcp/      # MCP server at /mcp, outside /api: users' API tokens as Bearer tokens, tools that call the managers
-  worker/          # Procrastinate: get_worker_app(), tasks on the Blueprint of tasks.py; runs inside the server
+  worker/          # Procrastinate: get_worker_app(), tasks on the Blueprint of tasks.py; its own compose service, or inside the server
 tests/             # mirrors src/; conftest.py holds the opt-in database fixtures; fakes/ fakes outside services
 frontend/src/app/
   core/api/        # ApiService: one group of endpoints per domain, relative /api URLs
   core/auth/       # AuthStore ($user), signedIn and admin guards, the 401 interceptor
   core/i18n/       # injectTranslator, English only, paths such as app.home.title
   core/icons/      # Material Symbols SVGs registered by name; import only the icons used
-  core/tracking/   # TrackingStore (optimistic writes) and episode helpers
+  core/tracking/   # TrackingStore (optimistic writes), WatchListStore (a view derived from it) and episode helpers
+  core/            # also imports/, jellyfin/, push/, pwa/ (updates), dates.ts, notify.ts (snackbars), title.ts (page titles)
   shell/           # the phone frame: scrolling content and the bottom navigation
   pages/<page>/    # one lazy-loaded standalone component per route (app.routes.ts)
   shared/          # components used by several pages
@@ -110,8 +112,8 @@ npm run build   # fails over the bundle budgets (initial 400 kB, component style
 npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, default http://localhost:8000)
 ```
 
-`just e2e [playwright args]` starts this worktree's stack (built app, fake TMDB, its own database and port) or reuses
-it, then runs Playwright; `just e2e-stop` stops it. While iterating, run `just e2e --project=phone <spec>` and
+`just e2e [playwright args]` starts this worktree's stack (built app, fake TMDB and TVmaze, its own database and port,
+state in `.e2e/`) or reuses it, then runs Playwright; `just e2e-stop` stops it. While iterating, run `just e2e --project=phone <spec>` and
 `just e2e --last-failed`; run the whole suite once before handing off.
 
 - **Angular:** standalone components, zoneless, `OnPush` everywhere, lazy routes declared in `app.routes.ts` with
@@ -121,7 +123,10 @@ it, then runs Playwright; `just e2e-stop` stops it. While iterating, run `just e
   read-only ones. A tap updates the store first, then queues the API call. Writes to the same item are serialised
   (`concatMap`), with errors caught inside each queued call so one failure never stops the queue. Each success
   records the server's answer as the item's confirmed value; on error, and only when no later write for that item is
-  still queued, the store goes back to the confirmed value and a snackbar says so.
+  still queued, the store goes back to the confirmed value and a snackbar says so. A store that only shows a view of
+  another store's items (the watch list over the shows) changes its view at once, writes through the owning store
+  (which says when it fails) and loads the view again from the server after a failure. Snackbars go through
+  `injectNotify()`: messages leave after a few seconds, one with an action after 10 seconds or on navigation.
 - **Phone first:** test in the Playwright `phone` project first. Tap targets are at least 48px; content stays inside
   `env(safe-area-inset-*)`; no horizontal scroll. Only the shell's content area scrolls (`100dvh` shell, marked
   `cdkScrollable` for Material overlays), so the router's window scrolling does nothing: the first page with a list

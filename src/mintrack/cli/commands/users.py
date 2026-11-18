@@ -3,7 +3,6 @@ import datetime as dt
 import typing
 
 import typer
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import get_config
 from mintrack.core.accounts.managers import (
@@ -24,7 +23,7 @@ async def _run[T](action: typing.Callable[[AccountManager], typing.Awaitable[T]]
     """Run an action on a manager in its own transaction, committed when it returns."""
     database = DatabaseManager(get_config().database.url())
     try:
-        async with AsyncSession(database.engine) as session:
+        async with database.session() as session:
             result = await action(AccountManager(session))
             await session.commit()
             return result

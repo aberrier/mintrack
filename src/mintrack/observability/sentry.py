@@ -29,12 +29,19 @@ def drop_sensitive_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Bread
     return None if crumb.get("category") in IGNORED_BREADCRUMB_LOGGERS else crumb
 
 
+def release(config: Config) -> str:
+    """The version, and the commit the image was built from when known, so an edge build is told apart."""
+    commit = config.project.commit
+    suffix = f"+{commit}" if commit and commit != "unknown" else ""
+    return f"{config.project.name}@{config.project.version}{suffix}"
+
+
 def sentry_options(config: Config) -> dict[str, typing.Any]:
     dsn = config.logging.sentry_dsn
     return {
         "dsn": dsn.get_secret_value() if dsn else None,
         "environment": str(config.project.environment),
-        "release": f"{config.project.name}@{config.project.version}",
+        "release": release(config),
         "send_default_pii": False,
         "include_local_variables": False,
         "max_request_body_size": "never",

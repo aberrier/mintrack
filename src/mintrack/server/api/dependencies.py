@@ -15,6 +15,8 @@ from mintrack.integrations.tmdb.client import TMDBClient, get_tmdb_client
 XSRF_COOKIE = "XSRF-TOKEN"
 XSRF_HEADER = "X-XSRF-TOKEN"
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
+# Text stored or looked up in PostgreSQL, whose text type cannot hold a NUL character.
+WITHOUT_NUL = r"^[^\x00]*$"
 
 
 def utc_now() -> dt.datetime:

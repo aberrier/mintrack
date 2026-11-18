@@ -8,7 +8,6 @@ import pydantic
 
 from mintrack.config import get_config
 
-BASE_URL = "https://api.tvmaze.com"
 TIMEOUT_SECONDS = 10
 # TVmaze allows about 20 calls every 10 seconds per IP address and answers 429 beyond.
 RATE_LIMIT_WAIT_SECONDS = 10
@@ -60,10 +59,17 @@ class TvmazeClient:
 
 
 @contextlib.asynccontextmanager
-async def tvmaze_client() -> collections.abc.AsyncGenerator[TvmazeClient]:
-    headers = {"User-Agent": f"MinTrack/{get_config().project.version}"}
+async def tvmaze_client(
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> collections.abc.AsyncGenerator[TvmazeClient]:
+    config = get_config()
+    headers = {"User-Agent": f"MinTrack/{config.project.version}"}
     # The lookup endpoint answers with a redirect to the show.
     async with httpx.AsyncClient(
-        base_url=BASE_URL, timeout=TIMEOUT_SECONDS, follow_redirects=True, headers=headers
+        base_url=str(config.tvmaze.url),
+        timeout=TIMEOUT_SECONDS,
+        follow_redirects=True,
+        headers=headers,
+        transport=transport,
     ) as http:
         yield TvmazeClient(http)

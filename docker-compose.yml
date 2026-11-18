@@ -1,5 +1,22 @@
 name: mintrack
 
+# Settings shared by the MinTrack services, which run the same image.
+x-mintrack: &mintrack
+  # A release (1.4.2), a release line (1.4) or latest, set by MINTRACK_VERSION in .env.
+  image: ghcr.io/aberrier/mintrack:${MINTRACK_VERSION:-latest}
+  restart: unless-stopped
+  env_file: .env
+  environment: &mintrack-environment
+    MINTRACK__DATABASE__HOST: db
+    MINTRACK__DATABASE__USER: mintrack
+    MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+    MINTRACK__DATABASE__NAME: mintrack
+  read_only: true
+  tmpfs: [/tmp]
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  logging: { driver: local }
+
 services:
   db:
     # Follows PostgreSQL 18 patch releases on every docker compose pull.
@@ -19,34 +36,47 @@ services:
     security_opt: [no-new-privileges:true]
     logging: { driver: local }
 
-  server:
-    image: ghcr.io/aberrier/mintrack:edge
-    restart: unless-stopped
+  # Upgrades the database schema, then exits; the server and the worker start after it.
+  migrate:
+    <<: *mintrack
+    command: ["mintrack", "db", "migrate"]
+    restart: "no"
+    healthcheck:
+      disable: true
     depends_on:
       db:
         condition: service_healthy
-    env_file: .env
+
+  server:
+    <<: *mintrack
+    command: ["mintrack", "server", "--no-migrate"]
     environment:
-      MINTRACK__DATABASE__HOST: db
-      MINTRACK__DATABASE__USER: mintrack
-      MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
-      MINTRACK__DATABASE__NAME: mintrack
+      <<: *mintrack-environment
+      MINTRACK__SERVER__RUN_WORKER: "false"
     ports:
       - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
-    read_only: true
-    tmpfs: [/tmp]
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    logging: { driver: local }
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Background jobs: TMDB refreshes, air times, notifications, Jellyfin syncs and imports.
+  worker:
+    <<: *mintrack
+    command: ["mintrack", "worker"]
+    healthcheck:
+      disable: true
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
 
 networks:
   default:
     name: mintrack
-    # A proxy on the host reaches MinTrack from the gateway address.
+    # A proxy on the host reaches MinTrack from the gateway address. Change both when the range is taken on the host.
     ipam:
       config:
-        - subnet: 172.30.0.0/24
-          gateway: 172.30.0.1
+        - subnet: ${MINTRACK_SUBNET:-172.30.0.0/24}
+          gateway: ${MINTRACK_GATEWAY:-172.30.0.1}
 
 volumes:
   db:

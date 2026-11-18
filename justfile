@@ -51,6 +51,6 @@ e2e *args: dev-db
 e2e-stop:
     bash scripts/e2e-stack.sh stop
 
-# Build the Docker image as ghcr.io/aberrier/mintrack:edge, the tag docker-compose.yml runs
+# Build the Docker image as ghcr.io/aberrier/mintrack:edge, which docker-compose.yml runs with MINTRACK_VERSION=edge
 image:
     docker build --tag ghcr.io/aberrier/mintrack:edge --build-arg COMMIT=$(git rev-parse --short HEAD) .

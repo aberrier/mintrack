@@ -9,6 +9,7 @@ from pydantic.fields import FieldInfo
 
 from mintrack.db.config import DatabaseConfig
 from mintrack.integrations.tmdb.config import TMDBConfig
+from mintrack.integrations.tvmaze.config import TvmazeConfig
 from mintrack.observability.config import ObservabilityConfig
 
 from .project import Environment, ProjectConfig
@@ -89,6 +90,7 @@ class Config(pydantic_settings.BaseSettings):
     database: DatabaseConfig = pydantic.Field(default_factory=dict, validate_default=True)
     logging: ObservabilityConfig = ObservabilityConfig()
     tmdb: TMDBConfig = TMDBConfig()
+    tvmaze: TvmazeConfig = TvmazeConfig()
 
     @classmethod
     def settings_customise_sources(
@@ -110,6 +112,10 @@ class Config(pydantic_settings.BaseSettings):
         return self
 
 
+# The dotenv file `get_config` reads; None reads the environment only.
+ENV_FILE: str | None = ".env"
+
+
 def load_config(*, env_file: str | None = ".env") -> Config:
     try:
         return Config(_env_file=env_file)
@@ -128,7 +134,7 @@ def describe_validation_error(error: pydantic.ValidationError) -> list[str]:
 
 @functools.cache
 def get_config() -> Config:
-    return load_config()
+    return load_config(env_file=ENV_FILE)
 
 
 __all__ = [
@@ -141,6 +147,7 @@ __all__ = [
     "SecurityConfig",
     "ServerConfig",
     "TMDBConfig",
+    "TvmazeConfig",
     "get_config",
     "load_config",
 ]
