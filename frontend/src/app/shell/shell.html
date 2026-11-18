@@ -1,5 +1,5 @@
 <!-- cdkScrollable: Material menus and tooltips follow this element's scrolling, as the document never scrolls. -->
-<main class="content" cdkScrollable>
+<main class="content" cdkScrollable appScrollRestoration>
   <router-outlet />
 </main>
 
@@ -10,7 +10,7 @@
         class="nav-item"
         [routerLink]="item.route"
         routerLinkActive="active"
-        [routerLinkActiveOptions]="{ exact: true }"
+        [routerLinkActiveOptions]="activeOptions"
         ariaCurrentWhenActive="page">
         <span class="indicator"><mat-icon [svgIcon]="item.icon" aria-hidden="true" /></span>
         <span class="label">{{ translate(item.label) }}</span>

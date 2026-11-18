@@ -1,0 +1,97 @@
+@if ($show(); as show) {
+  <section class="flex flex-col gap-4 p-4">
+    <header class="flex gap-4">
+      <span class="w-28 flex-none"><app-poster [path]="show.poster_path" width="w342" /></span>
+      <div class="flex min-w-0 flex-col gap-2">
+        <h1 class="[font:var(--mat-sys-headline-small)]">{{ show.title }}</h1>
+        @if (show.tracking; as tracking) {
+          <p class="text-on-surface-variant [font:var(--mat-sys-label-large)]" data-testid="show-status">
+            {{ statusLabel(tracking.status) }}
+          </p>
+        }
+        <div class="flex flex-wrap items-center gap-1">
+          @if (!show.tracking) {
+            <button mat-flat-button type="button" (click)="track(show, false)">
+              {{ translate('app.show.add') }}
+            </button>
+          } @else {
+            @if (show.tracking.status === 'stopped') {
+              <button mat-stroked-button type="button" (click)="track(show, false)">
+                {{ translate('app.show.resume') }}
+              </button>
+            } @else {
+              <button mat-stroked-button type="button" (click)="track(show, true)">
+                {{ translate('app.show.stop') }}
+              </button>
+            }
+            <button mat-button type="button" (click)="remove(show)">{{ translate('app.common.remove') }}</button>
+          }
+        </div>
+      </div>
+    </header>
+
+    @if (show.overview) {
+      <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ show.overview }}</p>
+    }
+
+    @for (season of show.seasons; track season.season_number) {
+      <section class="flex flex-col" [attr.aria-labelledby]="'season-' + season.season_number">
+        <div class="flex items-center justify-between gap-2">
+          <h2 [id]="'season-' + season.season_number" class="[font:var(--mat-sys-title-medium)]">
+            {{ season.title }}
+            <span class="text-on-surface-variant [font:var(--mat-sys-label-medium)]">
+              {{ watchedCount(show, season) }}/{{ season.episodes.length }}
+            </span>
+          </h2>
+          @if (season.season_number !== specials) {
+            <button
+              mat-icon-button
+              type="button"
+              [matMenuTriggerFor]="seasonMenu"
+              [attr.aria-label]="translate('app.show.seasonActions') + ' ' + season.title">
+              <mat-icon svgIcon="more_vert" aria-hidden="true" />
+            </button>
+            <mat-menu #seasonMenu="matMenu">
+              <button mat-menu-item type="button" (click)="markSeason(show, season, true)">
+                {{ translate('app.show.markSeason') }}
+              </button>
+              <button mat-menu-item type="button" (click)="markSeason(show, season, false)">
+                {{ translate('app.show.unmarkSeason') }}
+              </button>
+            </mat-menu>
+          }
+        </div>
+
+        <ul>
+          @for (episode of season.episodes; track episode.id) {
+            <li class="episode">
+              <div class="flex min-w-0 flex-col">
+                <span class="truncate [font:var(--mat-sys-body-large)]">
+                  {{ episode.episode_number }}. {{ episode.title }}
+                </span>
+                @if (episode.air_date) {
+                  <span class="text-on-surface-variant [font:var(--mat-sys-body-small)]">{{ episode.air_date }}</span>
+                }
+              </div>
+              <button
+                type="button"
+                class="check"
+                [class.watched]="watched(show, episode)"
+                [disabled]="upcoming(episode) && !watched(show, episode)"
+                [attr.aria-pressed]="watched(show, episode)"
+                [attr.aria-label]="season.title + ', ' + translate('app.show.episode') + ' ' + episode.episode_number"
+                (click)="toggle(show, episode)"
+                data-testid="episode-toggle">
+                <mat-icon
+                  [svgIcon]="watched(show, episode) ? 'check_circle' : 'radio_button_unchecked'"
+                  aria-hidden="true" />
+              </button>
+            </li>
+          }
+        </ul>
+      </section>
+    }
+  </section>
+} @else if ($failed()) {
+  <p role="alert" class="p-4 text-on-surface-variant">{{ translate('app.common.loadFailed') }}</p>
+}

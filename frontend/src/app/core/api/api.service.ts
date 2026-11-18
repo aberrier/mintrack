@@ -35,4 +35,26 @@ export class ApiService {
     setActive: (id: string, isActive: boolean) =>
       this.http.patch<Model.Http.AdminUser>(`/api/admin/users/${id}`, { is_active: isActive }),
   };
+
+  readonly catalog = {
+    search: (query: string) => this.http.get<Model.Http.SearchResult[]>('/api/search', { params: { query } }),
+    show: (tmdbId: number) => this.http.get<Model.Http.Show>(`/api/shows/${tmdbId}`),
+    movie: (tmdbId: number) => this.http.get<Model.Http.Movie>(`/api/movies/${tmdbId}`),
+  };
+
+  readonly tracking = {
+    trackShow: (tmdbId: number, stopped: boolean) =>
+      this.http.put<Model.Http.ShowTracking>(`/api/shows/${tmdbId}/tracking`, { stopped }),
+    untrackShow: (tmdbId: number) => this.http.delete<void>(`/api/shows/${tmdbId}/tracking`),
+    setWatched: (tmdbId: number, episodeIds: string[], watched: boolean) =>
+      this.http.post<Model.Http.ShowTracking | null>(`/api/shows/${tmdbId}/watched`, {
+        episode_ids: episodeIds,
+        watched,
+      }),
+    trackMovie: (tmdbId: number, watched: boolean) =>
+      this.http.put<Model.Http.MovieTracking>(`/api/movies/${tmdbId}/tracking`, { watched }),
+    untrackMovie: (tmdbId: number) => this.http.delete<void>(`/api/movies/${tmdbId}/tracking`),
+    library: (mediaType: Model.Http.MediaType) =>
+      this.http.get<Model.Http.LibraryItem[]>('/api/library', { params: { media_type: mediaType } }),
+  };
 }

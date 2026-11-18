@@ -28,3 +28,57 @@ body {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Filter and choice chips: 48px tap targets drawn 32px tall. */
+.chip {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 16px;
+  background: none;
+  border: 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-large);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.chip::after {
+  content: '';
+  position: absolute;
+  inset: 8px 0;
+  z-index: -1;
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: 8px;
+}
+
+.chip.selected {
+  color: var(--mat-sys-on-secondary-container);
+}
+
+.chip.selected::after {
+  background: var(--mat-sys-secondary-container);
+  border-color: transparent;
+}
+
+.chip:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: -6px;
+}
+
+.search-field {
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: 24px;
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-large);
+  outline: none;
+}
+
+.search-field:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+}
