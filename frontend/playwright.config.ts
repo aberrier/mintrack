@@ -13,6 +13,8 @@ export default defineConfig({
   use: {
     baseURL: process.env['MINTRACK_E2E_BASE_URL'] ?? 'http://localhost:8000',
     trace: 'retain-on-failure',
+    // page.route() does not see requests a service worker sends; the PWA spec allows it.
+    serviceWorkers: 'block',
   },
   projects: [
     { name: 'phone', use: { ...devices['Pixel 7'] } },

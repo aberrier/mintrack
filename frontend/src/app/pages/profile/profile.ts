@@ -12,6 +12,8 @@ import { appRoutes } from '../../app.paths';
 import { ApiService } from '../../core/api/api.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { injectTranslator } from '../../core/i18n';
+import { PushStore } from '../../core/push/push.store';
+import { PushSettings } from './push-settings/push-settings';
 
 const TIMEZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) => zone !== 'UTC')];
 
@@ -28,6 +30,7 @@ const TIMEZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) =>
     MatAutocomplete,
     MatAutocompleteTrigger,
     MatOption,
+    PushSettings,
   ],
   templateUrl: './profile.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,6 +40,7 @@ export default class Profile {
   protected readonly appRoutes = appRoutes;
   private readonly api = inject(ApiService);
   private readonly store = inject(AuthStore);
+  private readonly push = inject(PushStore);
   private readonly router = inject(Router);
   private readonly snackBar = inject(MatSnackBar);
   private readonly forms = inject(NonNullableFormBuilder);
@@ -91,6 +95,8 @@ export default class Profile {
   }
 
   protected async logout(everywhere: boolean): Promise<void> {
+    // A signed-out device stops receiving the user's notifications.
+    await this.push.disable();
     try {
       await (everywhere ? this.store.logoutEverywhere() : this.store.logout());
     } catch {

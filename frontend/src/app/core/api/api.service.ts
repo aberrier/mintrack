@@ -62,4 +62,11 @@ export class ApiService {
     get: () => this.http.get<Model.Http.UpcomingResponse>('/api/upcoming'),
     upNext: () => this.http.get<Model.Http.UpNextResponse>('/api/up-next'),
   };
+
+  readonly push = {
+    key: () => this.http.get<Model.Http.PushKeyResponse>('/api/push/key'),
+    subscribe: (subscription: PushSubscriptionJSON) => this.http.post<void>('/api/push/subscriptions', subscription),
+    unsubscribe: (endpoint: string) => this.http.delete<void>('/api/push/subscriptions', { body: { endpoint } }),
+    test: (endpoint: string) => this.http.post<void>('/api/push/test', { endpoint }),
+  };
 }

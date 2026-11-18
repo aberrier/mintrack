@@ -156,4 +156,31 @@ export default {
     removeTitle: 'Remove this movie?',
     removeMessage: 'It leaves your library.',
   },
+  push: {
+    title: 'Notifications',
+    toggle: 'Notify me on this device when an episode airs',
+    hints: {
+      install:
+        'On iPhone and iPad, add MinTrack to the Home Screen (Share, then Add to Home Screen) and open it from there.',
+      unsupported:
+        'This browser cannot receive notifications from MinTrack. They need a recent browser and an https address.',
+      unconfigured: 'Notifications are not set up on this server.',
+      blocked: 'Notifications are blocked for MinTrack in the browser settings.',
+    },
+    test: {
+      button: 'Send a test notification',
+      sent: 'Test notification sent',
+      expired: 'This device is no longer registered. Turn notifications on again.',
+      failed: 'The notification could not be sent. Try again later.',
+    },
+    errors: {
+      enable: 'Notifications could not be turned on',
+      disable: 'Notifications could not be turned off',
+    },
+  },
+  update: {
+    ready: 'A new version of MinTrack is available',
+    broken: 'MinTrack needs to reload to keep working',
+    reload: 'Reload',
+  },
 };
