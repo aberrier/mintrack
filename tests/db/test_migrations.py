@@ -11,15 +11,14 @@ from sqlalchemy.engine import URL
 from mintrack.config import get_config
 from tests.conftest import drop_database, recreate_database
 
-SCRATCH_DATABASE = "test_mintrack_migrations"
-
 
 @pytest.fixture
 def scratch_database_url() -> collections.abc.Generator[URL]:
     config = get_config().database
-    url = recreate_database(config, SCRATCH_DATABASE)
+    name = f"test_{config.name}_migrations"
+    url = recreate_database(config, name)
     yield url
-    drop_database(config, SCRATCH_DATABASE)
+    drop_database(config, name)
 
 
 def test_migrate_runs_from_the_installed_package_and_is_idempotent(
@@ -27,7 +26,7 @@ def test_migrate_runs_from_the_installed_package_and_is_idempotent(
 ) -> None:
     mintrack = pathlib.Path(sys.executable).parent / "mintrack"
     # No pyproject.toml or alembic.ini in the working directory.
-    env = {**os.environ, "MINTRACK__DATABASE__NAME": SCRATCH_DATABASE}
+    env = {**os.environ, "MINTRACK__DATABASE__NAME": scratch_database_url.database or ""}
 
     for _ in range(2):
         result = subprocess.run(  # noqa: S603

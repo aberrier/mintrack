@@ -1,0 +1,236 @@
+import asyncio
+import datetime as dt
+import enum
+import functools
+import re
+import uuid
+import zoneinfo
+
+import sqlalchemy as sa
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from mintrack.db.models import LoginFailure, User, UserSession
+
+from .passwords import hash_password, needs_rehash, verify_password
+from .tokens import hash_token, new_token
+
+USERNAME_PATTERN = r"^[A-Za-z0-9._-]{1,150}$"
+SESSION_IDLE_TIMEOUT = dt.timedelta(days=14)
+# last_used_at is written at most this often, which is also when the cookies' Max-Age is renewed.
+SESSION_TOUCH_INTERVAL = dt.timedelta(hours=1)
+INVITATION_LIFETIME = dt.timedelta(days=7)
+RESET_LIFETIME = dt.timedelta(hours=24)
+LOGIN_FAILURE_WINDOW = dt.timedelta(minutes=5)
+LOGIN_FAILURE_LIMIT = 5
+
+
+class InvalidCredentialsError(Exception):
+    pass
+
+
+class LoginRateLimitedError(Exception):
+    pass
+
+
+class InvalidUsernameError(Exception):
+    pass
+
+
+class UsernameTakenError(Exception):
+    pass
+
+
+class LastAdminError(Exception):
+    pass
+
+
+class UserDisabledError(Exception):
+    pass
+
+
+class UserStatus(enum.StrEnum):
+    INVITED = enum.auto()
+    INVITATION_EXPIRED = enum.auto()
+    ACTIVE = enum.auto()
+    DISABLED = enum.auto()
+
+
+def user_status(user: User, now: dt.datetime) -> UserStatus:
+    if not user.is_active:
+        return UserStatus.DISABLED
+    if user.password_hash is not None:
+        return UserStatus.ACTIVE
+    if user.link_expires_at is not None and user.link_expires_at > now:
+        return UserStatus.INVITED
+    return UserStatus.INVITATION_EXPIRED
+
+
+@functools.cache
+def available_timezones() -> frozenset[str]:
+    return frozenset(zoneinfo.available_timezones())
+
+
+def is_valid_username(username: str) -> bool:
+    return re.fullmatch(USERNAME_PATTERN, username) is not None
+
+
+def _live_link(token: str, now: dt.datetime) -> tuple[sa.ColumnElement[bool], ...]:
+    return User.link_token_hash == hash_token(token), User.link_expires_at > now, User.is_active.is_(True)
+
+
+class AccountManager:
+    """Accounts, sessions and links. Methods flush but never commit: the caller owns the transaction."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def login(self, username: str, password: str, *, address: str, now: dt.datetime) -> tuple[User, str]:
+        """Return the user and a new session token, or raise the same error for every kind of failure."""
+        key = username.lower()
+        window_start = now - LOGIN_FAILURE_WINDOW
+        # Attempts for one username and address wait for each other, so parallel requests can't all pass the count.
+        await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"{key}|{address}"))))
+        failures = await self.session.scalar(
+            sa.select(sa.func.count()).where(
+                LoginFailure.username == key, LoginFailure.address == address, LoginFailure.failed_at > window_start
+            )
+        )
+        if (failures or 0) >= LOGIN_FAILURE_LIMIT:
+            raise LoginRateLimitedError
+
+        user = await self.session.scalar(sa.select(User).where(sa.func.lower(User.username) == key))
+        password_hash = user.password_hash if user is not None and user.is_active else None
+        verified = await asyncio.to_thread(verify_password, password_hash, password)
+        if not verified or user is None or password_hash is None:
+            await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= window_start))
+            self.session.add(LoginFailure(username=key, address=address, failed_at=now))
+            await self.session.flush()
+            raise InvalidCredentialsError
+
+        await self.session.execute(
+            sa.delete(LoginFailure).where(LoginFailure.username == key, LoginFailure.address == address)
+        )
+        if needs_rehash(password_hash):
+            user.password_hash = await asyncio.to_thread(hash_password, password)
+        return user, await self.create_session(user, now=now)
+
+    async def create_session(self, user: User, *, now: dt.datetime) -> str:
+        token, token_hash = new_token()
+        self.session.add(UserSession(user_id=user.id, token_hash=token_hash, last_used_at=now))
+        await self.session.flush()
+        return token
+
+    async def get_session(self, token: str, *, now: dt.datetime) -> tuple[UserSession, User] | None:
+        """The session and its user, unless the session went unused too long or the user is disabled."""
+        row = (
+            await self.session.execute(
+                sa.select(UserSession, User)
+                .join(User)
+                .where(
+                    UserSession.token_hash == hash_token(token),
+                    UserSession.last_used_at > now - SESSION_IDLE_TIMEOUT,
+                    User.is_active,
+                )
+            )
+        ).one_or_none()
+        return None if row is None else (row[0], row[1])
+
+    @staticmethod
+    def touch_session(user_session: UserSession, *, now: dt.datetime) -> bool:
+        """Record the use of a session, at most once per interval; True when it was recorded."""
+        if now - user_session.last_used_at < SESSION_TOUCH_INTERVAL:
+            return False
+        user_session.last_used_at = now
+        return True
+
+    async def delete_session(self, session_id: uuid.UUID) -> None:
+        await self.session.execute(sa.delete(UserSession).where(UserSession.id == session_id))
+
+    async def delete_sessions(self, user_id: uuid.UUID, *, keep: uuid.UUID | None = None) -> None:
+        statement = sa.delete(UserSession).where(UserSession.user_id == user_id)
+        if keep is not None:
+            statement = statement.where(UserSession.id != keep)
+        await self.session.execute(statement)
+
+    @staticmethod
+    def issue_link(user: User, *, now: dt.datetime) -> str:
+        """A new invitation (no password yet) or reset link; it replaces the user's previous one."""
+        if not user.is_active:
+            raise UserDisabledError
+        token, token_hash = new_token()
+        user.link_token_hash = token_hash
+        user.link_expires_at = now + (INVITATION_LIFETIME if user.password_hash is None else RESET_LIFETIME)
+        return token
+
+    async def find_link_user(self, token: str, *, now: dt.datetime) -> User | None:
+        return await self.session.scalar(sa.select(User).where(*_live_link(token, now)))
+
+    async def use_link(self, token: str, password: str, *, timezone: str | None, now: dt.datetime) -> User | None:
+        """Set the password and consume the link in one statement, so a link works once; revoke the sessions."""
+        values: dict[str, object] = {
+            "password_hash": await asyncio.to_thread(hash_password, password),
+            "link_token_hash": None,
+            "link_expires_at": None,
+        }
+        if timezone is not None:
+            # The browser's time zone is only taken when the user had no password yet.
+            values["timezone"] = sa.case((User.password_hash.is_(None), timezone), else_=User.timezone)
+        user = await self.session.scalar(
+            sa.update(User).where(*_live_link(token, now)).values(values).returning(User),
+            execution_options={"synchronize_session": False, "populate_existing": True},
+        )
+        if user is not None:
+            await self.delete_sessions(user.id)
+        return user
+
+    async def change_password(
+        self, user: User, current_password: str, new_password: str, *, keep_session: uuid.UUID
+    ) -> None:
+        if not await asyncio.to_thread(verify_password, user.password_hash, current_password):
+            raise InvalidCredentialsError
+        user.password_hash = await asyncio.to_thread(hash_password, new_password)
+        await self.delete_sessions(user.id, keep=keep_session)
+
+    async def create_user(self, username: str, *, is_admin: bool, now: dt.datetime) -> tuple[User, str]:
+        """Create a user without a password and return it with its invitation link token."""
+        if not is_valid_username(username):
+            raise InvalidUsernameError
+        user = User(username=username, is_admin=is_admin, is_active=True)
+        token = self.issue_link(user, now=now)
+        try:
+            async with self.session.begin_nested():
+                self.session.add(user)
+        except IntegrityError:
+            raise UsernameTakenError from None
+        return user, token
+
+    async def get_user(self, username: str) -> User | None:
+        return await self.session.scalar(sa.select(User).where(sa.func.lower(User.username) == username.lower()))
+
+    async def list_users(self) -> list[tuple[User, dt.datetime | None]]:
+        """Every user with the last time one of their sessions was used."""
+        rows = await self.session.execute(
+            sa.select(User, sa.func.max(UserSession.last_used_at))
+            .outerjoin(UserSession)
+            .group_by(User.id)
+            .order_by(sa.func.lower(User.username))
+        )
+        return [(user, last_seen) for user, last_seen in rows]
+
+    async def set_active(self, user: User, *, active: bool) -> None:
+        """Enable or disable a user; disabling revokes their sessions and link and keeps one active admin."""
+        if active:
+            user.is_active = True
+            return
+        if user.is_admin:
+            # Locking every active admin serialises concurrent disables, so they can't remove the last one together.
+            active_admins = (
+                await self.session.scalars(sa.select(User.id).where(User.is_admin, User.is_active).with_for_update())
+            ).all()
+            if user.id in active_admins and len(active_admins) == 1:
+                raise LastAdminError
+        user.is_active = False
+        user.link_token_hash = None
+        user.link_expires_at = None
+        await self.delete_sessions(user.id)
