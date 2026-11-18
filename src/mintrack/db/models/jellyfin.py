@@ -34,7 +34,13 @@ class JellyfinAccount(DatabaseModel):
     last_sync_at: Mapped[dt.datetime | None]
     last_success_at: Mapped[dt.datetime | None]
     last_sync_status: Mapped[JellyfinSyncStatus | None] = mapped_column(
-        sa.Enum(JellyfinSyncStatus, native_enum=False, length=20, values_callable=lambda e: [m.value for m in e])
+        sa.Enum(
+            JellyfinSyncStatus,
+            native_enum=False,
+            create_constraint=True,
+            length=20,
+            values_callable=lambda e: [m.value for m in e],
+        )
     )
     last_sync_imported: Mapped[int] = mapped_column(default=0)
     last_sync_skipped: Mapped[int] = mapped_column(default=0)

@@ -9,8 +9,9 @@ from starlette.types import Receive, Scope, Send
 
 # Paths owned by the backend: they never fall back to the app.
 RESERVED_PREFIXES = ("/api", "/mcp", "/.well-known")
-# Angular's output hashing: main-72OG7TZP.js, chunk-D24BMUA5.js, styles-VTGUK7AB.css.
-HASHED_NAME = re.compile(r"-[A-Z0-9]{8}\.[a-z0-9]+$")
+# Angular's output hashing: main-72OG7TZP.js, styles-VTGUK7AB.css, and chunks named in base64url since Angular 22
+# (chunk-DR-6u6rE.js, chunk-B3_Ao3qa.js).
+HASHED_NAME = re.compile(r"^(main|polyfills|styles|chunk)-[A-Za-z0-9_-]{8}\.(js|css)$")
 
 IMMUTABLE = "public, max-age=31536000, immutable"
 # Everything without a hashed name (index.html, the manifest, service worker files) is revalidated on every load.

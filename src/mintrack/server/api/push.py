@@ -8,9 +8,17 @@ import pydantic
 from cryptography.hazmat.primitives.asymmetric import ec
 
 from mintrack.core.push.managers import PushManager
-from mintrack.core.push.webpush import SendResult, Subscription, VapidKey, b64url_decode, get_vapid_key, is_push_service
+from mintrack.core.push.webpush import (
+    SendResult,
+    Subscription,
+    VapidKey,
+    b64url_decode,
+    get_vapid_key,
+    is_push_service,
+    push_client,
+)
 from mintrack.db.dependencies import DbSessionDepType
-from mintrack.server.api.dependencies import CurrentUserDepType
+from mintrack.server.api.dependencies import WITHOUT_NUL, CurrentSessionDepType, CurrentUserDepType
 
 router = fastapi.APIRouter(prefix="/push", tags=["push"])
 
@@ -50,7 +58,9 @@ def _auth_secret(value: str) -> str:
 
 
 Endpoint = typing.Annotated[
-    str, pydantic.Field(max_length=ENDPOINT_MAX_LENGTH), pydantic.AfterValidator(_push_endpoint)
+    str,
+    pydantic.Field(max_length=ENDPOINT_MAX_LENGTH, pattern=WITHOUT_NUL),
+    pydantic.AfterValidator(_push_endpoint),
 ]
 
 
@@ -78,7 +88,7 @@ OptionalVapidKeyDepType = typing.Annotated[VapidKey | None, fastapi.Depends(get_
 
 
 async def get_push_client() -> collections.abc.AsyncGenerator[httpx.AsyncClient]:
-    async with httpx.AsyncClient() as client:
+    async with push_client() as client:
         yield client
 
 
@@ -102,9 +112,10 @@ async def get_public_key(key: OptionalVapidKeyDepType) -> VapidKeyResponse:
 
 
 @router.post("/subscriptions", status_code=fastapi.status.HTTP_204_NO_CONTENT)
-async def subscribe(body: SubscriptionRequest, user: CurrentUserDepType, manager: PushManagerDepType) -> None:
+async def subscribe(body: SubscriptionRequest, current: CurrentSessionDepType, manager: PushManagerDepType) -> None:
+    """Register this device; signing out on it removes it."""
     subscription = Subscription(endpoint=body.endpoint, p256dh=body.keys.p256dh, auth=body.keys.auth)
-    await manager.subscribe(user, subscription, dt.datetime.now(dt.UTC))
+    await manager.subscribe(current.user, subscription, dt.datetime.now(dt.UTC), session_id=current.session_id)
 
 
 @router.delete("/subscriptions", status_code=fastapi.status.HTTP_204_NO_CONTENT)

@@ -8,7 +8,6 @@ __pycache__/
 .coverage.*
 coverage.xml
 htmlcov/
-.benchmarks/
 
 # Node / Angular (frontend/)
 node_modules/
@@ -24,9 +23,8 @@ blob-report/
 .env.*
 !.env.example
 
-# Local data
-/db/
-*.sqlite3
+# The browser-test stack of scripts/e2e-stack.sh
+/.e2e/
 
 # Editors and OS
 .idea/

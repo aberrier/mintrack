@@ -1,0 +1,66 @@
+name: Release
+
+# Publishes X.Y.Z for every vX.Y.Z tag of a commit on master, X.Y when it is the highest of its line, and latest
+# when it is the highest of all: a patch to an older line moves neither.
+on:
+  push:
+    tags: ["v*"]
+
+permissions: {}
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          # Every tag and master, to compare versions and check where the tagged commit is.
+          fetch-depth: 0
+      - name: Tags
+        id: tags
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version='(0|[1-9][0-9]*)'
+          pattern="^v$version\.$version\.$version\$"
+          if [[ ! "$TAG" =~ $pattern ]]; then
+            echo "::error::$TAG is not a vX.Y.Z tag without leading zeros"
+            exit 1
+          fi
+          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+            echo "::error::$TAG is not on master"
+            exit 1
+          fi
+          highest() { git tag --list "$1" | grep -E "$pattern" | sort -V | tail -n 1; }
+          image=ghcr.io/aberrier/mintrack
+          list="$image:$major.$minor.$patch"
+          if [[ "$(highest "v$major.$minor.*")" == "$TAG" ]]; then list+=",$image:$major.$minor"; fi
+          if [[ "$(highest 'v*')" == "$TAG" ]]; then list+=",$image:latest"; fi
+          echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          build-args: COMMIT=${{ steps.tags.outputs.commit }}
+          provenance: mode=max
+          sbom: true

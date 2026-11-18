@@ -1,6 +1,6 @@
 import typer
 
-from mintrack.worker import get_worker_app
+from mintrack.worker.app import get_worker_app
 
 command = typer.Typer(invoke_without_command=True, help="Run the background worker on its own.")
 

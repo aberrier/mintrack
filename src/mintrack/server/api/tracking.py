@@ -1,5 +1,4 @@
 import datetime as dt
-import enum
 import typing
 import uuid
 
@@ -7,13 +6,18 @@ import fastapi
 import pydantic
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.catalog.managers import find_media, is_airing
-from mintrack.core.tracking.managers import LibrarySort, LibraryStatus, TrackingManager, UnknownEpisodesError
+from mintrack.core.catalog.managers import find_media
+from mintrack.core.tracking.managers import (
+    LibrarySort,
+    ShowTrackingChoice,
+    TrackingManager,
+    UnairedEpisodesError,
+    UnknownEpisodesError,
+)
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import Media, MediaType, TrackingStatus
 from mintrack.server.api.catalog import MovieTrackingResponse, ShowTrackingResponse, TMDBId
 from mintrack.server.api.dependencies import CurrentUserDepType
-from mintrack.worker.tasks import defer_air_times_refresh
 
 router = fastapi.APIRouter(tags=["tracking"])
 
@@ -22,13 +26,10 @@ DEFAULT_HISTORY_PAGE = 30
 MAX_HISTORY_PAGE = 100
 
 
-class ShowTrackingChoice(enum.StrEnum):
-    WATCHING = enum.auto()
-    WATCH_LATER = enum.auto()
-    STOPPED = enum.auto()
-
-
 class ShowTrackingRequest(pydantic.BaseModel):
+    # An unknown field is refused rather than ignored.
+    model_config = pydantic.ConfigDict(extra="forbid")
+
     status: ShowTrackingChoice = ShowTrackingChoice.WATCHING
 
 
@@ -67,6 +68,8 @@ class HistoryEntryResponse(pydantic.BaseModel):
     episode_number: int | None
     episode_title: str | None
     watched_at: dt.datetime
+    # The user finished the show; always false for movies.
+    finished: bool
 
 
 class HistoryResponse(pydantic.BaseModel):
@@ -91,16 +94,9 @@ async def track_show(
 ) -> ShowTrackingResponse:
     """Add the show to the library, put it aside to watch later, stop it or resume it."""
     media = await cached(session, MediaType.TV, tmdb_id)
-    manager, now = TrackingManager(session), dt.datetime.now(dt.UTC)
-    if body.status is ShowTrackingChoice.WATCH_LATER:
-        tracking = await manager.watch_later(user, media, now)
-    else:
-        tracking = await manager.track_show(user, media, stopped=body.status is ShowTrackingChoice.STOPPED, now=now)
-    if body.status is ShowTrackingChoice.WATCHING and is_airing(media):
-        # Exact air times, before the next daily refresh.
-        await defer_air_times_refresh(session, media.id)
+    tracking = await TrackingManager(session).set_show_status(user, media, body.status, dt.datetime.now(dt.UTC))
     await session.commit()
-    return ShowTrackingResponse.of(tracking)
+    return ShowTrackingResponse.model_validate(tracking)
 
 
 @router.post("/shows/{tmdb_id}/watched")
@@ -110,20 +106,25 @@ async def set_episodes_watched(
     user: CurrentUserDepType,
     session: DbSessionDepType,
 ) -> ShowTrackingResponse | None:
-    """Mark episodes watched now, or unmark them; marking adds the show to the library."""
+    """Mark episodes watched now, or unmark them; marking adds the show to the library. Episodes dated later
+    cannot be marked."""
     media = await cached(session, MediaType.TV, tmdb_id)
     try:
         manager, now = TrackingManager(session), dt.datetime.now(dt.UTC)
         if body.watched:
-            tracking = await manager.mark_episodes(user, media, body.episode_ids, now)
+            tracking = await manager.mark_episodes(user, media, body.episode_ids, now, now=now)
         else:
             tracking = await manager.unmark_episodes(user, media, body.episode_ids, now)
     except UnknownEpisodesError:
         raise fastapi.HTTPException(
             fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, "Some episodes are not episodes of this show"
         ) from None
+    except UnairedEpisodesError:
+        raise fastapi.HTTPException(
+            fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, "Some episodes have not aired yet"
+        ) from None
     await session.commit()
-    return ShowTrackingResponse.of(tracking) if tracking else None
+    return ShowTrackingResponse.model_validate(tracking) if tracking else None
 
 
 @router.put("/movies/{tmdb_id}/tracking")
@@ -135,11 +136,10 @@ async def track_movie(
 ) -> MovieTrackingResponse:
     """Add the movie to the library, watched now or to watch later."""
     media = await cached(session, MediaType.MOVIE, tmdb_id)
-    tracking = await TrackingManager(session).set_movie_watched(
-        user, media, watched=body.watched, now=dt.datetime.now(dt.UTC)
-    )
+    now = dt.datetime.now(dt.UTC)
+    tracking = await TrackingManager(session).set_movie_watched(user, media, watched=body.watched, at=now, now=now)
     await session.commit()
-    return MovieTrackingResponse.of(tracking)
+    return MovieTrackingResponse.model_validate(tracking)
 
 
 @router.delete("/shows/{tmdb_id}/tracking", status_code=fastapi.status.HTTP_204_NO_CONTENT)
@@ -161,7 +161,7 @@ async def library(
     user: CurrentUserDepType,
     session: DbSessionDepType,
     sort: LibrarySort = LibrarySort.LAST_WATCHED,
-    status: LibraryStatus | None = None,
+    status: TrackingStatus | None = None,
 ) -> list[LibraryItemResponse]:
     items = await TrackingManager(session).library(user, media_type, dt.datetime.now(dt.UTC), sort=sort, status=status)
     return [
@@ -184,7 +184,7 @@ async def library(
 async def history(
     user: CurrentUserDepType,
     session: DbSessionDepType,
-    before: dt.datetime | None = None,
+    before: pydantic.AwareDatetime | None = None,
     # Without it, the page starts strictly before `before`.
     before_id: uuid.UUID | None = None,
     limit: typing.Annotated[int, fastapi.Query(ge=1, le=MAX_HISTORY_PAGE)] = DEFAULT_HISTORY_PAGE,

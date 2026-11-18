@@ -9,10 +9,12 @@ from mintrack.core.accounts.managers import (
     InvalidCredentialsError,
     LoginRateLimitedError,
     available_timezones,
+    database_timezone,
 )
 from mintrack.core.accounts.passwords import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.server.api.dependencies import (
+    WITHOUT_NUL,
     XSRF_COOKIE,
     CurrentSessionDepType,
     CurrentUserDepType,
@@ -29,10 +31,12 @@ public_router = fastapi.APIRouter(prefix="/auth", tags=["auth"])
 router = fastapi.APIRouter(prefix="/auth", tags=["auth"])
 
 
+TIMEZONE_ERROR = "must be an IANA time zone such as Europe/Paris"
+
+
 def _check_timezone(value: str) -> str:
     if value not in available_timezones():
-        msg = "must be an IANA time zone such as Europe/Paris"
-        raise ValueError(msg)
+        raise ValueError(TIMEZONE_ERROR)
     return value
 
 
@@ -52,15 +56,15 @@ class UserResponse(pydantic.BaseModel):
 
 
 class LoginRequest(pydantic.BaseModel):
-    username: typing.Annotated[str, pydantic.Field(max_length=150)]
+    username: typing.Annotated[str, pydantic.Field(max_length=150, pattern=WITHOUT_NUL)]
     password: AnyPassword
 
 
-class LinkRequest(pydantic.BaseModel):
+class PasswordLinkRequest(pydantic.BaseModel):
     token: Token
 
 
-class LinkResponse(pydantic.BaseModel):
+class PasswordLinkResponse(pydantic.BaseModel):
     username: str
 
 
@@ -111,11 +115,11 @@ async def login(
 
 
 @public_router.post("/password-link", responses={fastapi.status.HTTP_400_BAD_REQUEST: {"description": INVALID_LINK}})
-async def describe_password_link(body: LinkRequest, db: DbSessionDepType) -> LinkResponse:
+async def describe_password_link(body: PasswordLinkRequest, db: DbSessionDepType) -> PasswordLinkResponse:
     user = await AccountManager(db).find_link_user(body.token, now=utc_now())
     if user is None:
         raise fastapi.HTTPException(fastapi.status.HTTP_400_BAD_REQUEST, INVALID_LINK)
-    return LinkResponse(username=user.username)
+    return PasswordLinkResponse(username=user.username)
 
 
 @public_router.post(
@@ -124,7 +128,9 @@ async def describe_password_link(body: LinkRequest, db: DbSessionDepType) -> Lin
 async def use_password_link(body: UseLinkRequest, response: fastapi.Response, db: DbSessionDepType) -> UserResponse:
     manager = AccountManager(db)
     now = utc_now()
-    user = await manager.use_link(body.token, body.password, timezone=body.timezone, now=now)
+    # A browser's zone PostgreSQL does not know is ignored: the user's default stays.
+    timezone = await database_timezone(db, body.timezone) if body.timezone else None
+    user = await manager.use_link(body.token, body.password, timezone=timezone, now=now)
     if user is None:
         raise fastapi.HTTPException(fastapi.status.HTTP_400_BAD_REQUEST, INVALID_LINK)
     token = await manager.create_session(user, now=now)
@@ -140,9 +146,12 @@ async def me(user: CurrentUserDepType, request: fastapi.Request, response: fasta
     return UserResponse.model_validate(user)
 
 
-@router.patch("/me")
+@router.patch("/me", responses={fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Unknown time zone"}})
 async def update_me(body: UpdateMeRequest, user: CurrentUserDepType, db: DbSessionDepType) -> UserResponse:
-    user.timezone = body.timezone
+    timezone = await database_timezone(db, body.timezone)
+    if timezone is None:
+        raise fastapi.HTTPException(fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, f"The time zone {TIMEZONE_ERROR}.")
+    user.timezone = timezone
     await db.commit()
     return UserResponse.model_validate(user)
 

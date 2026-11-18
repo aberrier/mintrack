@@ -8,25 +8,27 @@ people you share it with. It focuses on the things TV Time did well on a phone: 
 episode comes next, what airs soon, and marking what you watched without friction.
 Your Jellyfin servers fill in your history on their own.
 
-> **Status:** early development. Nothing is usable yet; this README describes
-> what the project is building.
+> **Status:** before its first release. Everything below works; expect
+> changes until 1.0.
 
 ## What it does
 
 - **Movies, TV shows and anime.** Anime are tracked as regular TV shows, with
   metadata from TMDB.
-- **One tap to mark an episode watched**, another tap to unmark it. Two taps
-  to mark a whole season. When you skip ahead, MinTrack offers to mark the
+- **One tap to mark an episode watched**, another tap to unmark it. One tap
+  marks a whole season. When you skip ahead, MinTrack offers to mark the
   previous episodes too.
-- **TV Time statuses.** Watch later, watching, up to date, finished and stopped.
-  Most of them follow your progress automatically.
-- **Up next and upcoming.** The next episode of every show you watch, and
-  what airs soon, with real air times when available.
+- **TV Time statuses.** Not started, watching, up to date, finished, stopped
+  and watch later (a show set aside). Most of them follow your progress
+  automatically.
+- **Watch list and upcoming.** The next episode of every show you watch (the
+  first one of a show you have not started), and what airs soon, with real air
+  times when available.
 - **Push notifications** when a new episode of a show you follow airs, on
   Android and iOS, through an installable web app. No app store needed.
 - **Several Jellyfin accounts per user**, even on servers you don't
-  administer. What you watch there shows up in MinTrack
-  within minutes.
+  administer, linked with Quick Connect: MinTrack never sees your Jellyfin
+  password. What you watch there shows up in MinTrack within minutes.
 - **Easy to self-host and private.** One docker-compose file, several users
   per instance, invited by the admin. No email, no social features, no tracking.
 - **An MCP server** so an AI assistant (Claude Code, Claude Desktop...) can read
@@ -41,7 +43,10 @@ Your Jellyfin servers fill in your history on their own.
     `tracking-prod-records-v2.csv` (followed shows, watched episodes and
     movies) or `tracking-prod-records.csv` (watched episodes). Shows are
     matched by their TVDB id where the file has it, else by title; movies by
-    title and year. Only these two files are kept until the import ends.
+    title and year. Archived shows are imported as stopped, shows saved for
+    later as watch later. Only these two files are kept until the import ends;
+    the others, `seen_episode_source.csv` (where each episode was watched)
+    included, are not read: MinTrack does not record where you watched.
 
 ## What it does not do
 
@@ -57,6 +62,23 @@ Pi 3, 4 or 5 with a 64-bit system).
 
    ```yaml
    name: mintrack
+
+   # Settings shared by the MinTrack services, which run the same image.
+   x-mintrack: &mintrack
+     # A release (1.4.2), a release line (1.4) or latest, set by MINTRACK_VERSION in .env.
+     image: ghcr.io/aberrier/mintrack:${MINTRACK_VERSION:-latest}
+     restart: unless-stopped
+     env_file: .env
+     environment: &mintrack-environment
+       MINTRACK__DATABASE__HOST: db
+       MINTRACK__DATABASE__USER: mintrack
+       MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+       MINTRACK__DATABASE__NAME: mintrack
+     read_only: true
+     tmpfs: [/tmp]
+     cap_drop: [ALL]
+     security_opt: [no-new-privileges:true]
+     logging: { driver: local }
 
    services:
      db:
@@ -77,34 +99,47 @@ Pi 3, 4 or 5 with a 64-bit system).
        security_opt: [no-new-privileges:true]
        logging: { driver: local }
 
-     server:
-       image: ghcr.io/aberrier/mintrack:edge
-       restart: unless-stopped
+     # Upgrades the database schema, then exits; the server and the worker start after it.
+     migrate:
+       <<: *mintrack
+       command: ["mintrack", "db", "migrate"]
+       restart: "no"
+       healthcheck:
+         disable: true
        depends_on:
          db:
            condition: service_healthy
-       env_file: .env
+
+     server:
+       <<: *mintrack
+       command: ["mintrack", "server", "--no-migrate"]
        environment:
-         MINTRACK__DATABASE__HOST: db
-         MINTRACK__DATABASE__USER: mintrack
-         MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
-         MINTRACK__DATABASE__NAME: mintrack
+         <<: *mintrack-environment
+         MINTRACK__SERVER__RUN_WORKER: "false"
        ports:
          - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
-       read_only: true
-       tmpfs: [/tmp]
-       cap_drop: [ALL]
-       security_opt: [no-new-privileges:true]
-       logging: { driver: local }
+       depends_on:
+         migrate:
+           condition: service_completed_successfully
+
+     # Background jobs: TMDB refreshes, air times, notifications, Jellyfin syncs and imports.
+     worker:
+       <<: *mintrack
+       command: ["mintrack", "worker"]
+       healthcheck:
+         disable: true
+       depends_on:
+         migrate:
+           condition: service_completed_successfully
 
    networks:
      default:
        name: mintrack
-       # A proxy on the host reaches MinTrack from the gateway address.
+       # A proxy on the host reaches MinTrack from the gateway address. Change both when the range is taken on the host.
        ipam:
          config:
-           - subnet: 172.30.0.0/24
-             gateway: 172.30.0.1
+           - subnet: ${MINTRACK_SUBNET:-172.30.0.0/24}
+             gateway: ${MINTRACK_GATEWAY:-172.30.0.1}
 
    volumes:
      db:
@@ -123,7 +158,8 @@ Pi 3, 4 or 5 with a 64-bit system).
    `MINTRACK__PROJECT__PUBLIC_URL` is the address you open MinTrack at. The TMDB key is free: create a TMDB account,
    then copy the "API Key" from https://www.themoviedb.org/settings/api. Every other setting is listed with its
    default in [`.env.example`](.env.example); each can also be read from a file through a `_FILE` variant, for
-   Docker secrets.
+   Docker secrets. `MINTRACK_VERSION` picks the image: `latest` (the default) follows every release; see
+   [Upgrades and rollback](#upgrades-and-rollback) to pin one.
 
 3. Start it:
 
@@ -131,8 +167,9 @@ Pi 3, 4 or 5 with a 64-bit system).
    docker compose up -d
    ```
 
-MinTrack answers on port 8000 (`http://localhost:8000`, or the server's address on your network). `docker compose ps`
-shows it as healthy; if it is not, `docker compose logs server` shows why, with one line per setting to fix.
+`migrate` upgrades the database schema and exits; then `server` and `worker` start. MinTrack answers on port 8000
+(`http://localhost:8000`, or the server's address on your network). `docker compose ps` shows the server as healthy;
+if it is not, `docker compose logs migrate server` shows why, with one line per setting to fix.
 
 4. Create the first admin. The command prints a link to open in a browser, where the admin sets their password:
 
@@ -140,8 +177,8 @@ shows it as healthy; if it is not, `docker compose logs server` shows why, with 
    docker compose exec server mintrack users create-admin admin
    ```
 
-   The admin then invites everyone else from Profile > Manage users, and shares each printed link by hand (MinTrack
-   sends no email). A forgotten password needs a new link: from the users page, or for an admin
+   The admin then invites everyone else from the Admin tab, and shares each printed link by hand (MinTrack
+   sends no email). A forgotten password needs a new link: from the Admin tab, or for an admin
    `docker compose exec server mintrack users reset-link USERNAME`.
 
 ### Behind a reverse proxy
@@ -161,6 +198,10 @@ nginx, Traefik...) in front, serving MinTrack at the root of its own domain, suc
 
 Ports Docker publishes bypass host firewalls such as ufw: with the default bind address, port 8000 is open to every
 network the machine is on.
+
+The `mintrack` network uses `172.30.0.0/24`. When that range is already taken on the host, set another one with its
+gateway in `.env` (`MINTRACK_SUBNET=172.31.0.0/24` and `MINTRACK_GATEWAY=172.31.0.1`), and trust that gateway
+instead of `172.30.0.1`.
 
 ### Install the app and turn on notifications
 
@@ -217,70 +258,62 @@ it if it leaks.
 
 ### Background jobs
 
-The server container also runs MinTrack's background worker (it refreshes TMDB data: daily for shows still airing,
-weekly for the others). To run the worker as its own service instead, replace the `server` service of
-`docker-compose.yml` with these three, keeping the other settings of `server` (`restart`, `env_file`, `environment`,
-`read_only`, `tmpfs`, `cap_drop`, `security_opt`, `logging`) on each:
+The `worker` service runs MinTrack's background jobs: TMDB refreshes (daily for shows still airing, weekly for the
+others), exact air times, notifications, Jellyfin syncs and imports, four at a time. A job left unfinished by a
+stopped worker is retried after 10 minutes. With `MINTRACK__SERVER__RUN_WORKER=true` (the default outside this
+`docker-compose.yml`), the server runs them itself, for installs with a single process.
 
-```yaml
-  migrate:
-    image: ghcr.io/aberrier/mintrack:edge
-    command: ["mintrack", "db", "migrate"]
-    restart: "no"
-    depends_on:
-      db:
-        condition: service_healthy
+### Imports from the command line
 
-  server:
-    image: ghcr.io/aberrier/mintrack:edge
-    command: ["mintrack", "server", "--no-migrate"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    environment:
-      MINTRACK__SERVER__RUN_WORKER: "false"
-    ports:
-      - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
+The import card of the profile takes a Yamtrack CSV export or a TV Time GDPR export. An admin can run the same import
+for any user from the folder of `docker-compose.yml`, and see the report at once:
 
-  worker:
-    image: ghcr.io/aberrier/mintrack:edge
-    command: ["mintrack", "worker"]
-    depends_on:
-      migrate:
-        condition: service_completed_successfully
-    healthcheck:
-      disable: true
+```bash
+docker compose run --rm -v "$PWD/export.zip:/import/export.zip:ro" server mintrack import alice tvtime /import/export.zip
 ```
+
+The source is `yamtrack` or `tvtime`; the command prints what was imported and each row it could not match.
 
 ### Backups
 
-Everything MinTrack knows is in PostgreSQL. Keep `.env` with it: its secret key encrypts stored credentials. A backup, from the folder of `docker-compose.yml`:
+Everything MinTrack knows is in PostgreSQL. Keep `.env` with it: its secret key encrypts stored credentials. A backup,
+from the folder of `docker-compose.yml`:
 
 ```bash
 (umask 077; docker compose exec -T db pg_dump -U mintrack -Fc mintrack > mintrack-$(date +%F).dump)
 ```
 
-To restore it, stop the server, restore, start again:
+To restore it, stop MinTrack, restore into a fresh database, start again:
 
 ```bash
-docker compose stop server
-docker compose exec -T db pg_restore -U mintrack -d mintrack --clean --if-exists < mintrack-2026-01-31.dump
-docker compose start server
+docker compose stop server worker
+docker compose exec -T db dropdb -U mintrack --force mintrack
+docker compose exec -T db createdb -U mintrack mintrack
+docker compose exec -T db pg_restore -U mintrack -d mintrack --no-owner < mintrack-2026-01-31.dump
+docker compose up -d
 ```
+
+A fresh database, rather than `pg_restore --clean` over the current one, leaves nothing a later version added
+(tables, columns, jobs) behind.
 
 ### Upgrades and rollback
 
-Take a backup, then pull the new image and recreate the containers; the server upgrades the database schema when it
-starts:
+`MINTRACK_VERSION` in `.env` picks the image: `latest` (the default) follows every release, `1.4` follows the patch
+releases of 1.4, and `1.4.2` stays on that release. Releases are listed on the
+[packages page](https://github.com/aberrier/mintrack/pkgs/container/mintrack). To upgrade, take a backup, then:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-To pin a version, replace `edge` with a release tag in `docker-compose.yml`. Schema upgrades are not reversible from
-the app: to roll back, put the previous tag back and restore the backup taken before the upgrade (an older version
-refuses to start on a database a newer one migrated).
+`migrate` upgrades the database schema before the server and the worker start. Schema upgrades are not reversible,
+and an older version refuses to start on a database a newer one migrated. To roll back:
+
+1. Stop MinTrack: `docker compose stop server worker`.
+2. Pin the version you came from, such as `MINTRACK_VERSION=1.4.2` in `.env`.
+3. Restore the backup taken before the upgrade into a fresh database, as in [Backups](#backups), which ends with
+   `docker compose up -d`.
 
 ### PostgreSQL major upgrades
 
@@ -307,17 +340,6 @@ Keep the old volume until MinTrack works on the new one; `docker volume rm mintr
   app (PWA) with Web Push, in `frontend/`.
 - **Metadata:** TMDB, plus TVmaze for episode air times.
 - **Deployment:** one Docker image and a docker-compose file with PostgreSQL.
-
-## Roadmap
-
-1. Foundations: project skeleton, Docker, CI, linting and tests.
-2. Accounts: login, sessions, admin invitations.
-3. Catalog and tracking: TMDB search, shows and movies, one-tap episodes, statuses.
-4. Upcoming episodes and calendar, with TVmaze air times.
-5. Installable app and push notifications.
-6. Jellyfin sync with several accounts per user.
-7. Imports from Yamtrack and TV Time.
-8. MCP server.
 
 ## Origins
 

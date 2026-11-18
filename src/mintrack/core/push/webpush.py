@@ -67,6 +67,11 @@ class VapidKey:
         return self._vapid.sign(claims)["Authorization"]
 
 
+def push_client() -> httpx.AsyncClient:
+    """The client that sends to the push services; each request sets its own timeout."""
+    return httpx.AsyncClient()
+
+
 @functools.cache
 def get_vapid_key() -> VapidKey | None:
     """The VAPID key, or None when push is unavailable: no secret key, or a public URL that is not https.

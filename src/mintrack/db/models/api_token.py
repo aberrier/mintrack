@@ -16,5 +16,5 @@ class ApiToken(DatabaseModel):
     user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str]
     token_hash: Mapped[bytes] = mapped_column(unique=True)
-    created_at: Mapped[dt.datetime]
+    created_at: Mapped[dt.datetime] = mapped_column(server_default=sa.func.now())
     last_used_at: Mapped[dt.datetime | None]

@@ -5,10 +5,13 @@ import uuid
 import httpx
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mintrack.core.catalog.managers import episode_code
 from mintrack.core.upcoming.managers import IN_PROGRESS_STATUSES
 from mintrack.db.models import Episode, EpisodeNotification, Media, PushSubscription, User, UserMedia
+from mintrack.observability.logging import logger
 
 from .webpush import SendResult, Subscription, VapidKey, send
 
@@ -21,8 +24,14 @@ MAX_DEVICES = 20
 ICON = "/icons/icon-192.png"
 
 
-def notification(title: str, body: str, tag: str) -> bytes:
-    """A message in the format Angular's service worker shows; a tap opens or focuses the app."""
+def notification(title: str, body: str, tag: str, url: str | None = None) -> bytes:
+    """A message in the format Angular's service worker shows; a tap opens `url` in the app's window, or without
+    `url` focuses the app as it is."""
+    action = (
+        {"operation": "focusLastFocusedOrOpen", "url": "/"}
+        if url is None
+        else {"operation": "navigateLastFocusedOrOpen", "url": url}
+    )
     return json.dumps(
         {
             "notification": {
@@ -30,7 +39,7 @@ def notification(title: str, body: str, tag: str) -> bytes:
                 "body": body,
                 "icon": ICON,
                 "tag": tag,
-                "data": {"onActionClick": {"default": {"operation": "focusLastFocusedOrOpen", "url": "/"}}},
+                "data": {"onActionClick": {"default": action}},
             }
         }
     ).encode()
@@ -40,12 +49,12 @@ def episodes_notification(show: Media, episodes: list[Episode]) -> bytes:
     """One message per show: a season released at once is one notification, not one per episode."""
     if len(episodes) == 1:
         [episode] = episodes
-        body = f"S{episode.season_number:02}E{episode.episode_number:02}"
+        body = episode_code(episode.season_number, episode.episode_number)
         if episode.title:
             body += f" · {episode.title}"
     else:
         body = f"{len(episodes)} new episodes"
-    return notification(show.title, body, tag=str(show.id))
+    return notification(show.title, body, tag=str(show.id), url=f"/shows/{show.tmdb_id}")
 
 
 TEST_NOTIFICATION = notification("MinTrack", "Notifications work on this device.", tag="test")
@@ -57,12 +66,21 @@ class PushManager:
         self.client = client
         self.key = key
 
-    async def subscribe(self, user: User, subscription: Subscription, now: dt.datetime) -> None:
-        """Register this device for the user; a device already registered by someone else moves to this user.
+    async def subscribe(
+        self, user: User, subscription: Subscription, now: dt.datetime, *, session_id: uuid.UUID | None = None
+    ) -> None:
+        """Register this device for the user, signed in with `session_id`; a device already registered by someone
+        else moves to this user.
 
         Beyond MAX_DEVICES, the user's devices registered longest ago are dropped.
         """
-        values = {"user_id": user.id, "p256dh": subscription.p256dh, "auth": subscription.auth, "created_at": now}
+        values = {
+            "user_id": user.id,
+            "session_id": session_id,
+            "p256dh": subscription.p256dh,
+            "auth": subscription.auth,
+            "created_at": now,
+        }
         await self.session.execute(
             insert(PushSubscription)
             .values(endpoint=subscription.endpoint, **values)
@@ -108,32 +126,17 @@ class PushManager:
         The pairs are recorded and committed before sending, so concurrent or repeated runs never send one twice.
         Returns the number of episodes notified.
         """
-        aired_at = sa.func.coalesce(
-            Episode.airstamp,
-            sa.func.timezone(User.timezone, sa.cast(Episode.air_date, sa.DateTime) + FALLBACK_AIR_TIME),
+        users = await self.session.scalars(
+            sa.select(User).where(User.is_active, sa.exists().where(PushSubscription.user_id == User.id))
         )
-        due = (
-            sa.select(User.id, Episode.id)
-            .join(UserMedia, UserMedia.user_id == User.id)
-            .join(Episode, Episode.media_id == UserMedia.media_id)
-            .where(
-                User.is_active,
-                UserMedia.status.in_(IN_PROGRESS_STATUSES),
-                sa.exists().where(PushSubscription.user_id == User.id),
-                # Narrows the scan to a few days of episodes before comparing the computed air time.
-                Episode.air_date.between((now - dt.timedelta(days=2)).date(), (now + dt.timedelta(days=1)).date()),
-                aired_at > now - NOTIFICATION_WINDOW,
-                aired_at <= now,
-            )
-        )
-        claimed = (
-            await self.session.execute(
-                insert(EpisodeNotification)
-                .from_select(["user_id", "episode_id"], due)
-                .on_conflict_do_nothing()
-                .returning(EpisodeNotification.user_id, EpisodeNotification.episode_id)
-            )
-        ).all()
+        claimed: list[tuple[uuid.UUID, uuid.UUID]] = []
+        for user in users.all():
+            try:
+                # One user's failure (a time zone PostgreSQL does not know...) leaves the others' notifications.
+                async with self.session.begin_nested():
+                    claimed.extend(await self._claim(user, now))
+            except DBAPIError:
+                logger.exception("episode notifications failed for a user", user_id=str(user.id))
         await self.session.commit()
         if not claimed:
             return 0
@@ -160,6 +163,32 @@ class PushManager:
                     devices[user_id].remove(subscription)
         await self.session.commit()
         return len(claimed)
+
+    async def _claim(self, user: User, now: dt.datetime) -> list[tuple[uuid.UUID, uuid.UUID]]:
+        """Record the user's episodes of followed shows aired within the window and not notified yet."""
+        aired_at = sa.func.coalesce(
+            Episode.airstamp,
+            sa.func.timezone(user.timezone, sa.cast(Episode.air_date, sa.DateTime) + FALLBACK_AIR_TIME),
+        )
+        due = (
+            sa.select(sa.literal(user.id, sa.Uuid), Episode.id)
+            .join(UserMedia, UserMedia.media_id == Episode.media_id)
+            .where(
+                UserMedia.user_id == user.id,
+                UserMedia.status.in_(IN_PROGRESS_STATUSES),
+                # Narrows the scan to a few days of episodes before comparing the computed air time.
+                Episode.air_date.between((now - dt.timedelta(days=2)).date(), (now + dt.timedelta(days=1)).date()),
+                aired_at > now - NOTIFICATION_WINDOW,
+                aired_at <= now,
+            )
+        )
+        rows = await self.session.execute(
+            insert(EpisodeNotification)
+            .from_select(["user_id", "episode_id"], due)
+            .on_conflict_do_nothing()
+            .returning(EpisodeNotification.user_id, EpisodeNotification.episode_id)
+        )
+        return [(user_id, episode_id) for user_id, episode_id in rows]
 
     async def _send(self, subscription: PushSubscription, payload: bytes, now: dt.datetime) -> SendResult:
         target = Subscription(endpoint=subscription.endpoint, p256dh=subscription.p256dh, auth=subscription.auth)

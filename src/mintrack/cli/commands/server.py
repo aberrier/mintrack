@@ -26,6 +26,11 @@ def uvicorn_options(config: Config, *, reload: bool) -> dict[str, typing.Any]:
     }
 
 
+def proxy_setting_missing(config: Config) -> bool:
+    """An https address is served through a reverse proxy, whose address must be trusted for the client's."""
+    return config.project.public_url.scheme == "https" and not config.server.forwarded_allow_ips
+
+
 @command.callback()
 def main(
     *,
@@ -41,6 +46,11 @@ def main(
         public_url=config.project.public_origin,
         trusted_proxies=config.server.trusted_proxies,
     )
+    if proxy_setting_missing(config):
+        logger.warning(
+            "an https public URL usually means a reverse proxy: set MINTRACK__SERVER__FORWARDED_ALLOW_IPS to its "
+            "address, or every client shares the proxy's address (login limits included)"
+        )
     if config.tmdb.api_key is None:
         logger.warning("TMDB is not configured: set MINTRACK__TMDB__API_KEY to enable search and new pages")
     if migrate:

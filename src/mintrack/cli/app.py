@@ -1,6 +1,6 @@
 import typer
 
-from mintrack.cli.commands import db, healthcheck, server, users, worker
+from mintrack.cli.commands import db, healthcheck, imports, server, users, worker
 
 
 def get_cli_app() -> typer.Typer:
@@ -10,4 +10,5 @@ def get_cli_app() -> typer.Typer:
     app.add_typer(worker.command, name="worker")
     app.add_typer(healthcheck.command, name="healthcheck")
     app.add_typer(users.command, name="users")
+    app.add_typer(imports.command, name="import")
     return app

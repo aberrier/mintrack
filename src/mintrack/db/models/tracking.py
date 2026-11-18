@@ -11,7 +11,7 @@ from .media import text_enum
 
 
 class TrackingStatus(enum.StrEnum):
-    """Shows use the first five, movies watch later and watched."""
+    """Shows use every status but watched, movies watch later and watched."""
 
     WATCH_LATER = enum.auto()
     WATCHING = enum.auto()
@@ -19,6 +19,8 @@ class TrackingStatus(enum.StrEnum):
     FINISHED = enum.auto()
     STOPPED = enum.auto()
     WATCHED = enum.auto()
+    # A show followed with nothing watched yet; watch later is a show put aside.
+    NOT_STARTED = enum.auto()
 
 
 class UserMedia(DatabaseModel):
@@ -37,6 +39,8 @@ class UserMedia(DatabaseModel):
 
 class WatchedEpisode(DatabaseModel):
     __tablename__ = "watched_episodes"
+    # The history, newest first.
+    __table_args__ = (sa.Index(None, "user_id", "watched_at", "episode_id"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     episode_id: Mapped[uuid.UUID] = mapped_column(
@@ -47,6 +51,7 @@ class WatchedEpisode(DatabaseModel):
 
 class WatchedMovie(DatabaseModel):
     __tablename__ = "watched_movies"
+    __table_args__ = (sa.Index(None, "user_id", "watched_at", "media_id"),)
 
     user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
     media_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("media.id", ondelete="CASCADE"), primary_key=True)

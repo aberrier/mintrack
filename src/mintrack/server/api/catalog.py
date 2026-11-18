@@ -1,7 +1,6 @@
 import collections.abc
 import contextlib
 import datetime as dt
-import itertools
 import typing
 import uuid
 
@@ -10,13 +9,13 @@ import pydantic
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.catalog.managers import CatalogManager, SearchHit, is_stale
-from mintrack.core.tracking.managers import MovieTracking, ShowTracking, TrackingManager
+from mintrack.core.catalog.managers import CatalogManager, SearchHit, find_media
+from mintrack.core.tracking.managers import TrackingManager
+from mintrack.core.upcoming.managers import UpcomingManager
 from mintrack.db.dependencies import DbSessionDepType
-from mintrack.db.models import Episode, Media, MediaType, Season, TrackingStatus, User
+from mintrack.db.models import Episode, Media, MediaType, Season, TrackingStatus
 from mintrack.integrations.tmdb.client import TMDBError, TMDBNotConfiguredError, TMDBNotFoundError
 from mintrack.server.api.dependencies import CurrentUserDepType, TMDBClientDepType
-from mintrack.worker.tasks import defer_refresh
 
 router = fastapi.APIRouter(tags=["catalog"])
 
@@ -56,28 +55,38 @@ class EpisodeResponse(pydantic.BaseModel):
 
 
 class SeasonResponse(pydantic.BaseModel):
+    """A season in summary; its episodes come from the season's own endpoint."""
+
+    model_config = pydantic.ConfigDict(from_attributes=True)
+
+    season_number: int
+    title: str
+    episode_count: int
+    # Episodes the user watched.
+    watched_count: int
+    # Aired episodes, and watched ones not aired as far as their date says.
+    aired_count: int
+
+
+class SeasonEpisodesResponse(pydantic.BaseModel):
     season_number: int
     title: str
     episodes: list[EpisodeResponse]
 
 
 class ShowTrackingResponse(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+
     status: TrackingStatus
     # Episode id -> when it was watched.
     watched: dict[uuid.UUID, dt.datetime]
 
-    @classmethod
-    def of(cls, tracking: ShowTracking) -> typing.Self:
-        return cls(status=tracking.status, watched=tracking.watched)
-
 
 class MovieTrackingResponse(pydantic.BaseModel):
+    model_config = pydantic.ConfigDict(from_attributes=True)
+
     status: TrackingStatus
     watched_at: dt.datetime | None
-
-    @classmethod
-    def of(cls, tracking: MovieTracking) -> typing.Self:
-        return cls(status=tracking.status, watched_at=tracking.watched_at)
 
 
 class MediaResponse(pydantic.BaseModel):
@@ -94,9 +103,17 @@ class MediaResponse(pydantic.BaseModel):
     tmdb_status: str | None
 
 
+class NextEpisodeResponse(EpisodeResponse):
+    # Aired regular episodes after it that the user has not watched.
+    remaining: int
+
+
 class ShowResponse(MediaResponse):
     seasons: list[SeasonResponse]
     tracking: ShowTrackingResponse | None
+    # The episode to watch next, as on the watch list (in the user's time zone); None when the show is not in
+    # progress or nothing aired is left.
+    next_episode: NextEpisodeResponse | None
 
 
 class MovieResponse(MediaResponse):
@@ -115,32 +132,12 @@ def tmdb_errors() -> collections.abc.Generator[None]:
         raise fastapi.HTTPException(fastapi.status.HTTP_502_BAD_GATEWAY, "TMDB cannot be reached") from None
 
 
-async def seasons_of(session: AsyncSession, media: Media) -> list[SeasonResponse]:
-    seasons = await session.scalars(sa.select(Season).where(Season.media_id == media.id))
-    episodes = await session.scalars(
-        sa.select(Episode).where(Episode.media_id == media.id).order_by(Episode.season_number, Episode.episode_number)
-    )
-    by_season = {number: list(group) for number, group in itertools.groupby(episodes, lambda e: e.season_number)}
-    return [
-        SeasonResponse(
-            season_number=season.season_number,
-            title=season.title,
-            episodes=[EpisodeResponse.model_validate(episode) for episode in by_season.get(season.season_number, [])],
-        )
-        # Specials last, as on TMDB.
-        for season in sorted(seasons, key=lambda season: (season.season_number == 0, season.season_number))
-    ]
-
-
 async def cached_media(
     session: AsyncSession, tmdb: TMDBClientDepType, media_type: MediaType, tmdb_id: int, now: dt.datetime
 ) -> Media:
     """The media from the cache or TMDB; a stale one gets a refresh deferred in this transaction."""
     with tmdb_errors():
-        media = await CatalogManager(session, tmdb).get_or_fetch(media_type, tmdb_id, now)
-    if tmdb.configured and is_stale(media, now):
-        await defer_refresh(session, media.id)
-    return media
+        return await CatalogManager(session, tmdb).get_or_fetch(media_type, tmdb_id, now)
 
 
 @router.get("/search")
@@ -167,23 +164,61 @@ async def trending(
     return [SearchResult.of(hit) for hit in hits]
 
 
-async def show_response(session: AsyncSession, user: User, media: Media) -> ShowResponse:
-    tracking = await TrackingManager(session).show_tracking(user, media)
-    return ShowResponse(
-        **MediaResponse.model_validate(media).model_dump(),
-        seasons=await seasons_of(session, media),
-        tracking=ShowTrackingResponse.of(tracking) if tracking else None,
-    )
-
-
 @router.get("/shows/{tmdb_id}")
 async def get_show(
     tmdb_id: TMDBId, user: CurrentUserDepType, session: DbSessionDepType, tmdb: TMDBClientDepType
 ) -> ShowResponse:
-    media = await cached_media(session, tmdb, MediaType.TV, tmdb_id, dt.datetime.now(dt.UTC))
-    response = await show_response(session, user, media)
+    """The show with its seasons in summary."""
+    now = dt.datetime.now(dt.UTC)
+    media = await cached_media(session, tmdb, MediaType.TV, tmdb_id, now)
+    tracking_manager = TrackingManager(session)
+    tracking = await tracking_manager.show_tracking(user, media)
+    next_episode = None
+    for card in await UpcomingManager(session).watch_list(user, now=now, media=media):
+        episode = await session.get_one(Episode, card.episode_id)
+        next_episode = NextEpisodeResponse(
+            **EpisodeResponse.model_validate(episode).model_dump(), remaining=card.remaining
+        )
+    response = ShowResponse(
+        **MediaResponse.model_validate(media).model_dump(),
+        seasons=[SeasonResponse.model_validate(season) for season in await tracking_manager.seasons(user, media, now)],
+        tracking=ShowTrackingResponse.model_validate(tracking) if tracking else None,
+        next_episode=next_episode,
+    )
     await session.commit()
     return response
+
+
+@router.get(
+    "/shows/{tmdb_id}/seasons/{season_number}",
+    responses={fastapi.status.HTTP_404_NOT_FOUND: {"description": "Show not loaded, or no such season"}},
+)
+async def get_season(
+    tmdb_id: TMDBId,
+    season_number: typing.Annotated[int, fastapi.Path(ge=0)],
+    session: DbSessionDepType,
+) -> SeasonEpisodesResponse:
+    """A season's episodes, of a show its page loaded."""
+    media = await find_media(session, MediaType.TV, tmdb_id)
+    season = (
+        None
+        if media is None
+        else await session.scalar(
+            sa.select(Season).where(Season.media_id == media.id, Season.season_number == season_number)
+        )
+    )
+    if media is None or season is None:
+        raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, "No such season")
+    episodes = await session.scalars(
+        sa.select(Episode)
+        .where(Episode.media_id == media.id, Episode.season_number == season_number)
+        .order_by(Episode.episode_number)
+    )
+    return SeasonEpisodesResponse(
+        season_number=season.season_number,
+        title=season.title,
+        episodes=[EpisodeResponse.model_validate(episode) for episode in episodes],
+    )
 
 
 @router.get("/movies/{tmdb_id}")
@@ -195,5 +230,5 @@ async def get_movie(
     await session.commit()
     return MovieResponse(
         **MediaResponse.model_validate(media).model_dump(),
-        tracking=MovieTrackingResponse.of(tracking) if tracking else None,
+        tracking=MovieTrackingResponse.model_validate(tracking) if tracking else None,
     )

@@ -1,3 +1,4 @@
+import asyncio
 import collections.abc
 import datetime as dt
 import enum
@@ -55,6 +56,8 @@ class TMDBClient:
         )
         # One client per configuration, so per language: media type -> (fetched at, results).
         self._trending: dict[MediaType, tuple[dt.datetime, list[TMDBSearchResult]]] = {}
+        # Requests arriving while the cache refills wait for that one call to TMDB.
+        self._trending_locks = {media_type: asyncio.Lock() for media_type in MediaType}
 
     async def _get(self, path: str, **params: str | int) -> dict[str, typing.Any]:
         if not self.configured:
@@ -86,11 +89,12 @@ class TMDBClient:
 
     async def trending(self, media_type: MediaType, now: dt.datetime) -> list[TMDBSearchResult]:
         """TMDB's first page of the week's trending shows or movies, kept for an hour."""
-        if (cached := self._trending.get(media_type)) and now - cached[0] < TRENDING_MAX_AGE:
-            return cached[1]
-        results = _results(await self._get(f"trending/{media_type}/week"), {media_type}, media_type)
-        self._trending[media_type] = (now, results)
-        return results
+        async with self._trending_locks[media_type]:
+            if (cached := self._trending.get(media_type)) and now - cached[0] < TRENDING_MAX_AGE:
+                return cached[1]
+            results = _results(await self._get(f"trending/{media_type}/week"), {media_type}, media_type)
+            self._trending[media_type] = (now, results)
+            return results
 
     async def movie(self, tmdb_id: int) -> TMDBMovie:
         return TMDBMovie.model_validate(await self._get(f"movie/{tmdb_id}"))

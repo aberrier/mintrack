@@ -1,5 +1,6 @@
 import logging
 import logging.config
+import sys
 import typing
 
 import structlog
@@ -21,6 +22,9 @@ _SHARED_PROCESSORS: list[structlog.typing.Processor] = [
 
 def _renderers(log_format: LogFormat) -> list[structlog.typing.Processor]:
     if log_format is LogFormat.CONSOLE:
+        if not sys.stderr.isatty():
+            # Docker's log files and drivers: no colour codes, plain tracebacks.
+            return [structlog.dev.ConsoleRenderer(colors=False, exception_formatter=structlog.dev.plain_traceback)]
         # Rich shows frame locals by default, which would print tokens and passwords held by a failing frame.
         formatter = structlog.dev.RichTracebackFormatter(show_locals=False)
         return [structlog.dev.ConsoleRenderer(exception_formatter=formatter)]

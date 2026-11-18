@@ -11,7 +11,7 @@ DatabaseDepType = typing.Annotated[DatabaseManager, fastapi.Depends(get_database
 
 async def get_db_session(database: DatabaseDepType) -> collections.abc.AsyncGenerator[AsyncSession]:
     """A session for the request; endpoints commit explicitly, anything left uncommitted is rolled back."""
-    async with AsyncSession(database.engine, expire_on_commit=False) as session:
+    async with database.session() as session:
         yield session
 
 

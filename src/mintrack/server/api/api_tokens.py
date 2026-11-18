@@ -7,7 +7,7 @@ import pydantic
 
 from mintrack.core.api_tokens.managers import ApiTokenManager
 from mintrack.db.dependencies import DbSessionDepType
-from mintrack.server.api.dependencies import CurrentUserDepType
+from mintrack.server.api.dependencies import WITHOUT_NUL, CurrentUserDepType
 
 router = fastapi.APIRouter(prefix="/api-tokens", tags=["api-tokens"])
 
@@ -26,7 +26,9 @@ class CreatedApiTokenResponse(ApiTokenResponse):
 
 
 class CreateApiTokenRequest(pydantic.BaseModel):
-    name: typing.Annotated[str, pydantic.StringConstraints(strip_whitespace=True, min_length=1, max_length=100)]
+    name: typing.Annotated[
+        str, pydantic.StringConstraints(strip_whitespace=True, min_length=1, max_length=100, pattern=WITHOUT_NUL)
+    ]
 
 
 @router.get("")

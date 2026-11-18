@@ -38,9 +38,10 @@ class UserSession(DatabaseModel):
 
 class LoginFailure(DatabaseModel):
     __tablename__ = "login_failures"
-    __table_args__ = (sa.Index(None, "username", "address", "failed_at"),)
+    __table_args__ = (sa.Index(None, "address", "failed_at"),)
 
     id: Mapped[int] = mapped_column(sa.BigInteger, sa.Identity(), primary_key=True)
     username: Mapped[str]
+    # The client's address; an IPv6 one as its /64 network, which one client usually holds whole.
     address: Mapped[str]
     failed_at: Mapped[dt.datetime]

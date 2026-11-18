@@ -1,22 +1,18 @@
 import collections.abc
 import datetime as dt
-import hashlib
 import secrets
 import uuid
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mintrack.core.accounts.tokens import hash_token
 from mintrack.db.models import ApiToken, User
 
 # Lets secret scanners recognise a leaked token.
 TOKEN_PREFIX = "mt_"  # noqa: S105
 # last_used_at is written at most this often, not on every request.
 LAST_USED_RESOLUTION = dt.timedelta(minutes=5)
-
-
-def hash_token(raw_token: str) -> bytes:
-    return hashlib.sha256(raw_token.encode()).digest()
 
 
 class ApiTokenManager:

@@ -46,9 +46,10 @@ jobs:
       - name: Install
         run: uv sync --locked
       - name: Lint and type check
-        run: uvx --from rust-just just check
+        run: uvx --from rust-just==1.59.0 just check
       - name: Test
-        run: uvx --from rust-just just test
+        # Fails when line and branch coverage falls under 94%.
+        run: uvx --from rust-just==1.59.0 just test --cov-branch --cov-fail-under=94
       - name: Audit workflows
         run: uvx zizmor==1.32.0 --offline --config .github/zizmor.yml .github/workflows
 
@@ -86,12 +87,13 @@ jobs:
           version: "0.13.9"
           enable-cache: false
       - name: Build the image
-        run: uvx --from rust-just just image
-      - name: Start the fake TMDB
-        # On the host, reached by the server container through the compose network's gateway.
+        run: uvx --from rust-just==1.59.0 just image
+      - name: Start the fake TMDB and TVmaze
+        # On the host, reached by the containers through the compose network's gateway.
         run: |
           uv sync --locked
           nohup uv run uvicorn tests.fakes.tmdb:app --host 0.0.0.0 --port 8001 > fake-tmdb.log 2>&1 &
+          nohup uv run uvicorn tests.fakes.tvmaze:app --host 0.0.0.0 --port 8002 > fake-tvmaze.log 2>&1 &
       - name: Start MinTrack with docker compose
         run: |
           {
@@ -100,6 +102,8 @@ jobs:
             echo "MINTRACK__PROJECT__PUBLIC_URL=http://localhost:8000"
             echo "MINTRACK__TMDB__API_KEY=e2e-key"
             echo "MINTRACK__TMDB__URL=http://172.30.0.1:8001/3"
+            echo "MINTRACK__TVMAZE__URL=http://172.30.0.1:8002"
+            echo "MINTRACK_VERSION=edge"
           } > .env
           docker compose up --detach --wait --wait-timeout 120
       - uses: actions/setup-node@v7
@@ -116,7 +120,7 @@ jobs:
         run: npx playwright test
       - name: Logs
         if: failure()
-        run: docker compose logs && cat fake-tmdb.log
+        run: docker compose logs && cat fake-tmdb.log fake-tvmaze.log
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

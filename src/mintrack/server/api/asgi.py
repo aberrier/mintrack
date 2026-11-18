@@ -4,7 +4,9 @@ from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from mintrack.config import Config, get_config
 from mintrack.server.api import admin_users, api_tokens, auth, catalog, imports, jellyfin, push, tracking, upcoming
 from mintrack.server.api.dependencies import check_xsrf, get_current_session
+from mintrack.server.api.imports import MAX_IMPORT_REQUEST_BYTES
 from mintrack.server.common import healthcheck
+from mintrack.server.common.body_limit import BodySizeLimitMiddleware
 from mintrack.server.common.config import API_PREFIX, get_fastapi_common_config
 from mintrack.server.common.exception_handlers import GenericServerErrorMiddleware
 from mintrack.server.common.frontend import install_frontend
@@ -49,6 +51,7 @@ def build_app(config: Config | None = None) -> fastapi.FastAPI:
         # The app answers only what no route matches (the router's default).
         install_frontend(app, config.server.frontend_dist)
     app.add_middleware(GenericServerErrorMiddleware)
+    app.add_middleware(BodySizeLimitMiddleware, limits={f"{API_PREFIX}/imports": MAX_IMPORT_REQUEST_BYTES})
 
     app.add_middleware(SecurityHeadersMiddleware)
     # Only the configured peers are trusted; uvicorn's own proxy handling is off (see the server command).

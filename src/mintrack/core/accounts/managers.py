@@ -2,6 +2,8 @@ import asyncio
 import datetime as dt
 import enum
 import functools
+import importlib.resources
+import ipaddress
 import re
 import uuid
 import zoneinfo
@@ -10,7 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.db.models import LoginFailure, User, UserSession
+from mintrack.db.models import LoginFailure, PushSubscription, User, UserSession
 
 from .passwords import hash_password, needs_rehash, verify_password
 from .tokens import hash_token, new_token
@@ -22,7 +24,9 @@ SESSION_TOUCH_INTERVAL = dt.timedelta(hours=1)
 INVITATION_LIFETIME = dt.timedelta(days=7)
 RESET_LIFETIME = dt.timedelta(hours=24)
 LOGIN_FAILURE_WINDOW = dt.timedelta(minutes=5)
+# Per client address, whatever the usernames tried.
 LOGIN_FAILURE_LIMIT = 5
+_PG_TIMEZONE_NAMES = sa.table("pg_timezone_names", sa.column("name"))
 
 
 class InvalidCredentialsError(Exception):
@@ -71,6 +75,43 @@ def available_timezones() -> frozenset[str]:
     return frozenset(zoneinfo.available_timezones())
 
 
+@functools.cache
+def _timezone_links() -> dict[str, str]:
+    """Each legacy name of the tz database (Asia/Calcutta, US/Eastern...) and the zone it stands for."""
+    source = importlib.resources.files("tzdata.zoneinfo").joinpath("tzdata.zi").read_text(encoding="utf-8")
+    return {name: target for _, target, name in (line.split() for line in source.splitlines() if line[:2] == "L ")}
+
+
+def canonical_timezone(name: str) -> str:
+    """The zone's current name: browsers still report legacy names, which some PostgreSQL builds do not know."""
+    links = _timezone_links()
+    seen = {name}
+    while (name := links.get(name, name)) not in seen:
+        seen.add(name)
+    return name
+
+
+async def database_timezone(session: AsyncSession, name: str) -> str | None:
+    """`name`, or else its current name, as PostgreSQL knows it; None when PostgreSQL knows neither."""
+    for candidate in dict.fromkeys((name, canonical_timezone(name))):
+        if await session.scalar(sa.select(sa.exists().where(_PG_TIMEZONE_NAMES.c.name == candidate))):
+            return candidate
+    return None
+
+
+def client_network(address: str) -> str:
+    """The address login failures are counted for: an IPv6 address's /64, which one client usually holds whole."""
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return address
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped is not None:
+            return str(ip.ipv4_mapped)
+        return str(ipaddress.IPv6Network((ip, 64), strict=False))
+    return str(ip)
+
+
 def is_valid_username(username: str) -> bool:
     return re.fullmatch(USERNAME_PATTERN, username) is not None
 
@@ -87,14 +128,12 @@ class AccountManager:
 
     async def login(self, username: str, password: str, *, address: str, now: dt.datetime) -> tuple[User, str]:
         """Return the user and a new session token, or raise the same error for every kind of failure."""
-        key = username.lower()
+        key, address = username.lower(), client_network(address)
         window_start = now - LOGIN_FAILURE_WINDOW
-        # Attempts for one username and address wait for each other, so parallel requests can't all pass the count.
-        await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"{key}|{address}"))))
+        # Attempts from one address wait for each other, so parallel requests can't all pass the count.
+        await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"login|{address}"))))
         failures = await self.session.scalar(
-            sa.select(sa.func.count()).where(
-                LoginFailure.username == key, LoginFailure.address == address, LoginFailure.failed_at > window_start
-            )
+            sa.select(sa.func.count()).where(LoginFailure.address == address, LoginFailure.failed_at > window_start)
         )
         if (failures or 0) >= LOGIN_FAILURE_LIMIT:
             raise LoginRateLimitedError
@@ -145,13 +184,31 @@ class AccountManager:
         return True
 
     async def delete_session(self, session_id: uuid.UUID) -> None:
+        """Sign out: the session and the device it registered for notifications."""
+        await self.session.execute(sa.delete(PushSubscription).where(PushSubscription.session_id == session_id))
         await self.session.execute(sa.delete(UserSession).where(UserSession.id == session_id))
 
     async def delete_sessions(self, user_id: uuid.UUID, *, keep: uuid.UUID | None = None) -> None:
-        statement = sa.delete(UserSession).where(UserSession.user_id == user_id)
+        """Sign out everywhere but `keep`, devices registered for notifications included; API tokens stay."""
+        devices = sa.delete(PushSubscription).where(PushSubscription.user_id == user_id)
+        sessions = sa.delete(UserSession).where(UserSession.user_id == user_id)
         if keep is not None:
-            statement = statement.where(UserSession.id != keep)
-        await self.session.execute(statement)
+            # A device without a session (registered before devices had one, or whose session expired) may be this
+            # one: it stays.
+            devices = devices.where(PushSubscription.session_id != keep)
+            sessions = sessions.where(UserSession.id != keep)
+        await self.session.execute(devices)
+        await self.session.execute(sessions)
+
+    async def delete_expired_sessions(self, now: dt.datetime) -> int:
+        """Delete the sessions unused for longer than the idle timeout, and the login failures out of the window."""
+        deleted = await self.session.scalars(
+            sa.delete(UserSession)
+            .where(UserSession.last_used_at <= now - SESSION_IDLE_TIMEOUT)
+            .returning(UserSession.id)
+        )
+        await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= now - LOGIN_FAILURE_WINDOW))
+        return len(deleted.all())
 
     @staticmethod
     def issue_link(user: User, *, now: dt.datetime) -> str:

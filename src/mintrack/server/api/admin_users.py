@@ -18,7 +18,7 @@ from mintrack.core.accounts.managers import (
 from mintrack.core.accounts.tokens import password_link
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import User
-from mintrack.server.api.dependencies import get_admin_user, utc_now
+from mintrack.server.api.dependencies import CurrentUserDepType, get_admin_user, utc_now
 
 router = fastapi.APIRouter(prefix="/admin/users", tags=["admin"], dependencies=[fastapi.Depends(get_admin_user)])
 
@@ -106,11 +106,15 @@ async def create_link(user_id: uuid.UUID, db: DbSessionDepType) -> LinkResponse:
     "/{user_id}",
     responses={
         fastapi.status.HTTP_404_NOT_FOUND: {"description": "No such user"},
-        fastapi.status.HTTP_409_CONFLICT: {"description": "Last active admin"},
+        fastapi.status.HTTP_409_CONFLICT: {"description": "Last active admin, or the admin's own account"},
     },
 )
-async def update_user(user_id: uuid.UUID, body: UpdateUserRequest, db: DbSessionDepType) -> AdminUserResponse:
+async def update_user(
+    user_id: uuid.UUID, body: UpdateUserRequest, db: DbSessionDepType, admin: CurrentUserDepType
+) -> AdminUserResponse:
     user = await _get_user(db, user_id)
+    if user.id == admin.id and not body.is_active:
+        raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, "You cannot disable your own account")
     try:
         await AccountManager(db).set_active(user, active=body.is_active)
     except LastAdminError:
