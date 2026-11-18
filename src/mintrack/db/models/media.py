@@ -42,6 +42,7 @@ class Media(DatabaseModel):
     # TMDB's status: "Returning Series", "Ended", "Released"...
     tmdb_status: Mapped[str | None]
     tvdb_id: Mapped[int | None]
+    tvmaze_id: Mapped[int | None]
     refreshed_at: Mapped[dt.datetime]
 
 
