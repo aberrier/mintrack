@@ -12,9 +12,10 @@ from mintrack.core.accounts.managers import (
     AccountManager,
     InvalidCredentialsError,
     LoginRateLimitedError,
+    client_network,
 )
 from mintrack.db.database import DatabaseManager
-from mintrack.db.models import LoginFailure, User, UserSession
+from mintrack.db.models import LoginFailure, PushSubscription, User, UserSession
 from tests.server.api.conftest import PASSWORD, CreateUser, log_in, xsrf
 from tests.server.conftest import make_client
 
@@ -63,13 +64,13 @@ async def test_every_failed_login_answers_alike_and_verifies_one_hash(
     assert await db_session.scalar(sa.select(sa.func.count()).select_from(UserSession)) == 0
 
 
-async def test_five_failures_block_the_username_from_that_address_only(
+async def test_five_failures_block_that_address_only_whatever_the_usernames(
     api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
 ) -> None:
     await create_user("alice")
     async with make_client(api_app, peer="10.0.0.1") as attacker, make_client(api_app, peer="10.0.0.2") as owner:
-        for _ in range(5):
-            assert (await log_in(attacker, password="wrong password!!")).status_code == 401
+        for username in ("alice", "bob", "carol", "dave", "erin"):
+            assert (await log_in(attacker, username, password="wrong password!!")).status_code == 401
 
         assert (await log_in(attacker)).status_code == fastapi.status.HTTP_429_TOO_MANY_REQUESTS
         assert (await log_in(owner)).status_code == fastapi.status.HTTP_200_OK
@@ -83,6 +84,19 @@ async def test_five_failures_block_the_username_from_that_address_only(
             .values(failed_at=LoginFailure.failed_at - sa.text("interval '5 minutes'"))
         )
         assert (await log_in(attacker)).status_code == fastapi.status.HTTP_200_OK
+
+
+@pytest.mark.parametrize(
+    ("address", "expected"),
+    [
+        ("2001:db8:1:2:aaaa::1", "2001:db8:1:2::/64"),
+        ("::ffff:10.0.0.1", "10.0.0.1"),
+        ("10.0.0.1", "10.0.0.1"),
+        ("testclient", "testclient"),
+    ],
+)
+def test_an_ipv6_client_is_counted_by_its_64_network(address: str, expected: str) -> None:
+    assert client_network(address) == expected
 
 
 async def test_parallel_attempts_cannot_get_past_the_limit(database: DatabaseManager) -> None:
@@ -105,7 +119,7 @@ async def test_parallel_attempts_cannot_get_past_the_limit(database: DatabaseMan
         assert results.count(LoginRateLimitedError) == 5
     finally:
         async with AsyncSession(database.engine) as cleanup:
-            await cleanup.execute(sa.delete(LoginFailure).where(LoginFailure.username == username))
+            await cleanup.execute(sa.delete(LoginFailure).where(LoginFailure.address == "10.9.9.9"))
             await cleanup.commit()
 
 
@@ -145,9 +159,15 @@ async def test_logout_everywhere_ends_every_session(api_app: fastapi.FastAPI, cr
 
 
 async def test_changing_the_password_keeps_only_the_current_session(
-    api_app: fastapi.FastAPI, create_user: CreateUser
+    api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
 ) -> None:
-    await create_user("alice")
+    alice = await create_user("alice")
+    # A device registered before devices were tied to a session may be this one: it stays.
+    db_session.add(
+        PushSubscription(
+            user_id=alice.id, endpoint="https://push.test/old", p256dh="k", auth="a", created_at=dt.datetime.now(dt.UTC)
+        )
+    )
     async with make_client(api_app) as phone, make_client(api_app) as laptop:
         await log_in(phone)
         await log_in(laptop)
@@ -161,6 +181,7 @@ async def test_changing_the_password_keeps_only_the_current_session(
         assert (await phone.get("/api/auth/me")).status_code == 200
         assert (await laptop.get("/api/auth/me")).status_code == 401
         assert (await log_in(laptop, password=NEW_PASSWORD)).status_code == 200
+    assert await db_session.scalar(sa.select(sa.func.count()).select_from(PushSubscription)) == 1
 
 
 async def test_a_new_password_needs_15_characters(api: httpx.AsyncClient, create_user: CreateUser) -> None:
@@ -187,3 +208,22 @@ async def test_the_time_zone_must_be_an_iana_name(
     assert valid.json()["timezone"] == "Europe/Paris"
     assert (await db_session.get(User, user.id)) is user
     assert user.timezone == "Europe/Paris"
+
+
+async def test_a_legacy_time_zone_name_is_stored_as_one_postgresql_knows(
+    api: httpx.AsyncClient, create_user: CreateUser, db_session: AsyncSession
+) -> None:
+    await create_user("alice")
+    await log_in(api)
+
+    response = await api.patch("/api/auth/me", json={"timezone": "Asia/Calcutta"}, headers=xsrf(api))
+
+    timezone = response.json()["timezone"]
+    assert timezone in {"Asia/Calcutta", "Asia/Kolkata"}
+    await db_session.execute(sa.select(sa.func.timezone(timezone, sa.func.now())))
+
+
+async def test_a_username_with_a_nul_character_is_refused(api: httpx.AsyncClient) -> None:
+    response = await log_in(api, "ali\u0000ce")
+
+    assert response.status_code == fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT

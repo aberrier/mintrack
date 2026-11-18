@@ -108,6 +108,7 @@ def test_yamtrack_media_from_other_sources_keep_only_their_title() -> None:
             ids=ExternalIds(),
             stopped=True,
             progress=3,
+            season_entry=True,
             watched_at=dt.datetime(2024, 5, 1, tzinfo=UTC),
         ),
         MovieRow(
@@ -259,3 +260,61 @@ def test_tvtime_archive_over_the_size_limit_is_rejected(monkeypatch: pytest.Monk
 def test_tvtime_rejects_other_files(data: bytes) -> None:
     with pytest.raises(ImportFileError):
         parse_tvtime(data, UTC)
+
+
+def test_a_corrupt_archive_is_an_import_error_and_never_a_crash(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A file name flagged UTF-8 that is not.
+    bad_name = tvtime_zip({"é.csv": "x"}).replace("é".encode(), b"\xff\xfe")
+    with pytest.raises(ImportFileError, match="cannot be read"):
+        parse_tvtime(bad_name, UTC)
+
+    def corrupt_directory(_: object) -> bool:
+        raise ValueError
+
+    monkeypatch.setattr(parsers.zipfile, "is_zipfile", corrupt_directory)
+    with pytest.raises(ImportFileError, match="cannot be read"):
+        parsers.keep_tvtime_tracking_files(b"PK\x05\x06")
+
+
+def test_a_quote_left_open_is_rejected_rather_than_swallowing_the_rest() -> None:
+    data = yamtrack_csv('"2","tmdb","tv","Unclosed,"","","","","Planning","","","",""', "3,tmdb,tv,Swallowed")
+
+    with pytest.raises(ImportFileError, match="not a valid CSV"):
+        parse_yamtrack(data, UTC)
+
+
+def test_the_row_limit_counts_both_tvtime_files(monkeypatch: pytest.MonkeyPatch) -> None:
+    data = tvtime_zip({"tracking-prod-records-v2.csv": TVTIME_V2, "tracking-prod-records.csv": TVTIME_RECORDS})
+    monkeypatch.setattr(parsers, "MAX_IMPORT_ROWS", 6)
+
+    with pytest.raises(ImportFileError, match="more than 6 rows"):
+        parse_tvtime(data, UTC)
+
+
+def test_tvtime_archived_shows_are_stopped_and_shows_for_later_put_aside() -> None:
+    data = (
+        b"key,s_id,series_name,is_followed,is_archived,is_for_later\n"
+        b"user-series-1,5001,Archived,false,true,false\n"
+        b"user-series-2,5002,Later,false,false,true\n"
+        b"user-series-3,5003,Followed,true,false,false\n"
+        b"user-series-4,5004,Forgotten,false,false,false\n"
+    )
+
+    assert parse_tvtime(data, UTC) == [
+        ShowRow(title="Archived", ids=ExternalIds(tvdb=5001), stopped=True),
+        ShowRow(title="Later", ids=ExternalIds(tvdb=5002), watch_later=True),
+        ShowRow(title="Followed", ids=ExternalIds(tvdb=5003)),
+    ]
+
+
+def test_tvtime_placeholder_dates_and_nul_characters_are_dropped() -> None:
+    data = (
+        b"key,s_id,series_name,ep_id,s_no,ep_no,created_at"
+        + bytes([10])
+        + b"watch-episode-1,5001,North\x00ern Lights,9012,1,2,0001-01-01 00:00:00"
+    )
+
+    [row] = parse_tvtime(data, UTC)
+
+    assert isinstance(row, EpisodeRow)
+    assert (row.title, row.watched_at) == ("Northern Lights", None)

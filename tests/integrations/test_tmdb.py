@@ -1,4 +1,6 @@
+import asyncio
 import datetime as dt
+import typing
 
 import pytest
 
@@ -62,3 +64,23 @@ async def test_errors_name_the_problem_but_never_the_key(fake_tmdb: FakeTMDB) ->
         await make_tmdb_client(fake_tmdb, api_key=INVALID_KEY).search("anything")
 
     assert INVALID_KEY not in str(error.value)
+
+
+async def test_requests_arriving_together_refill_the_trending_cache_once(
+    tmdb: TMDBClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = 0
+    get = tmdb._get  # noqa: SLF001
+
+    async def counted(path: str, **params: str | int) -> dict[str, typing.Any]:
+        nonlocal calls
+        calls += 1
+        await asyncio.sleep(0.01)
+        return await get(path, **params)
+
+    monkeypatch.setattr(tmdb, "_get", counted)
+    now = dt.datetime(2026, 11, 18, 12, tzinfo=dt.UTC)
+
+    await asyncio.gather(*(tmdb.trending(MediaType.TV, now) for _ in range(5)))
+
+    assert calls == 1

@@ -95,14 +95,26 @@ async def test_disabling_a_user_ends_their_sessions_and_link(
         assert (await log_in(invitee)).status_code == 200
 
 
-async def test_the_last_active_admin_cannot_be_disabled(admin: httpx.AsyncClient, db_session: AsyncSession) -> None:
+async def test_an_admin_cannot_disable_their_own_account(admin: httpx.AsyncClient, db_session: AsyncSession) -> None:
     root = await db_session.scalar(sa.select(User).where(User.username == "root"))
     assert root is not None
+    db_session.add(User(username="second", is_admin=True))
+    await db_session.flush()
 
     response = await admin.patch(f"/api/admin/users/{root.id}", json={"is_active": False}, headers=xsrf(admin))
 
-    assert response.status_code == fastapi.status.HTTP_409_CONFLICT
+    assert (response.status_code, response.json()["detail"]) == (
+        fastapi.status.HTTP_409_CONFLICT,
+        "You cannot disable your own account",
+    )
     assert root.is_active
+
+
+async def test_the_last_active_admin_cannot_be_disabled(db_session: AsyncSession, create_user: CreateUser) -> None:
+    root = await create_user("root", is_admin=True)
+
+    with pytest.raises(LastAdminError):
+        await AccountManager(db_session).set_active(root, active=False)
 
 
 async def test_two_admins_disabling_each_other_leave_one_active(database: DatabaseManager) -> None:

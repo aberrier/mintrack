@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager, is_stale
-from mintrack.core.tracking.managers import TrackingManager
+from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
 from mintrack.db.models import Media, MediaType, Season, User
 from mintrack.integrations.tmdb.client import TMDBClient
 from tests.conftest import cached_media, episodes_of
@@ -38,7 +38,8 @@ async def test_a_refresh_deletes_dropped_episodes_unless_someone_watched_them(
 ) -> None:
     show = await cached_media(db_session, tmdb, "Lighthouse Nights")
     episodes = await episodes_of(db_session, show)
-    await TrackingManager(db_session).mark_watched(user, episodes[1, 3], NOW)
+    today = dt.datetime.now(dt.UTC)
+    await TrackingManager(db_session).mark_episodes(user, show, [episodes[1, 3].id], today, now=today)
     fake_tmdb.dropped |= {(show.tmdb_id, 1, 2), (show.tmdb_id, 1, 3)}
 
     await CatalogManager(db_session, tmdb).fetch(MediaType.TV, show.tmdb_id, NOW)
@@ -79,7 +80,7 @@ async def test_only_tracked_media_past_their_period_are_refreshed_by_the_worker(
     await cached_media(db_session, tmdb, "Airing Untracked")
     manager = TrackingManager(db_session)
     for show in (airing, ended):
-        await manager.track_show(user, show, stopped=False, now=NOW)
+        await manager.set_show_status(user, show, ShowTrackingChoice.WATCHING, NOW)
     two_days_later = dt.datetime.now(dt.UTC) + dt.timedelta(days=2)
 
     stale = await CatalogManager(db_session, tmdb).stale_tracked(two_days_later)

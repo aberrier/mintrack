@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import mintrack.config
 from mintrack.config import DatabaseConfig, get_config
 from mintrack.core.catalog.managers import CatalogManager
 from mintrack.db import alembic
@@ -17,10 +18,13 @@ from mintrack.db.database import DatabaseManager, get_database
 from mintrack.db.models import Episode, Media, MediaType, User
 from mintrack.integrations.tmdb.client import TMDBClient
 from mintrack.integrations.tmdb.config import TMDBConfig
-from mintrack.worker import get_worker_app
+from mintrack.worker.app import get_worker_app
 from tests.fakes.tmdb import FakeTMDB
 
 pytest_plugins = ["tests.push_service", "tests.fakes.jellyfin"]
+
+# Tests see the variables of pyproject.toml and those they set, never a developer's .env.
+mintrack.config.ENV_FILE = None
 
 DATABASE_PASSWORD = "p@ss/w:rd%#value"
 

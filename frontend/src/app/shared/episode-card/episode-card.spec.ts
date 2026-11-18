@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { CardEpisode, EpisodeCard } from './episode-card';
+import { CardEpisode, EpisodeCard, episodeCode } from './episode-card';
 
 const EPISODE: CardEpisode = {
   tmdb_id: 7,
@@ -44,7 +44,8 @@ describe('EpisodeCard', () => {
     const card = await render({ checkable: true });
 
     const check = card.querySelector<HTMLButtonElement>('button.check')!;
-    expect(check.getAttribute('aria-label')).toBe('Mark S01 | E05 of Andor watched');
+    // Spelled out: a screen reader reads "S01 | E05" as "S zero one vertical bar E zero five".
+    expect(check.getAttribute('aria-label')).toBe('Mark season 1 episode 5 of Andor watched');
     check.click();
 
     expect(checked).toHaveBeenCalledOnce();
@@ -54,16 +55,38 @@ describe('EpisodeCard', () => {
     const card = await render({ actions: [{ id: 'stopped', label: 'Stop watching', icon: 'block' }] });
 
     expect(card.querySelector('button[aria-label="More for Andor"]')).not.toBeNull();
-    const swiped = card.querySelector('.actions')!;
-    expect(swiped.getAttribute('aria-hidden')).toBe('true');
-    expect(swiped.hasAttribute('inert')).toBe(true);
+    expect(card.querySelector('.actions')!.hasAttribute('inert')).toBe(true);
   });
 
-  it('in a grid, names the poster link after the whole episode', async () => {
+  it('in a grid, names the poster link after the whole episode, and writes its number on one line', async () => {
     const card = await render({ variant: 'grid', checkable: true });
 
-    expect(card.querySelector('a')?.getAttribute('aria-label')).toBe('Andor, S01 | E05, The Axe Forgets');
+    expect(card.querySelector('a')?.getAttribute('aria-label')).toBe('Andor, season 1 episode 5, The Axe Forgets');
+    expect(text(card.querySelector('.grid-code'))).toBe('S01E05');
     expect(card.querySelector('button.check')).not.toBeNull();
+  });
+
+  it('in a grid without a poster, writes the show’s title in its place', async () => {
+    const card = await render({ variant: 'grid' });
+
+    expect(text(card.querySelector('.fallback'))).toBe('Andor');
+  });
+
+  it('hides the show’s name where the page is the show’s', async () => {
+    const card = await render({ showTitle: false });
+
+    expect(card.querySelector('h3')).toBeNull();
+  });
+
+  it('carries the Finished badge on the poster of a finished show, in a list and in a grid', async () => {
+    expect((await render({ finished: true })).querySelector('[data-testid="finished-badge"]')).not.toBeNull();
+    expect((await render({ variant: 'grid' })).querySelector('[data-testid="finished-badge"]')).not.toBeNull();
+    expect((await render({ finished: false })).querySelector('[data-testid="finished-badge"]')).toBeNull();
+  });
+
+  it('pads season and episode numbers', () => {
+    expect(episodeCode(1, 5)).toBe('S01 | E05');
+    expect(episodeCode(12, 104)).toBe('S12 | E104');
   });
 
   it('shows a movie of the history by its title, watched', async () => {

@@ -38,8 +38,7 @@ export async function signInAsNewAdmin(page: Page): Promise<Account> {
 
 export async function invite(admin: Page, name = 'user'): Promise<Invitation> {
   const username = unique(name);
-  await new Navigation(admin).openProfile();
-  await new ProfilePage(admin).openUsers();
+  await new Navigation(admin).openAdmin();
   return { username, link: await new AdminUsersPage(admin).invite(username) };
 }
 
@@ -64,6 +63,11 @@ export async function disable(admin: Page, username: string): Promise<void> {
   await new AdminUsersPage(admin).disable(username);
 }
 
+/** Whether the Admin tab offers to disable the user. */
+export async function canDisable(admin: Page, username: string): Promise<boolean> {
+  return new AdminUsersPage(admin).offersDisable(username);
+}
+
 /** Open the app signed out at the given page, as from a bookmark; the login page shows. */
 export async function openSignedOut(page: Page, where: 'home' | 'profile' = 'home'): Promise<void> {
   await new Navigation(page).openBookmark(where === 'home' ? '/' : '/profile');
@@ -82,6 +86,22 @@ export async function tryLogIn(page: Page, account: Account): Promise<boolean> {
 export async function logOutEverywhere(page: Page): Promise<void> {
   await new Navigation(page).openProfile();
   await new ProfilePage(page).logOutEverywhere();
+}
+
+export async function logOut(page: Page): Promise<void> {
+  await new Navigation(page).openProfile();
+  await new ProfilePage(page).logOut();
+}
+
+/** What the Profile tab's Shows row shows: titles, or the message for no show. */
+export async function profileShows(page: Page): Promise<string> {
+  await new Navigation(page).openProfile();
+  return new ProfilePage(page).shows();
+}
+
+/** The bottom navigation's tabs. */
+export async function tabNames(page: Page): Promise<string[]> {
+  return new Navigation(page).tabNames();
 }
 
 /** Whether the app still lets the user in after they come back to it. */

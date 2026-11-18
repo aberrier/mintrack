@@ -87,7 +87,7 @@ describe('ImportCard', () => {
     expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="import-report"]')).not.toBeNull();
   });
 
-  it('shows why the server refused the file', async () => {
+  it('says in the app’s words why the server refused the file', async () => {
     const card = await render(null);
 
     store().upload('yamtrack', new File(['x'], 'other.csv'));
@@ -96,6 +96,38 @@ describe('ImportCard', () => {
       .flush({ detail: 'This is not a Yamtrack CSV export.' }, { status: 422, statusText: 'Unprocessable Content' });
     await settle();
 
-    expect(card.querySelector('[role="alert"]')?.textContent?.trim()).toBe('This is not a Yamtrack CSV export.');
+    expect(card.querySelector('[role="alert"]')?.textContent?.trim()).toBe(
+      'MinTrack cannot read this file: check that it is the export described above.',
+    );
+  });
+
+  it('shows the previous import first, and the form once asked to import another file', async () => {
+    const card = await render(
+      job({
+        source: 'tvtime',
+        status: 'done',
+        finished_at: '2026-01-01T10:05:00Z',
+        report: { imported: 4, already_present: 0, unmatched_count: 0, unmatched: [] },
+      }),
+    );
+
+    expect(card.querySelector('[data-testid="import-heading"]')?.textContent?.trim()).toMatch(/^TV Time import, 1 Jan/);
+    expect(card.querySelector('[data-testid="import-file"]')).toBeNull();
+
+    [...card.querySelectorAll('button')]
+      .find((button) => button.textContent?.trim() === 'Import another file')!
+      .click();
+    await settle();
+
+    expect(card.querySelector('[data-testid="import-file"]')).not.toBeNull();
+  });
+
+  it('names its progress bar', async () => {
+    const card = await render(job({ status: 'running', total: 4, processed: 1 }));
+
+    expect(card.querySelector('mat-progress-bar')?.getAttribute('aria-label')).toBe('Import progress');
+    // The running import is read again until it ends.
+    await nextTask();
+    TestBed.inject(HttpTestingController).match('/api/imports/latest');
   });
 });

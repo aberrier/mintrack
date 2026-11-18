@@ -24,7 +24,7 @@ interface Fixtures {
 /** Every test fails on a console error or an uncaught exception, so a CSP violation breaks the build. */
 export const test = base.extend<Fixtures>({
   context: async ({ context }, use) => {
-    await serveImagesLocally(context);
+    await asOwnDevice(context);
     await use(context);
   },
   allowedConsoleErrors: [[], { option: true }],
@@ -33,7 +33,8 @@ export const test = base.extend<Fixtures>({
       const errors: string[] = [];
       page.on('console', (message) => {
         const allowed = allowedConsoleErrors.some((pattern) => pattern.test(message.text()));
-        if (message.type() === 'error' && !allowed && !isExpectedRefusal(message.text())) errors.push(message.text());
+        if (message.type() === 'error' && !allowed && !isExpectedRefusal(message.text(), message.location().url))
+          errors.push(message.text());
       });
       page.on('pageerror', (error) => errors.push(error.message));
       await use(errors);
@@ -51,11 +52,22 @@ export const test = base.extend<Fixtures>({
   },
   otherPage: async ({ browser }, use) => {
     const context = await browser.newContext();
-    await serveImagesLocally(context);
+    await asOwnDevice(context);
     await use(await context.newPage());
     await context.close();
   },
 });
+
+/**
+ * A browser as a device of its own: its own client address, which the test server trusts from its local proxy
+ * (MINTRACK__SERVER__FORWARDED_ALLOW_IPS), so failed logins in one test never reach the per-address limit of the others;
+ * and TMDB images served locally.
+ */
+async function asOwnDevice(context: BrowserContext): Promise<void> {
+  const byte = () => Math.floor(Math.random() * 256);
+  await context.setExtraHTTPHeaders({ 'X-Forwarded-For': `10.${byte()}.${byte()}.${byte()}` });
+  await serveImagesLocally(context);
+}
 
 /** A grey pixel for every TMDB image: the fake TMDB's image paths exist nowhere, and tests stay offline. */
 async function serveImagesLocally(context: BrowserContext): Promise<void> {
@@ -66,9 +78,18 @@ async function serveImagesLocally(context: BrowserContext): Promise<void> {
   await context.route('https://image.tmdb.org/**', (route) => route.fulfill({ contentType: 'image/png', body: pixel }));
 }
 
-/** Chromium logs every 4xx response; a refused login or an ended session is part of the scenarios. */
-function isExpectedRefusal(text: string): boolean {
-  return /Failed to load resource: the server responded with a status of (400|401)/.test(text);
+/** Endpoints whose 400 is an answer the scenarios provoke: a wrong password, an invalid link, a refused Jellyfin. */
+const REFUSING_ENDPOINTS = /\/api\/(auth\/(password|password-link|password-link\/use)|jellyfin\/[\w/-]+)$/;
+
+/**
+ * Chromium logs every 4xx response. Part of the scenarios: a 401 from the API (a refused login, an ended session) and
+ * a 400 from the endpoints above; any other 4xx is a bug.
+ */
+function isExpectedRefusal(text: string, url: string): boolean {
+  const status = /Failed to load resource: the server responded with a status of (\d{3})/.exec(text)?.[1];
+  const path = url ? new URL(url).pathname : '';
+  if (status === '401') return path.startsWith('/api/');
+  return status === '400' && REFUSING_ENDPOINTS.test(path);
 }
 
 export { expect };

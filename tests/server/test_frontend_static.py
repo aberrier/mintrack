@@ -20,6 +20,8 @@ def dist(tmp_path: pathlib.Path) -> pathlib.Path:
     (root / "icons").mkdir(parents=True)
     (root / "index.html").write_text(INDEX, encoding="utf-8")
     (root / "main-72OG7TZP.js").write_text("console.log('app')", encoding="utf-8")
+    (root / "chunk-DR-6u6rE.js").write_text("console.log('page')", encoding="utf-8")
+    (root / "safety-worker.js").write_text("self.close()", encoding="utf-8")
     (root / "manifest.webmanifest").write_text("{}", encoding="utf-8")
     (root / "icons" / "icon.svg").write_text("<svg/>", encoding="utf-8")
     (root / ".env").write_text("MINTRACK__SECURITY__SECRET_KEY=leak", encoding="utf-8")
@@ -49,6 +51,8 @@ async def test_client_routes_get_the_app(client: httpx.AsyncClient, path: str) -
     ("path", "cache_control"),
     [
         ("/main-72OG7TZP.js", IMMUTABLE),
+        ("/chunk-DR-6u6rE.js", IMMUTABLE),
+        ("/safety-worker.js", REVALIDATE),
         ("/manifest.webmanifest", REVALIDATE),
         ("/icons/icon.svg", REVALIDATE),
         ("/index.html", REVALIDATE),

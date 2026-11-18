@@ -34,3 +34,15 @@ def test_tracebacks_never_show_frame_locals(
     output = capsys.readouterr().err
     assert "database unavailable" in output
     assert SECRET not in output
+
+
+def test_console_logs_have_no_colour_codes_off_a_terminal(
+    capsys: pytest.CaptureFixture[str], restore_logging: None
+) -> None:
+    configure_logging(ObservabilityConfig(format=LogFormat.CONSOLE))
+
+    logging.getLogger("uvicorn.error").warning("disk almost full")
+
+    output = capsys.readouterr().err
+    assert "disk almost full" in output
+    assert "\x1b[" not in output

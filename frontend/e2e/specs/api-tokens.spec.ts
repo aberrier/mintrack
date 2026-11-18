@@ -1,5 +1,6 @@
 import { McpDriver } from '../drivers/mcp.driver';
 import { ApiTokensSection, Navigation } from '../drivers/pages';
+import { ScreenDriver } from '../drivers/screen.driver';
 import { unique } from '../dsl/accounts';
 import { expect, test } from '../dsl/fixtures';
 
@@ -13,9 +14,9 @@ test('someone connects an assistant with an API token, then revokes it', async (
 
   expect(token).toMatch(/^mt_[\w-]{43}$/);
   expect(await mcp.initialize(token)).toEqual({ status: 200, serverName: 'MinTrack' });
-  await page.reload();
+  await new Navigation(page).reloadSignedIn();
   await expect(tokens.row(name)).toContainText('last used');
-  await expect(page.getByText(token)).toHaveCount(0);
+  await expect(tokens.shown(token)).toHaveCount(0);
 
   await tokens.revoke(name);
 
@@ -26,10 +27,8 @@ test('someone connects an assistant with an API token, then revokes it', async (
 test('the API tokens section fits a phone, with tap targets of at least 48px', async ({ admin: { page } }) => {
   await new Navigation(page).openProfile();
 
-  const create = await new ApiTokensSection(page).section().getByRole('button', { name: 'Create' }).boundingBox();
+  const create = await new ApiTokensSection(page).createButton().boundingBox();
 
   expect(create!.height).toBeGreaterThanOrEqual(48);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-    page.viewportSize()!.width,
-  );
+  expect(await new ScreenDriver(page).fitsWidth()).toBe(true);
 });

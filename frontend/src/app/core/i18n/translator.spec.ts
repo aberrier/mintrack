@@ -10,7 +10,7 @@ describe('injectTranslator', () => {
   it('fills the named placeholders', () => {
     const translate = injectTranslator('app');
 
-    expect(translate('app.adminUsers.link.intro', { username: 'alice' })).toBe(
+    expect(translate('app.admin.link.intro', { username: 'alice' })).toBe(
       'Send this link to alice. It is shown only once.',
     );
   });

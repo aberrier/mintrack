@@ -4,8 +4,8 @@ import fastapi
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.db.models import Media, MediaType, WatchedMovie
-from tests.core.upcoming.factories import add_show, add_user, watch
+from mintrack.db.models import Media, MediaType, TrackingStatus, WatchedMovie
+from tests.core.upcoming.factories import add_show, add_user, follow, watch
 from tests.server.api.conftest import CreateUser, log_in
 
 NOW = dt.datetime(2026, 11, 18, 15, tzinfo=dt.UTC)
@@ -49,3 +49,25 @@ async def test_history_pages_through_episodes_and_movies_newest_first(
     assert sorted([labels(first)[2], labels(second)[0]]) == ["Dark 1x1 Episode 1x1", "Dark 1x2 Episode 1x2"]
     assert labels(before_the_tie) == ["Dark 0x1 Episode 0x1"]
     assert first.json()["entries"][1]["poster_path"] == "/dark.jpg"
+
+
+async def test_history_says_which_shows_the_user_finished(
+    api: httpx.AsyncClient, create_user: CreateUser, db_session: AsyncSession
+) -> None:
+    alice = await create_user()
+    await log_in(api)
+    finished, finished_episodes = await add_show(db_session, {(1, 1): NOW}, title="Done")
+    watching, watching_episodes = await add_show(db_session, {(1, 1): NOW, (1, 2): NOW}, title="Going")
+    await follow(db_session, alice, finished, TrackingStatus.FINISHED)
+    await follow(db_session, alice, watching, TrackingStatus.WATCHING)
+    # Another user's status is not the user's.
+    await follow(db_session, await add_user(db_session), watching, TrackingStatus.FINISHED)
+    await watch(db_session, alice, finished_episodes[1, 1], NOW - dt.timedelta(hours=1))
+    await watch(db_session, alice, watching_episodes[1, 1], NOW - dt.timedelta(hours=2))
+
+    response = await api.get("/api/history")
+
+    assert [(entry["title"], entry["finished"]) for entry in response.json()["entries"]] == [
+        ("Done", True),
+        ("Going", False),
+    ]

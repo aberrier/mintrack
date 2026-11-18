@@ -57,6 +57,7 @@ async def test_search_then_mark_an_episode_in_the_users_time_zone(
         search = await call(client, "search_media", {"query": TITLE})
         marked = await call(client, "mark_episode_watched", PILOT | {"watched_at": "2026-11-17T21:30:00"})
         progress = await call(client, "get_show_progress", {"tmdb_id": SHOW_ID})
+        season = await call(client, "get_show_progress", {"tmdb_id": SHOW_ID, "season_number": 1})
 
     assert search["result"][0] == {
         "tmdb_id": SHOW_ID,
@@ -67,24 +68,41 @@ async def test_search_then_mark_an_episode_in_the_users_time_zone(
     }
     assert marked == {"title": TITLE, "status": "watching"}
     assert (progress["tmdb_id"], progress["title"], progress["status"]) == (SHOW_ID, TITLE, "watching")
-    assert [(e["season_number"], e["episode_number"]) for e in progress["episodes"]] == [
-        (0, 1),
-        (1, 1),
-        (1, 2),
-        (1, 3),
-        (2, 1),
-        (2, 2),
-        (2, 3),
+    # A summary per season by default, specials last; S02E03 airs in a week.
+    assert progress["seasons"] == [
+        {"season_number": 1, "episodes": 3, "aired": 3, "watched": 1},
+        {"season_number": 2, "episodes": 3, "aired": 2, "watched": 0},
+        {"season_number": 0, "episodes": 1, "aired": 1, "watched": 0},
     ]
+    assert progress["episodes"] == []
+    assert [(e["season_number"], e["episode_number"]) for e in season["episodes"]] == [(1, 1), (1, 2), (1, 3)]
     # Read in Europe/Paris, UTC+1 in November.
-    assert progress["episodes"][1] == {
+    assert season["episodes"][0] == {
         "season_number": 1,
         "episode_number": 1,
         "title": "Episode 1",
         "air_date": days_from_today(-30),
         "watched_at": "2026-11-17T20:30:00Z",
     }
-    assert sum(e["watched_at"] is not None for e in progress["episodes"]) == 1
+    assert sum(e["watched_at"] is not None for e in season["episodes"]) == 1
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [
+        ("mark_episode_watched", PILOT | {"watched_at": "2999-01-01T20:00:00"}),
+        ("mark_movie_watched", {"tmdb_id": MOVIE_ID, "watched_at": "2999-01-01T20:00:00Z"}),
+        ("mark_episode_watched", PILOT | {"season_number": 2, "episode_number": 3}),
+    ],
+)
+async def test_a_watch_in_the_future_or_of_an_episode_not_aired_yet_is_refused(
+    mcp_app: fastapi.FastAPI, token_user: TokenUser, tool: str, arguments: dict[str, object]
+) -> None:
+    async with mcp_client(mcp_app, token_user.token) as client:
+        await call(client, "search_media", {"query": TITLE})
+        result = await client.call_tool(tool, arguments)
+
+    assert result.is_error
 
 
 async def test_mark_movie_watched_defaults_to_now(mcp_app: fastapi.FastAPI, token_user: TokenUser) -> None:
@@ -100,7 +118,7 @@ async def test_mark_movie_watched_defaults_to_now(mcp_app: fastapi.FastAPI, toke
 @pytest.mark.parametrize(
     ("tool", "arguments", "status"),
     [
-        ("unmark_episode_watched", PILOT, "watch_later"),
+        ("unmark_episode_watched", PILOT, "not_started"),
         ("unmark_movie_watched", {"tmdb_id": MOVIE_ID}, "watch_later"),
         ("set_show_status", {"tmdb_id": SHOW_ID, "status": "stopped"}, "stopped"),
         ("set_show_status", {"tmdb_id": SHOW_ID, "status": "watching"}, "watching"),
@@ -137,7 +155,7 @@ async def test_upcoming_and_up_next_follow_the_users_progress(mcp_app: fastapi.F
         }
 
     in_a_week = days_from_today(7)
-    assert upcoming == {"new": [], "days": [{"day": in_a_week, "episodes": [episode(2, 3, in_a_week)]}]}
+    assert upcoming == {"days": [{"day": in_a_week, "episodes": [episode(2, 3, in_a_week)]}]}
     assert up_next["result"][0].pop("last_watched_at") is not None
     assert up_next == {"result": [episode(1, 2, days_from_today(-29)) | {"remaining": 3, "section": "next"}]}
 
@@ -154,7 +172,7 @@ async def test_another_users_tracking_is_not_shown(
 
     assert search["result"][0]["tracking_status"] is None
     assert progress["status"] is None
-    assert all(e["watched_at"] is None for e in progress["episodes"])
+    assert all(season["watched"] == 0 for season in progress["seasons"])
     assert up_next == {"result": []}
 
 
@@ -182,6 +200,19 @@ async def test_unknown_media_or_episodes_are_tool_errors(
     assert message in str(result.content)
     async with AsyncSession(database.engine) as session:
         assert await session.scalar(sa.select(UserMedia).where(UserMedia.user_id == token_user.user.id)) is None
+
+
+@pytest.mark.parametrize(
+    ("tool", "arguments"),
+    [("search_media", {"query": ""}), ("get_show_progress", {"tmdb_id": SHOW_ID, "season_number": -1})],
+)
+async def test_empty_searches_and_negative_seasons_are_refused(
+    mcp_app: fastapi.FastAPI, token_user: TokenUser, tool: str, arguments: dict[str, object]
+) -> None:
+    async with mcp_client(mcp_app, token_user.token) as client:
+        result = await client.call_tool(tool, arguments)
+
+    assert result.is_error
 
 
 async def test_set_show_status_refuses_derived_statuses(mcp_app: fastapi.FastAPI, token_user: TokenUser) -> None:

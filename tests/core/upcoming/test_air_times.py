@@ -1,22 +1,15 @@
 import datetime as dt
 
-import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.upcoming import air_times
-from mintrack.core.upcoming.air_times import refresh_air_times
+from mintrack.core.upcoming.air_times import defer_air_times_refreshes, refresh_show_air_times
 from mintrack.db.models import Episode, TrackingStatus
 from tests.core.upcoming.factories import add_show, add_user, follow
 from tests.fakes.tvmaze import FakeTvmaze, tvmaze_episode
 
 FRIDAY = dt.date(2026, 11, 20)
 FRIDAY_9PM_NEW_YORK = dt.datetime(2026, 11, 21, 2, tzinfo=dt.UTC)
-
-
-@pytest.fixture(autouse=True)
-def no_pause_between_shows(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(air_times, "SECONDS_BETWEEN_SHOWS", 0)
 
 
 async def airstamps(session: AsyncSession, episodes: dict[tuple[int, int], Episode]) -> dict[tuple[int, int], object]:
@@ -27,13 +20,11 @@ async def airstamps(session: AsyncSession, episodes: dict[tuple[int, int], Episo
     return {key: by_id[episode.id] for key, episode in episodes.items()}
 
 
-async def test_followed_show_gets_tvmaze_air_times_matched_by_season_and_number(db_session: AsyncSession) -> None:
-    user = await add_user(db_session)
+async def test_a_show_gets_tvmaze_air_times_matched_by_season_and_number(db_session: AsyncSession) -> None:
     stale = dt.datetime(2026, 1, 1, tzinfo=dt.UTC)
     show, episodes = await add_show(
         db_session, {(1, 1): FRIDAY, (1, 2): None, (1, 3): stale, (0, 1): FRIDAY}, tvdb_id=81189
     )
-    await follow(db_session, user, show, TrackingStatus.WATCHING)
     fake = FakeTvmaze(
         shows={
             81189: (
@@ -47,7 +38,7 @@ async def test_followed_show_gets_tvmaze_air_times_matched_by_season_and_number(
         }
     )
 
-    await refresh_air_times(db_session, fake.client())
+    await refresh_show_air_times(db_session, fake.client(), show)
 
     assert show.tvmaze_id == 169
     # S01E03 is gone from TVmaze, and specials are never matched: the TMDB date applies.
@@ -60,53 +51,50 @@ async def test_followed_show_gets_tvmaze_air_times_matched_by_season_and_number(
 
 
 async def test_known_tvmaze_id_skips_the_lookup(db_session: AsyncSession) -> None:
-    user = await add_user(db_session)
     show, _ = await add_show(db_session, {(1, 1): FRIDAY}, tvdb_id=81189)
     show.tvmaze_id = 169
-    await follow(db_session, user, show, TrackingStatus.UP_TO_DATE)
     fake = FakeTvmaze(shows={81189: (169, [])})
 
-    await refresh_air_times(db_session, fake.client())
+    await refresh_show_air_times(db_session, fake.client(), show)
 
     assert fake.requests == ["/shows/169/episodes"]
 
 
 async def test_show_unknown_to_tvmaze_keeps_its_air_times(db_session: AsyncSession) -> None:
-    user = await add_user(db_session)
     show, episodes = await add_show(db_session, {(1, 1): FRIDAY_9PM_NEW_YORK}, tvdb_id=1)
-    await follow(db_session, user, show, TrackingStatus.WATCH_LATER)
 
-    await refresh_air_times(db_session, FakeTvmaze().client())
+    await refresh_show_air_times(db_session, FakeTvmaze().client(), show)
 
     assert show.tvmaze_id is None
     assert await airstamps(db_session, episodes) == {(1, 1): FRIDAY_9PM_NEW_YORK}
 
 
-async def test_only_followed_shows_still_airing_are_refreshed(db_session: AsyncSession) -> None:
+async def test_one_job_per_followed_show_still_airing_is_queued_a_second_apart(db_session: AsyncSession) -> None:
     user = await add_user(db_session)
-    stopped, _ = await add_show(db_session, {(1, 1): FRIDAY}, title="Stopped", tvdb_id=1)
-    await follow(db_session, user, stopped, TrackingStatus.STOPPED)
-    ended, _ = await add_show(db_session, {(1, 1): FRIDAY}, title="Ended", tvdb_id=2, tmdb_status="Ended")
-    await follow(db_session, user, ended, TrackingStatus.WATCHING)
+    shows = {}
+    for title, status, tmdb_status in [
+        ("Watching", TrackingStatus.WATCHING, "Returning Series"),
+        ("Not Started", TrackingStatus.NOT_STARTED, "Returning Series"),
+        ("Later", TrackingStatus.WATCH_LATER, "Returning Series"),
+        ("Stopped", TrackingStatus.STOPPED, "Returning Series"),
+        ("Ended", TrackingStatus.WATCHING, "Ended"),
+    ]:
+        shows[title], _ = await add_show(db_session, {(1, 1): FRIDAY}, title=title, tvdb_id=1, tmdb_status=tmdb_status)
+        await follow(db_session, user, shows[title], status)
     await add_show(db_session, {(1, 1): FRIDAY}, title="Nobody", tvdb_id=3)
-    fake = FakeTvmaze(shows={1: (11, []), 2: (12, []), 3: (13, [])})
 
-    await refresh_air_times(db_session, fake.client())
+    await defer_air_times_refreshes(db_session)
 
-    assert fake.requests == []
-
-
-async def test_a_failing_show_does_not_stop_the_others(db_session: AsyncSession) -> None:
-    user = await add_user(db_session)
-    failing, _ = await add_show(db_session, {(1, 1): FRIDAY}, title="Failing", tvdb_id=1)
-    working, episodes = await add_show(db_session, {(1, 1): FRIDAY}, title="Working", tvdb_id=2)
-    for show in (failing, working):
-        await follow(db_session, user, show, TrackingStatus.WATCHING)
-    fake = FakeTvmaze(
-        shows={1: (11, []), 2: (12, [tvmaze_episode(1, 1, FRIDAY_9PM_NEW_YORK.isoformat())])}, failing={11}
+    queued = await db_session.execute(
+        sa.text(
+            "SELECT args->>'media_id', lock, scheduled_at FROM procrastinate_jobs "
+            "WHERE task_name = 'mintrack:refresh_show_air_times'"
+        )
     )
-
-    await refresh_air_times(db_session, fake.client())
-
-    assert failing.tvmaze_id is None
-    assert await airstamps(db_session, episodes) == {(1, 1): FRIDAY_9PM_NEW_YORK}
+    rows = queued.all()
+    expected = {str(shows[title].id) for title in ("Watching", "Not Started", "Later")}
+    assert {media_id for media_id, _, _ in rows} == expected
+    # Each show's job holds the show's lock, as its refreshes do.
+    assert {lock for _, lock, _ in rows} == {f"media:{media_id}" for media_id in expected}
+    # The first runs at once, the others a second apart.
+    assert sum(scheduled_at is not None for _, _, scheduled_at in rows) == 2

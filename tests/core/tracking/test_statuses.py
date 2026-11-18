@@ -16,8 +16,9 @@ PARIS = zoneinfo.ZoneInfo("Europe/Paris")
 @pytest.mark.parametrize(
     ("current", "episodes", "ended", "expected"),
     [
-        (None, [AIRED_UNWATCHED, UPCOMING], False, TrackingStatus.WATCH_LATER),
-        (TrackingStatus.WATCHING, [], False, TrackingStatus.WATCH_LATER),
+        (None, [AIRED_UNWATCHED, UPCOMING], False, TrackingStatus.NOT_STARTED),
+        (TrackingStatus.WATCHING, [], False, TrackingStatus.NOT_STARTED),
+        (TrackingStatus.WATCH_LATER, [AIRED_UNWATCHED], False, TrackingStatus.WATCH_LATER),
         (None, [AIRED_WATCHED, AIRED_UNWATCHED], False, TrackingStatus.WATCHING),
         (None, [AIRED_WATCHED, UPCOMING], False, TrackingStatus.UP_TO_DATE),
         (None, [AIRED_WATCHED], False, TrackingStatus.UP_TO_DATE),

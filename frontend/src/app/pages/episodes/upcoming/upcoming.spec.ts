@@ -1,11 +1,12 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
-import { TestBed } from '@angular/core/testing';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { dayIn, nextDay } from './air-time';
 import Upcoming from './upcoming';
 
 const TIME_ZONE = 'Pacific/Auckland';
+// Thursday 26 November 2026, 1 AM in Auckland.
+const NOW = new Date('2026-11-25T12:00:00Z');
 
 function episode(overrides: Partial<Model.Http.UpcomingEpisode>): Model.Http.UpcomingEpisode {
   return {
@@ -23,18 +24,26 @@ function episode(overrides: Partial<Model.Http.UpcomingEpisode>): Model.Http.Upc
 }
 
 describe('Upcoming', () => {
-  beforeEach(() =>
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] }),
-  );
+  let fixture: ComponentFixture<Upcoming>;
+  let http: HttpTestingController;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(NOW);
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), provideRouter([])] });
+    http = TestBed.inject(HttpTestingController);
+  });
+
+  afterEach(() => vi.useRealTimers());
 
   async function render(
     response: Model.Http.UpcomingResponse | string,
     options?: { status: number; statusText: string },
   ): Promise<HTMLElement> {
-    const fixture = TestBed.createComponent(Upcoming);
+    fixture = TestBed.createComponent(Upcoming);
     // The resource sends its request from an effect.
     TestBed.tick();
-    TestBed.inject(HttpTestingController).expectOne('/api/upcoming').flush(response, options);
+    http.expectOne('/api/upcoming').flush(response, options);
     await fixture.whenStable();
     return fixture.nativeElement as HTMLElement;
   }
@@ -43,59 +52,63 @@ describe('Upcoming', () => {
     return element.textContent?.replace(/\s+/g, ' ').trim() ?? '';
   }
 
-  it('groups episodes under Today, Tomorrow and dates of the user time zone, with local times', async () => {
-    const today = dayIn(TIME_ZONE);
-    const tomorrow = nextDay(today);
-    const airstamp = '2026-11-20T08:00:00Z';
+  it('groups episodes under Today, Tomorrow, the weekdays until Sunday, then dates, with local times', async () => {
+    const airstamp = '2026-11-26T08:00:00Z';
     const page = await render({
       time_zone: TIME_ZONE,
-      new: [],
       days: [
-        { day: today, episodes: [episode({ show_title: 'Tonight', airstamp, day: today })] },
-        { day: tomorrow, episodes: [episode({ show_title: 'Soon', season_number: 2, episode_number: 10 })] },
-        { day: '2099-01-02', episodes: [episode({ show_title: 'Later', title: '' })] },
+        { day: '2026-11-26', episodes: [episode({ show_title: 'Tonight', airstamp, day: '2026-11-26' })] },
+        { day: '2026-11-27', episodes: [episode({ show_title: 'Soon', season_number: 2, episode_number: 10 })] },
+        { day: '2026-11-29', episodes: [episode({ show_title: 'Sunday' })] },
+        { day: '2026-12-06', episodes: [episode({ show_title: 'Later', title: '' })] },
       ],
     });
 
     const days = [...page.querySelectorAll('[data-testid="day"]')];
-    expect(days.map((day) => text(day.querySelector('h2')!))).toEqual(['Today', 'Tomorrow', 'Friday, January 2']);
-    const localTime = new Intl.DateTimeFormat(undefined, { timeStyle: 'short', timeZone: TIME_ZONE }).format(
-      new Date(airstamp),
-    );
-    expect(text(days[0].querySelector('[data-testid="episode-detail"]')!)).toBe(localTime);
+    expect(days.map((day) => text(day.querySelector('h2')!))).toEqual(['Today', 'Tomorrow', 'Sunday', '6 December']);
+    expect(text(days[0].querySelector('[data-testid="episode-detail"]')!)).toBe('21:00');
     expect(text(days[1].querySelector('[data-testid="episode-code"]')!)).toBe('S02 | E10');
     expect(text(days[1].querySelector('[data-testid="episode-title"]')!)).toBe('Pilot');
     expect(days[1].querySelector('[data-testid="episode-detail"]')).toBeNull();
-    expect(text(days[2].querySelector('[data-testid="episode-code"]')!)).toBe('S01 | E01');
-    expect(days[2].querySelector('[data-testid="episode-title"]')).toBeNull();
-    expect(page.querySelector('[data-testid="new"]')).toBeNull();
+    expect(days[3].querySelector('[data-testid="episode-title"]')).toBeNull();
   });
 
-  it('lists new episodes first, with their air day', async () => {
+  it('names the month where a new one starts, with the year when it is another one', async () => {
     const page = await render({
       time_zone: TIME_ZONE,
-      new: [episode({ show_title: 'Missed', day: '2026-11-13' })],
-      days: [],
+      days: [
+        { day: '2026-11-28', episodes: [episode({})] },
+        { day: '2026-12-02', episodes: [episode({})] },
+        { day: '2026-12-20', episodes: [episode({})] },
+        { day: '2027-01-02', episodes: [episode({})] },
+      ],
     });
 
-    const section = page.querySelector('[data-testid="new"]')!;
-    expect(text(section.querySelector('h2')!)).toBe('New episodes');
-    expect(text(section.querySelector('[data-testid="episode-detail"]')!)).toBe('Fri, Nov 13');
-    expect(page.querySelector('[data-testid="empty"]')).toBeNull();
+    const headings = [...page.querySelectorAll('[data-testid="month"], [data-testid="day"] h2')].map(text);
+    expect(headings).toEqual(['Saturday', 'December', '2 December', '20 December', 'January 2027', '2 January 2027']);
   });
 
   it('says when nothing airs soon', async () => {
-    const page = await render({ time_zone: TIME_ZONE, new: [], days: [] });
+    const page = await render({ time_zone: TIME_ZONE, days: [] });
 
     expect(text(page.querySelector('[data-testid="empty"]')!)).toBe(
       'Nothing airs in the next four weeks for the shows you follow.',
     );
   });
 
-  it('says when the episodes cannot be loaded', async () => {
+  it('says when the episodes cannot be loaded, and tries again on request', async () => {
     const page = await render('boom', { status: 500, statusText: 'Server Error' });
 
     expect(text(page.querySelector('[role="alert"]')!)).toBe('Cannot load the upcoming episodes.');
     expect(page.querySelector('[data-testid="day"]')).toBeNull();
+
+    [...page.querySelectorAll('button')].find((button) => text(button) === 'Try again')!.click();
+    TestBed.tick();
+    http
+      .expectOne('/api/upcoming')
+      .flush({ time_zone: TIME_ZONE, days: [{ day: '2026-11-26', episodes: [episode({})] }] });
+    await fixture.whenStable();
+
+    expect(page.querySelectorAll('[data-testid="day"]')).toHaveLength(1);
   });
 });

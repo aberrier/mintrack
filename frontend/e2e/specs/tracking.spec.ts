@@ -4,7 +4,7 @@ import {
   addShow,
   answerUnmark,
   checkWatchNext,
-  confettiShown,
+  confettiAfter,
   finishedBadgeOnProfile,
   isSeasonWatched,
   isWatched,
@@ -22,7 +22,7 @@ import {
   watchNext,
 } from '../dsl/tracking';
 
-test('someone finds a show and adds it to watch later', async ({ viewer }) => {
+test('someone finds a show and adds it, not started yet', async ({ viewer }) => {
   // Given a show found by searching
   const title = uniqueTitle('Orbit Kitchen');
   await openShow(viewer, title);
@@ -30,9 +30,9 @@ test('someone finds a show and adds it to watch later', async ({ viewer }) => {
   // When they add it to their library
   const status = await addShow(viewer);
 
-  // Then it waits there to be watched: nothing watched out of five aired episodes
-  expect(status).toBe('Watch later');
-  expect(await libraryEntry(viewer, 'Shows', title)).toBe('0/5 · Watch later');
+  // Then it waits there to be started: nothing watched out of five aired episodes
+  expect(status).toBe('Haven’t started');
+  expect(await libraryEntry(viewer, 'Shows', title)).toBe('0/5 · Haven’t started');
 });
 
 test('someone marks and unmarks an episode in one tap each', async ({ viewer }) => {
@@ -47,7 +47,7 @@ test('someone marks and unmarks an episode in one tap each', async ({ viewer }) 
   // When they tap it again, it is no longer watched
   await tapEpisode(viewer, 1, 1);
   expect(await isWatched(viewer, 1, 1)).toBe(false);
-  await expect.poll(() => showStatus(viewer)).toBe('Watch later');
+  await expect.poll(() => showStatus(viewer)).toBe('Haven’t started');
 });
 
 test('someone catches up on the earlier episodes when skipping ahead', async ({ viewer }) => {
@@ -97,12 +97,11 @@ test('finishing an ended show throws confetti and puts the Finished badge on its
   await openShow(viewer, title);
 
   // When they mark both seasons, the second holding the last aired episode
-  await tapSeason(viewer, 1);
-  expect(await confettiShown(viewer)).toBe(false);
-  await tapSeason(viewer, 2);
+  expect(await confettiAfter(viewer, () => tapSeason(viewer, 1))).toBe(false);
+  const confetti = await confettiAfter(viewer, () => tapSeason(viewer, 2));
 
   // Then confetti falls, and the show is finished, with the badge on its poster
-  expect(await confettiShown(viewer)).toBe(true);
+  expect(confetti).toBe(true);
   await expect.poll(() => showStatus(viewer)).toBe('Finished');
   expect(await libraryEntry(viewer, 'Shows', title)).toBe('6/6 · Finished');
   expect(await finishedBadgeOnProfile(viewer, title)).toBe(true);
@@ -116,10 +115,10 @@ test.describe('with reduced motion', () => {
     await openShow(viewer, title);
 
     await tapSeason(viewer, 1);
-    await tapSeason(viewer, 2);
+    const confetti = await confettiAfter(viewer, () => tapSeason(viewer, 2));
 
     await expect.poll(() => showStatus(viewer)).toBe('Finished');
-    expect(await confettiShown(viewer)).toBe(false);
+    expect(confetti).toBe(false);
   });
 });
 

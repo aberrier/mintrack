@@ -14,6 +14,17 @@ export class Navigation {
     await expect(this.page.getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
   }
 
+  /** The Admin tab, shown to admins only. */
+  async openAdmin(): Promise<void> {
+    await this.bar().getByRole('link', { name: 'Admin' }).click();
+    await expect(this.page.getByRole('heading', { level: 1, name: 'Admin' })).toBeVisible();
+  }
+
+  async tabNames(): Promise<string[]> {
+    await expect(this.bar()).toBeVisible();
+    return (await this.bar().getByRole('link').allInnerTexts()).map((name) => name.trim());
+  }
+
   /** Open a URL typed in or bookmarked. */
   async openBookmark(path: string): Promise<void> {
     await this.page.goto(path);
@@ -90,9 +101,17 @@ export class ProfilePage {
     await expect(this.page.getByRole('heading', { name: 'Log in' })).toBeVisible();
   }
 
-  async openUsers(): Promise<void> {
-    await this.page.getByRole('link', { name: 'Manage users' }).click();
-    await expect(this.page.getByRole('heading', { name: 'Users' })).toBeVisible();
+  async logOut(): Promise<void> {
+    await this.page.getByRole('button', { name: 'Log out', exact: true }).click();
+    await expect(this.page.getByRole('heading', { name: 'Log in' })).toBeVisible();
+  }
+
+  /** The titles of the Shows row, or its empty message. */
+  async shows(): Promise<string> {
+    const row = this.page.getByRole('region', { name: 'Shows' });
+    const items = row.getByTestId('profile-item');
+    await expect(items.first().or(row.getByText('No shows yet'))).toBeVisible();
+    return (await row.innerText()).trim();
   }
 }
 
@@ -114,6 +133,12 @@ export class AdminUsersPage {
   async disable(username: string): Promise<void> {
     await this.row(username).getByRole('button', { name: 'Disable' }).click();
     await expect(this.row(username).getByTestId('status')).toHaveText('Disabled');
+  }
+
+  /** Whether the user's row offers Disable. */
+  async offersDisable(username: string): Promise<boolean> {
+    await expect(this.row(username)).toBeVisible();
+    return (await this.row(username).getByRole('button', { name: 'Disable' }).count()) > 0;
   }
 
   private row(username: string) {
@@ -148,9 +173,135 @@ export class ApiTokensSection {
     return this.section().getByRole('listitem').filter({ hasText: name });
   }
 
+  /** Where a token's value would show, once created. */
+  shown(token: string) {
+    return this.page.getByText(token);
+  }
+
+  createButton() {
+    return this.section().getByRole('button', { name: 'Create' });
+  }
+
   async revoke(name: string): Promise<void> {
     await this.row(name).getByRole('button', { name: 'Revoke' }).click();
     await this.page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
     await expect(this.page.getByRole('dialog')).toHaveCount(0);
+  }
+}
+
+/** The import card of the profile. */
+export class ImportsSection {
+  constructor(private readonly page: Page) {}
+
+  /**
+   * The import API as the server answers it: no import yet, then the uploaded job's states, one per read. Returns the
+   * bodies of the uploads.
+   */
+  async serveImports(states: object[]): Promise<{ uploads: string[] }> {
+    const uploads: string[] = [];
+    let latest: object | null = null;
+    await this.page.route('/api/imports/latest', (route) => {
+      if (latest !== null && states.length) latest = states.shift()!;
+      return route.fulfill({ json: latest });
+    });
+    await this.page.route('/api/imports', (route) => {
+      uploads.push(route.request().postData() ?? '');
+      latest = states.shift()!;
+      return route.fulfill({ status: 202, json: latest });
+    });
+    return { uploads };
+  }
+
+  async upload(file: { name: string; mimeType: string; buffer: Buffer }): Promise<void> {
+    await this.page.getByTestId('import-file').setInputFiles(file);
+  }
+
+  async chooseSource(name: 'Yamtrack' | 'TV Time'): Promise<void> {
+    await this.source(name).click();
+  }
+
+  source(name: 'Yamtrack' | 'TV Time') {
+    return this.page.getByRole('radio', { name });
+  }
+
+  chooseFile() {
+    return this.page.getByRole('button', { name: 'Choose a file and import' });
+  }
+
+  status() {
+    return this.page.getByTestId('import-status');
+  }
+
+  report() {
+    return this.page.getByTestId('import-report');
+  }
+
+  /** A line of the card, such as a file name to upload or an unmatched title. */
+  line(text: string) {
+    return this.page.getByText(text);
+  }
+}
+
+/** The Jellyfin card of the profile: linked accounts and the link form, Quick Connect first. */
+export class JellyfinSection {
+  constructor(private readonly page: Page) {}
+
+  section() {
+    return this.page.getByRole('region', { name: 'Jellyfin' });
+  }
+
+  async waitShown(): Promise<void> {
+    await expect(this.section().getByTestId('jellyfin-empty')).toBeVisible();
+  }
+
+  /** Ask for a Quick Connect code for the server at `address`. */
+  async getCode(address: string): Promise<void> {
+    await this.section().getByLabel('Server address').fill(address);
+    await this.section().getByRole('button', { name: 'Get a code' }).click();
+  }
+
+  /** The code to approve in Jellyfin, once shown. */
+  async code(): Promise<string> {
+    const code = this.section().getByTestId('quick-connect-code');
+    await expect(code).toBeVisible();
+    return (await code.innerText()).trim();
+  }
+
+  async error(): Promise<string> {
+    const alert = this.section().getByRole('alert');
+    await expect(alert).toBeVisible();
+    return (await alert.innerText()).trim();
+  }
+
+  accounts() {
+    return this.section().getByTestId('jellyfin-account');
+  }
+
+  /**
+   * A Jellyfin server with Quick Connect, as MinTrack's API reports it: a code, approved at the second question,
+   * then the linked account.
+   */
+  async serveQuickConnect(account: { username: string; server_url: string }): Promise<void> {
+    let asked = 0;
+    await this.page.route('/api/jellyfin/quick-connect', (route) =>
+      route.fulfill({ json: { code: '424242', secret: 'e2e-secret' } }),
+    );
+    await this.page.route('/api/jellyfin/quick-connect/state', (route) =>
+      route.fulfill({ json: { approved: ++asked >= 2 } }),
+    );
+    await this.page.route('/api/jellyfin/accounts/quick-connect', (route) =>
+      route.fulfill({
+        status: 201,
+        json: {
+          id: 'e2e-account',
+          ...account,
+          last_sync_at: null,
+          last_success_at: null,
+          last_sync_status: null,
+          last_sync_imported: 0,
+          last_sync_skipped: 0,
+        },
+      }),
+    );
   }
 }

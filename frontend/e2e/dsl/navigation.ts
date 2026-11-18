@@ -12,7 +12,7 @@ export interface Tab {
 }
 
 export async function tabs(page: Page): Promise<Tab[]> {
-  const links = new AppDriver(page).navigation().getByRole('link');
+  const links = new AppDriver(page).tabLinks();
   const result: Tab[] = [];
   for (const link of await links.all()) {
     const box = (await link.boundingBox())!;
@@ -22,47 +22,69 @@ export async function tabs(page: Page): Promise<Tab[]> {
 }
 
 export async function activeTab(page: Page): Promise<string> {
-  const current = new AppDriver(page).navigation().locator('[aria-current="page"]');
+  const current = new AppDriver(page).activeTab();
   await expect(current).toHaveCount(1);
   return (await current.innerText()).trim();
 }
 
-/** The path and query the app shows after opening `address` as a bookmark. */
-export async function addressAfterOpening(page: Page, address: string): Promise<string> {
-  await page.goto(address);
-  await expect(new AppDriver(page).navigation()).toBeVisible();
-  await page.waitForLoadState('networkidle');
-  const url = new URL(page.url());
-  return url.pathname + url.search;
+/** Open `address` as a bookmark, signed in. */
+export async function openAddress(page: Page, address: string): Promise<void> {
+  const app = new AppDriver(page);
+  await app.openAddress(address);
+  await expect(app.navigation()).toBeVisible();
 }
 
-/** Each screen of the three tabs, opened the way a user reaches it. */
-export async function openEveryScreen(page: Page): Promise<{ name: string; open: () => Promise<void> }[]> {
+/** The path and query the app shows. */
+export function currentAddress(page: Page): string {
+  return new AppDriver(page).address();
+}
+
+/** The browser tab's title. */
+export async function pageTitle(page: Page): Promise<string> {
+  return new AppDriver(page).title();
+}
+
+/** Open the app while the server cannot be reached; returns what the screen says. */
+export async function openWhileServerUnreachable(page: Page): Promise<string> {
+  const app = new AppDriver(page);
+  await app.cutOffApi();
+  await app.openAddress('/');
+  return (await app.unreachable().innerText()).trim();
+}
+
+/** Each screen of the tabs, opened the way a user reaches it, with the title its browser tab shows. */
+export async function openEveryScreen(
+  page: Page,
+): Promise<{ name: string; title: string; open: () => Promise<void> }[]> {
   const app = new AppDriver(page);
   const api = new ApiDriver(page);
-  const show = await api.markWatched(uniqueTitle('Every Screen'), [[1, 1]]);
+  const showTitle = uniqueTitle('Every Screen');
+  const show = await api.markWatched(showTitle, [[1, 1]]);
   const movieTitle = uniqueTitle('Every Screen');
   await api.addMovie(movieTitle);
   const movie = await api.findMovie(movieTitle);
   return [
-    { name: 'Watch list', open: () => app.openWatchList() },
+    { name: 'Watch list', title: 'Watch list · MinTrack', open: () => app.openWatchList() },
     {
       name: 'Upcoming',
+      title: 'Upcoming · MinTrack',
       open: async () => {
         await app.openUpcoming();
         // The show watched for the show page's screen airs its next episode within the four weeks.
-        await expect(page.getByRole('region', { name: /^\w+day, / }).first()).toBeVisible();
+        await expect(app.upcomingDays().first()).toBeVisible();
       },
     },
     {
       name: 'Discover',
+      title: 'Discover · MinTrack',
       open: async () => {
         await app.openTab('Discover');
-        await expect(app.trendingRow('Trending movies').getByTestId('trending-item').first()).toBeVisible();
+        await expect(app.trendingItems('Trending movies').first()).toBeVisible();
       },
     },
     {
       name: 'Show, with a season open',
+      title: `${showTitle} · MinTrack`,
       open: async () => {
         await app.openShowPage(show);
         await app.openSeason(1);
@@ -71,20 +93,30 @@ export async function openEveryScreen(page: Page): Promise<{ name: string; open:
     },
     {
       name: 'Show, About',
+      title: `${showTitle} · MinTrack`,
       open: async () => {
         await app.openShowTab('About');
-        await expect(page.getByText('Channel Nine').last()).toBeVisible();
+        await expect(app.showText('Channel Nine')).toBeVisible();
       },
     },
-    { name: 'Movie', open: () => app.openMoviePage(movie) },
+    { name: 'Movie', title: `${movieTitle} · MinTrack`, open: () => app.openMoviePage(movie) },
     {
       name: 'Profile',
+      title: 'Profile · MinTrack',
       open: async () => {
         await app.openTab('Profile');
-        await expect(page.getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
+        await expect(app.logOutButton()).toBeVisible();
       },
     },
-    { name: 'Shows', open: () => app.openLibrary('Shows') },
+    { name: 'Shows', title: 'Collection · MinTrack', open: () => app.openLibrary('Shows') },
+    {
+      name: 'Admin',
+      title: 'Admin · MinTrack',
+      open: async () => {
+        await app.openTab('Admin');
+        await expect(app.adminUsers().first()).toBeVisible();
+      },
+    },
   ];
 }
 
