@@ -5,7 +5,7 @@ import { imageUrl } from './images';
 
 /**
  * A TMDB poster at its 2:3 ratio, fading in over a plain surface once loaded; the surface stays when there is none or
- * it fails. It can carry a Finished badge, and an add button (`+`, then a check once in the library) that emits `add`:
+ * it fails. It can carry a Finished check in a corner, and an add button (`+`, then a check once in the library) that emits `add`:
  * a poster with that button must not sit inside a link, but a link stretched over it from a sibling stays under the
  * button.
  */
@@ -27,8 +27,13 @@ import { imageUrl } from './images';
         <span class="fallback" aria-hidden="true">{{ fallback() }}</span>
       }
       @if (finished()) {
-        <span class="badge" data-testid="finished-badge">
-          <mat-icon svgIcon="check_circle_fill" aria-hidden="true" />{{ translate('app.poster.finished') }}
+        <span
+          class="badge"
+          [class.start]="tracked() !== null"
+          role="img"
+          [attr.aria-label]="translate('app.poster.finished')"
+          data-testid="finished-badge">
+          <mat-icon svgIcon="check" aria-hidden="true" />
         </span>
       }
     </div>
@@ -83,18 +88,23 @@ import { imageUrl } from './images';
       -webkit-line-clamp: 4;
       overflow-wrap: anywhere;
     }
+    /* A small check in the top right corner; in the top left when the add button holds that corner. */
     .badge {
       position: absolute;
-      inset: auto 4px 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 4px;
-      padding: 2px 4px;
-      border-radius: var(--mat-sys-corner-extra-small);
+      top: 4px;
+      right: 4px;
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      border-radius: var(--mat-sys-corner-full);
       background: var(--mat-sys-primary);
       color: var(--mat-sys-on-primary);
-      font: var(--mat-sys-label-medium);
+      box-shadow: var(--mat-sys-level1);
+    }
+    .badge.start {
+      right: auto;
+      left: 4px;
     }
     .badge mat-icon {
       width: 16px;

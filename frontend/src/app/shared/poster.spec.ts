@@ -27,7 +27,7 @@ describe('Poster', () => {
   it('carries a Finished badge on finished shows', async () => {
     const poster = await render({ finished: true });
 
-    expect(poster.querySelector('[data-testid="finished-badge"]')?.textContent?.trim()).toBe('Finished');
+    expect(poster.querySelector('[data-testid="finished-badge"]')?.getAttribute('aria-label')).toBe('Finished');
   });
 
   it('offers to add the title, then says it is in the library', async () => {
