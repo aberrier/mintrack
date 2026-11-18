@@ -73,6 +73,9 @@ def configure_logging(log_config: ObservabilityConfig) -> None:
     logging.getLogger("alembic").setLevel(level)
     # Hides the plugin list Alembic logs at INFO on every command.
     logging.getLogger("alembic.runtime.plugins").setLevel(max(logging.WARNING, logging.getLevelNamesMapping()[level]))
+    # Their INFO records hold request URLs, whose query holds the TMDB key.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(max(logging.WARNING, logging.getLevelNamesMapping()[level]))
     if log_config.level is LogLevel.DEBUG:
         # INFO logs SQL statements; DEBUG would also log every fetched row.
         logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)

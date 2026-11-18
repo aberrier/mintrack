@@ -9,6 +9,9 @@ from alembic.script import ScriptDirectory
 from mintrack.db.config import CONNECT_ARGS
 from mintrack.db.models import DatabaseModel
 
+# Procrastinate's tables, types and functions come from its own SQL, applied by a revision.
+PROCRASTINATE_PREFIX = "procrastinate_"
+
 
 def process_revision_directives(
     _context: MigrationContext,
@@ -21,11 +24,16 @@ def process_revision_directives(
     directives[0].rev_id = f"{last_revision + 1:04}"
 
 
+def include_name(name: str | None, type_: str, _parent_names: dict[str, str | None]) -> bool:
+    return not (type_ == "table" and name is not None and name.startswith(PROCRASTINATE_PREFIX))
+
+
 def migrate() -> None:
     options: dict[str, typing.Any] = {
         "target_metadata": DatabaseModel.metadata,
         "process_revision_directives": process_revision_directives,
         "compare_server_default": True,
+        "include_name": include_name,
     }
     url = context.config.attributes["url"]
 

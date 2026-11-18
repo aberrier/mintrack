@@ -1,7 +1,9 @@
 import collections.abc
+import datetime as dt
 import os
 import pathlib
 
+import httpx
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
@@ -9,8 +11,14 @@ from sqlalchemy.engine import URL
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import DatabaseConfig, get_config
+from mintrack.core.catalog.managers import CatalogManager
 from mintrack.db import alembic
 from mintrack.db.database import DatabaseManager, get_database
+from mintrack.db.models import Episode, Media, MediaType, User
+from mintrack.integrations.tmdb.client import TMDBClient
+from mintrack.integrations.tmdb.config import TMDBConfig
+from mintrack.worker import get_worker_app
+from tests.fakes.tmdb import FakeTMDB
 
 DATABASE_PASSWORD = "p@ss/w:rd%#value"
 
@@ -45,9 +53,11 @@ def test_database_url() -> collections.abc.Generator[URL]:
         session_patch.setenv("MINTRACK__DATABASE__NAME", name)
         get_config.cache_clear()
         get_database.cache_clear()
+        get_worker_app.cache_clear()
         yield url
     get_config.cache_clear()
     get_database.cache_clear()
+    get_worker_app.cache_clear()
     drop_database(config, name)
 
 
@@ -84,3 +94,39 @@ def env(monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path) -> collections.
     get_config.cache_clear()
     yield monkeypatch
     get_config.cache_clear()
+
+
+@pytest_asyncio.fixture
+async def user(db_session: AsyncSession) -> User:
+    user = User(username="viewer")
+    db_session.add(user)
+    await db_session.flush()
+    return user
+
+
+@pytest.fixture
+def fake_tmdb() -> FakeTMDB:
+    return FakeTMDB()
+
+
+def make_tmdb_client(fake: FakeTMDB, *, api_key: str | None = "test-key") -> TMDBClient:
+    return TMDBClient(TMDBConfig(api_key=api_key), transport=httpx.ASGITransport(app=fake.build_app()))
+
+
+@pytest.fixture
+def tmdb(fake_tmdb: FakeTMDB) -> TMDBClient:
+    """A client of the fake TMDB, whose searches give each test its own media."""
+    return make_tmdb_client(fake_tmdb)
+
+
+async def cached_media(
+    session: AsyncSession, tmdb: TMDBClient, title: str, media_type: MediaType = MediaType.TV
+) -> Media:
+    """The show (or movie) the fake TMDB serves for `title`, cached as its page would."""
+    result = next(result for result in await tmdb.search(title) if result.media_type == media_type)
+    return await CatalogManager(session, tmdb).get_or_fetch(media_type, result.id, dt.datetime.now(dt.UTC))
+
+
+async def episodes_of(session: AsyncSession, media: Media) -> dict[tuple[int, int], Episode]:
+    episodes = await session.scalars(sa.select(Episode).where(Episode.media_id == media.id))
+    return {(episode.season_number, episode.episode_number): episode for episode in episodes}

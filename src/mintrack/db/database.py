@@ -1,7 +1,7 @@
 import functools
 
 from sqlalchemy.engine import URL
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from mintrack.config import get_config
 from mintrack.db.config import CONNECT_ARGS
@@ -20,6 +20,7 @@ class DatabaseManager:
             # Keeps bound parameters out of logs and error messages.
             hide_parameters=True,
         )
+        self.session = async_sessionmaker(self.engine, expire_on_commit=False)
 
     async def close(self) -> None:
         await self.engine.dispose()
