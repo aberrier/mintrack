@@ -1,0 +1,108 @@
+[project]
+name = "mintrack"
+version = "0.1.0"
+description = "A minimal, self-hosted TV and movie tracker with the TV Time experience."
+readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.14"
+dependencies = [
+    "alembic>=1.20.1",
+    "fastapi>=0.163.2",
+    "psycopg[binary]>=3.3.9",
+    "pydantic-settings>=2.16.3",
+    "sentry-sdk[fastapi]>=2.75.0",
+    "sqlalchemy[asyncio]>=2.1.9",
+    "structlog>=26.1.0",
+    "typer>=0.29.1",
+    "uvicorn>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "pytest-cov>=7.1.0",
+    "pytest-env>=1.8.6",
+    "pytest-socket>=0.8.1",
+    "ruff>=0.17.5",
+    "ty==0.0.105",
+]
+
+[project.scripts]
+mintrack = "mintrack.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.13.0,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "ALL", # include all the rules, including new ones
+]
+ignore = [
+    "COM812", # reason: conflict with the formatter
+    "CPY", # reason: the license lives in LICENSE, not in file headers
+    "D", # reason: no lint on docstrings
+    "TC001", # reason: we don't want to force typing only imports
+    "TC002", # reason: we don't want to force typing only imports
+    "TC003", # reason: we don't want to force typing only imports
+    "TD002", # reason: not using author with TODO
+    "TD003", # reason: not using issues with TODO
+    "FIX002", # reason: TODOs are allowed
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101", # reason: asserts allowed in tests
+    "S104", # reason: disable security check in tests
+    "S105", # reason: disable security check in tests
+    "S106", # reason: disable security check in tests
+    "PLC0415", # reason: allow import statements in local scopes
+    "PLR2004", # reason: allow hardcoded comparison in tests
+    "ARG001", # reason: fixtures as function parameters
+    "ARG002", # reason: fixtures in functions flagged as unused
+]
+"src/mintrack/db/migrations/versions/*.py" = [
+    "INP001", # reason: alembic revisions are loaded by path
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+    "--cov=src/mintrack",
+    "--cov-report=term-missing:skip-covered",
+    "--disable-socket",
+    "--allow-unix-socket",
+    "--allow-hosts=::1,127.0.0.1,localhost",
+    "--strict-markers",
+]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+env = [
+    "MINTRACK__PROJECT__ENVIRONMENT=pytest",
+    "MINTRACK__PROJECT__PUBLIC_URL=https://mintrack.test",
+    "MINTRACK__LOGGING__LEVEL=warning",
+    "D:MINTRACK__DATABASE__HOST=localhost",
+    "D:MINTRACK__DATABASE__USER=mintrack",
+    "D:MINTRACK__DATABASE__PASSWORD=mintrack",
+    "D:MINTRACK__DATABASE__NAME=mintrack",
+]
+python_files = [
+    "test_*.py",
+]
+testpaths = [
+    "tests",
+]
+
+[tool.ty.src]
+include = ["src", "tests"]
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"

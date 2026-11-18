@@ -25,7 +25,7 @@ blob-report/
 !.env.example
 
 # Local data
-db/
+/db/
 *.sqlite3
 
 # Editors and OS
@@ -38,3 +38,6 @@ Thumbs.db
 
 # Claude Code local settings
 .claude/settings.local.json
+
+# Python version: from requires-python in pyproject.toml
+.python-version
