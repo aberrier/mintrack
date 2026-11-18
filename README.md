@@ -3,8 +3,8 @@
   Track movies, TV shows and anime, mark episodes in one tap, and get notified when new ones air.
 </p>
 
-MinTrack is a small media tracker you run on your own server, for yourself and a
-few friends. It focuses on the things TV Time did well on a phone: knowing which
+MinTrack is a small media tracker you run on your own server, for yourself and the
+people you share it with. It focuses on the things TV Time did well on a phone: knowing which
 episode comes next, what airs soon, and marking what you watched without friction.
 Your Jellyfin servers fill in your history on their own.
 
@@ -25,10 +25,10 @@ Your Jellyfin servers fill in your history on their own.
 - **Push notifications** when a new episode of a show you follow airs, on
   Android and iOS, through an installable web app. No app store needed.
 - **Several Jellyfin accounts per user**, even on servers you don't
-  administer (yours, a friend's). What you watch there shows up in MinTrack
+  administer. What you watch there shows up in MinTrack
   within minutes.
-- **Small and private.** A few users per instance, invited by the admin. No
-  email, no social features, no tracking.
+- **Easy to self-host and private.** One docker-compose file, several users
+  per instance, invited by the admin. No email, no social features, no tracking.
 
 ## What it does not do
 
