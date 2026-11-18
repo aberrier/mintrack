@@ -164,5 +164,25 @@ declare namespace Model {
       | 'jellyfin_unreachable'
       | 'jellyfin_redirected'
       | 'jellyfin_bad_response';
+
+    type ImportSource = 'yamtrack' | 'tvtime';
+    type UnmatchedReason = 'unsupported' | 'not_found' | 'episode_not_found' | 'tmdb_unavailable';
+
+    interface ImportJob {
+      id: string;
+      source: ImportSource;
+      status: 'pending' | 'running' | 'done' | 'failed';
+      filename: string;
+      total: number;
+      processed: number;
+      report: {
+        imported: number;
+        already_present: number;
+        unmatched_count: number;
+        unmatched: { title: string; reason: UnmatchedReason }[];
+      } | null;
+      created_at: string;
+      finished_at: string | null;
+    }
   }
 }
