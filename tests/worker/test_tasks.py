@@ -1,4 +1,5 @@
 import collections.abc
+import contextlib
 import datetime as dt
 import logging
 import uuid
@@ -10,13 +11,15 @@ import sqlalchemy as sa
 from mintrack.core.catalog.managers import CatalogManager
 from mintrack.core.tracking.managers import TrackingManager
 from mintrack.db.database import DatabaseManager
-from mintrack.db.models import Media, MediaType, User
+from mintrack.db.models import Episode, Media, MediaType, User
 from mintrack.integrations.tmdb.client import TMDBClient
+from mintrack.integrations.tvmaze import TvmazeClient
 from mintrack.observability.config import LogLevel, ObservabilityConfig
 from mintrack.observability.logging import configure_logging
 from mintrack.worker import get_worker_app, tasks
 from tests.conftest import make_tmdb_client
 from tests.fakes.tmdb import INVALID_KEY, FakeTMDB
+from tests.fakes.tvmaze import FakeTvmaze, tvmaze_episode
 
 
 @pytest_asyncio.fixture
@@ -127,3 +130,35 @@ async def test_the_hourly_run_defers_a_refresh_of_stale_tracked_media(
             {"id": str(committed_show.id)},
         )
     assert queued == 1
+
+
+def test_air_times_are_refreshed_daily() -> None:
+    app = get_worker_app()
+
+    task = app.tasks["mintrack:refresh_air_times"]
+    assert [periodic.cron for periodic in app.periodic_registry.periodic_tasks.values() if periodic.task is task] == [
+        "0 4 * * *"
+    ]
+
+
+async def test_a_tracked_show_gets_its_exact_air_times(
+    database: DatabaseManager, committed_show: Media, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    airstamp = dt.datetime(2026, 11, 21, 2, tzinfo=dt.UTC)
+    fake = FakeTvmaze(shows={committed_show.tvdb_id or 0: (169, [tvmaze_episode(1, 1, airstamp.isoformat())])})
+
+    @contextlib.asynccontextmanager
+    async def tvmaze_client() -> collections.abc.AsyncGenerator[TvmazeClient]:
+        yield fake.client()
+
+    monkeypatch.setattr(tasks, "tvmaze_client", tvmaze_client)
+
+    await tasks.refresh_show_air_times_task(media_id=str(committed_show.id))
+
+    async with database.session() as session:
+        first = await session.scalar(
+            sa.select(Episode.airstamp).where(
+                Episode.media_id == committed_show.id, Episode.season_number == 1, Episode.episode_number == 1
+            )
+        )
+    assert first == airstamp

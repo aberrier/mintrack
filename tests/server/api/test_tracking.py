@@ -1,5 +1,7 @@
 import fastapi
 import httpx
+import sqlalchemy as sa
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from tests.fakes.tmdb import media_id
 
@@ -69,3 +71,20 @@ async def test_the_library_lists_tracked_shows_with_progress_and_forgets_removed
         "watched_count": 1,
         "aired_count": 5,
     }
+
+
+async def test_following_a_show_still_airing_defers_one_air_times_refresh(
+    signed_in: httpx.AsyncClient, db_session: AsyncSession
+) -> None:
+    airing, _ = await show_page(signed_in, "Airing Show")
+    ended, _ = await show_page(signed_in, "Ended Show")
+    for tmdb_id in (airing, airing, ended):
+        await signed_in.put(f"/api/shows/{tmdb_id}/tracking", json={"stopped": False})
+
+    deferred = await db_session.scalars(
+        sa.text(
+            "SELECT media.tmdb_id FROM procrastinate_jobs JOIN media ON media.id::text = args->>'media_id' "
+            "WHERE task_name = 'mintrack:refresh_show_air_times'"
+        )
+    )
+    assert list(deferred) == [airing]

@@ -6,12 +6,13 @@ import fastapi
 import pydantic
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.catalog.managers import find_media
+from mintrack.core.catalog.managers import find_media, is_airing
 from mintrack.core.tracking.managers import TrackingManager, UnknownEpisodesError
 from mintrack.db.dependencies import DbSessionDepType
 from mintrack.db.models import Media, MediaType, TrackingStatus
 from mintrack.server.api.catalog import MovieTrackingResponse, ShowTrackingResponse, TMDBId
 from mintrack.server.api.dependencies import CurrentUserDepType
+from mintrack.worker.tasks import defer_air_times_refresh
 
 router = fastapi.APIRouter(tags=["tracking"])
 
@@ -60,6 +61,9 @@ async def track_show(
     """Add the show to the library, stop it or resume it."""
     media = await cached(session, MediaType.TV, tmdb_id)
     tracking = await TrackingManager(session).track_show(user, media, stopped=body.stopped, now=dt.datetime.now(dt.UTC))
+    if not body.stopped and is_airing(media):
+        # Exact air times, before the next daily refresh.
+        await defer_air_times_refresh(session, media.id)
     await session.commit()
     return ShowTrackingResponse.of(tracking)
 
