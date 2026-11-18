@@ -104,9 +104,11 @@ Pi 3, 4 or 5 with a 64-bit system).
    POSTGRES_PASSWORD=<a random password>
    MINTRACK__SECURITY__SECRET_KEY=<another random value>
    MINTRACK__PROJECT__PUBLIC_URL=http://localhost:8000
+   MINTRACK__TMDB__API_KEY=<your TMDB API key>
    ```
 
-   `MINTRACK__PROJECT__PUBLIC_URL` is the address you open MinTrack at. Every other setting is listed with its
+   `MINTRACK__PROJECT__PUBLIC_URL` is the address you open MinTrack at. The TMDB key is free: create a TMDB account,
+   then copy the "API Key" from https://www.themoviedb.org/settings/api. Every other setting is listed with its
    default in [`.env.example`](.env.example); each can also be read from a file through a `_FILE` variant, for
    Docker secrets.
 
@@ -147,6 +149,92 @@ nginx, Traefik...) in front, serving MinTrack at the root of its own domain, suc
 Ports Docker publishes bypass host firewalls such as ufw: with the default bind address, port 8000 is open to every
 network the machine is on.
 
+
+## Operating MinTrack
+
+### Background jobs
+
+The server container also runs MinTrack's background worker (it refreshes TMDB data: daily for shows still airing,
+weekly for the others). To run the worker as its own service instead, replace the `server` service of
+`docker-compose.yml` with these three, keeping the other settings of `server` (`restart`, `env_file`, `environment`,
+`read_only`, `tmpfs`, `cap_drop`, `security_opt`, `logging`) on each:
+
+```yaml
+  migrate:
+    image: ghcr.io/aberrier/mintrack:edge
+    command: ["mintrack", "db", "migrate"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  server:
+    image: ghcr.io/aberrier/mintrack:edge
+    command: ["mintrack", "server", "--no-migrate"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      MINTRACK__SERVER__RUN_WORKER: "false"
+    ports:
+      - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
+
+  worker:
+    image: ghcr.io/aberrier/mintrack:edge
+    command: ["mintrack", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      disable: true
+```
+
+### Backups
+
+Everything MinTrack knows is in PostgreSQL. Keep `.env` with it: its secret key encrypts stored credentials. A backup, from the folder of `docker-compose.yml`:
+
+```bash
+(umask 077; docker compose exec -T db pg_dump -U mintrack -Fc mintrack > mintrack-$(date +%F).dump)
+```
+
+To restore it, stop the server, restore, start again:
+
+```bash
+docker compose stop server
+docker compose exec -T db pg_restore -U mintrack -d mintrack --clean --if-exists < mintrack-2026-01-31.dump
+docker compose start server
+```
+
+### Upgrades and rollback
+
+Take a backup, then pull the new image and recreate the containers; the server upgrades the database schema when it
+starts:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+To pin a version, replace `edge` with a release tag in `docker-compose.yml`. Schema upgrades are not reversible from
+the app: to roll back, put the previous tag back and restore the backup taken before the upgrade (an older version
+refuses to start on a database a newer one migrated).
+
+### PostgreSQL major upgrades
+
+`postgres:18` follows minor releases only. Moving to a new major version (19, for example) needs a dump and a restore
+into a new volume:
+
+1. Take a backup as above, then `docker compose down`.
+2. Change the image to `postgres:19` and the volume name (`db` to `db19`, in `services.db.volumes` and `volumes`).
+3. Start the database alone, restore, then start everything:
+
+   ```bash
+   docker compose up -d db
+   docker compose exec -T db pg_restore -U mintrack -d mintrack --clean --if-exists < mintrack-2026-01-31.dump
+   docker compose up -d
+   ```
+
+Keep the old volume until MinTrack works on the new one; `docker volume rm mintrack_db` then frees it.
 
 ## Stack
 

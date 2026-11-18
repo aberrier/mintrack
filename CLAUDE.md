@@ -41,22 +41,26 @@ Always run Python tools through `uv run`. Run `just` (check and test) before com
 ```
 src/mintrack/
   __main__.py      # config errors -> readable message; logging, Sentry, CLI
-  cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | db | healthcheck | users
+  cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | worker | db | healthcheck | users
   config/          # Config(BaseSettings): MINTRACK__SECTION__FIELD variables, *_FILE variants, .env
-  core/<domain>/   # business logic: managers.py (core/accounts: users, sessions, password links, login limit)
-  db/              # DatabaseModel, DatabaseManager, Alembic config built in code, migrations/, models/
+  core/<domain>/   # business logic: accounts (users, sessions, password links, login limit), catalog (TMDB cache), tracking (watched episodes, statuses)
+  db/              # DatabaseModel, models/, DatabaseManager, Alembic config built in code, migrations/
+  integrations/    # clients of outside services: tmdb/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)
   server/          # build_app(): /api router (public and session-protected), middlewares
-tests/             # mirrors src/; conftest.py holds the opt-in database fixtures
+  worker/          # Procrastinate: get_worker_app(), tasks on the Blueprint of tasks.py; runs inside the server
+tests/             # mirrors src/; conftest.py holds the opt-in database fixtures; fakes/ fakes outside services
 frontend/src/app/
   core/api/        # ApiService: one group of endpoints per domain, relative /api URLs
   core/auth/       # AuthStore ($user), signedIn and admin guards, the 401 interceptor
   core/i18n/       # injectTranslator, English only, paths such as app.home.title
   core/icons/      # Material Symbols SVGs registered by name; import only the icons used
+  core/tracking/   # TrackingStore (optimistic writes) and episode helpers
   shell/           # the phone frame: scrolling content and the bottom navigation
   pages/<page>/    # one lazy-loaded standalone component per route (app.routes.ts)
+  shared/          # components used by several pages
 frontend/src/types/ # global namespaces (Model for API shapes)
-frontend/e2e/      # Playwright acceptance suite: specs/ (domain language), dsl/ (actors, fixtures), drivers/ (pages, CLI)
+frontend/e2e/      # Playwright acceptance suite: specs/ (domain language), dsl/ (actors, fixtures), drivers/ (pages, CLI, API)
 Dockerfile, docker-compose.yml, .env.example  # the image and the install; README "Install" repeats docker-compose.yml
 ```
 
