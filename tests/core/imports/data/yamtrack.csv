@@ -1,0 +1,8 @@
+media_id,source,media_type,title,image,season_number,episode_number,score,progress,status,start_date,end_date,notes,progressed_at
+1001,tmdb,tv,Northern Lights,,,,,2,In progress,,,,
+1001,tmdb,episode,Northern Lights,,1,1,,,,,2024-02-09,,
+1001,tmdb,episode,Northern Lights,,1,2,,,,,2024-02-10T21:30:00Z,,
+1001,tmdb,episode,Northern Lights,,1,9,,,,,2024-02-10T22:30:00Z,,
+2001,tmdb,movie,Glass Harbor,,,,,1,Completed,,2024-03-01T20:00:00Z,,
+3003,tmdb,movie,Unknown Movie,,,,,1,Completed,,2024-03-01T20:00:00Z,,
+1942,igdb,game,Some Game,,,,,,Completed,,,,

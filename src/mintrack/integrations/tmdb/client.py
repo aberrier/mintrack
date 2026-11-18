@@ -100,7 +100,7 @@ class TMDBClient:
         return TMDBShow.model_validate({**data, "seasons": seasons})
 
     async def find(self, external_id: str, source: ExternalSource) -> dict[str, typing.Any]:
-        """TMDB ids of the movies and shows with this external id, as `movie_results` and `tv_results`."""
+        """TMDB ids of what has this external id: `movie_results`, `tv_results` and `tv_episode_results`."""
         return await self._get(f"find/{urllib.parse.quote(external_id, safe='')}", external_source=source)
 
 

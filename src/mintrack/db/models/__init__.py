@@ -1,5 +1,6 @@
 from mintrack.db.base import DatabaseModel
 
+from .import_job import ImportJob, ImportReport, ImportSource, ImportStatus
 from .jellyfin import JellyfinAccount, JellyfinSyncStatus
 from .media import Episode, Media, MediaType, Season
 from .push import EpisodeNotification, PushSubscription
@@ -10,6 +11,10 @@ __all__ = [
     "DatabaseModel",
     "Episode",
     "EpisodeNotification",
+    "ImportJob",
+    "ImportReport",
+    "ImportSource",
+    "ImportStatus",
     "JellyfinAccount",
     "JellyfinSyncStatus",
     "LoginFailure",

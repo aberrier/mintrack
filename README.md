@@ -29,6 +29,17 @@ Your Jellyfin servers fill in your history on their own.
   within minutes.
 - **Easy to self-host and private.** One docker-compose file, several users
   per instance, invited by the admin. No email, no social features, no tracking.
+- **Imports from Yamtrack and TV Time**, from your profile page, with watch
+  dates kept. Importing the same file again adds nothing. The file (20 MB at
+  most) is deleted once imported.
+  - Yamtrack: the CSV export (Settings, Export). Movies, TV shows and anime
+    are imported (anime from MyAnimeList or AniList and manual entries are
+    matched by title); other media types are listed as not matched.
+  - TV Time: the `.zip` of the GDPR data export, or one of its files:
+    `tracking-prod-records-v2.csv` (followed shows, watched episodes and
+    movies) or `tracking-prod-records.csv` (watched episodes). Shows are
+    matched by their TVDB id where the file has it, else by title; movies by
+    title and year. Only these two files are kept until the import ends.
 
 ## What it does not do
 
