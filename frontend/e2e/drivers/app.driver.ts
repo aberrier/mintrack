@@ -285,13 +285,18 @@ export class AppDriver {
     await this.rendered();
   }
 
+  /** Season 0 holds the specials. */
+  private seasonTitle(season: number): string {
+    return season === 0 ? 'Specials' : `Season ${season}`;
+  }
+
   seasonToggle(season: number): Locator {
-    return this.page.getByRole('button', { name: new RegExp(`^Season ${season} \\d+/\\d+$`) });
+    return this.page.getByRole('button', { name: new RegExp(`^${this.seasonTitle(season)} \\d+/\\d+$`) });
   }
 
   /** A season's check: marks its aired episodes, or asks to unmark it once all are watched. */
   seasonCheck(season: number): Locator {
-    return this.page.getByRole('button', { name: `Mark Season ${season} watched`, exact: true });
+    return this.page.getByRole('button', { name: `Mark ${this.seasonTitle(season)} watched`, exact: true });
   }
 
   /** A season row's `watched/aired`. */

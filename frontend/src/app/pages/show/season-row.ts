@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, input, output } from '@an
 import { MatIcon } from '@angular/material/icon';
 import { formatDate } from '../../core/dates';
 import { injectTranslator } from '../../core/i18n';
-import { isUpcoming, isWatched, seasonProgress, SPECIALS } from '../../core/tracking/episodes';
+import { isUpcoming, isWatched, seasonProgress } from '../../core/tracking/episodes';
 import { CheckButton } from '../../shared/check-button';
 import { LoadError } from '../../shared/load-error';
 
@@ -32,18 +32,14 @@ import { LoadError } from '../../shared/load-error';
           >{{ progress.watched }}/{{ progress.aired }}</span
         >
       </button>
-      @if (s.season_number !== specials) {
-        <button
-          type="button"
-          appCheckButton
-          [done]="progress.complete"
-          [disabled]="progress.aired === 0"
-          [attr.aria-pressed]="progress.complete"
-          [attr.aria-label]="translate('app.show.seasonCheck', { season: s.title })"
-          (click)="check.emit()"></button>
-      } @else {
-        <span class="check-slot" aria-hidden="true"></span>
-      }
+      <button
+        type="button"
+        appCheckButton
+        [done]="progress.complete"
+        [disabled]="progress.aired === 0"
+        [attr.aria-pressed]="progress.complete"
+        [attr.aria-label]="translate('app.show.seasonCheck', { season: s.title })"
+        (click)="check.emit()"></button>
     </div>
     <div class="bar" aria-hidden="true">
       <span [style.transform]="'scaleX(' + (progress.aired ? progress.watched / progress.aired : 0) + ')'"></span>
@@ -116,11 +112,6 @@ import { LoadError } from '../../shared/load-error';
     .chevron.open {
       transform: rotate(180deg);
     }
-    /* The check's place on rows without one, so every count ends on the same edge. */
-    .check-slot {
-      flex: none;
-      width: 48px;
-    }
     /* The share watched, as a thin bar under the row. */
     .bar {
       height: 4px;
@@ -173,7 +164,6 @@ import { LoadError } from '../../shared/load-error';
 })
 export class SeasonRow {
   protected readonly translate = injectTranslator('app');
-  protected readonly specials = SPECIALS;
   protected readonly isWatched = isWatched;
   protected readonly isUpcoming = isUpcoming;
   protected readonly formatDate = formatDate;
