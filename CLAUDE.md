@@ -5,7 +5,7 @@ Guidance for Claude Code (and humans) working in this repository.
 ## What MinTrack is
 
 A minimal, self-hosted TV and movie tracker with the TV Time experience: FastAPI + SQLAlchemy 2 (async) + Alembic on
-PostgreSQL, an Angular app in `frontend/` (from M1's second PR), one Docker image. See `README.md` for the scope.
+PostgreSQL, an Angular app in `frontend/` served by the backend, one Docker image. See `README.md` for the scope.
 
 ## References
 
@@ -13,6 +13,8 @@ PostgreSQL, an Angular app in `frontend/` (from M1's second PR), one Docker imag
   proven choices, and state in the plan or PR why when diverging.
 - **Tooling, code structure and tests** follow the maintainer's reference FastAPI project. Its gaps or out-of-scope shortcuts are not
   inherited (its CORS, Sentry and auth settings, for example).
+- **Frontend conventions** follow the maintainer's reference Angular project, except that it is a
+  desktop app and MinTrack is phone-first (see Frontend below).
 - MinTrack must be easy to install for anyone with Docker; never size a choice for "a few users".
 
 ## Development environment
@@ -27,6 +29,7 @@ just check      # ruff, ruff format --check, ty
 just test       # pytest (needs just dev-db for the database tests)
 just format     # apply ruff fixes and formatting
 just dev        # mintrack server --reload
+just dev-frontend  # ng serve on :4200, proxying /api to just dev
 ```
 
 Always run Python tools through `uv run`. Run `just` (check and test) before committing. Install just with
@@ -43,6 +46,14 @@ src/mintrack/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)
   server/          # build_app(): /api router, middlewares (proxy headers, security headers, generic 500)
 tests/             # mirrors src/; conftest.py holds the opt-in database fixtures
+frontend/src/app/
+  core/api/        # ApiService: one group of endpoints per domain, relative /api URLs
+  core/i18n/       # injectTranslator, English only, paths such as app.home.title
+  core/icons/      # Material Symbols SVGs registered by name; import only the icons used
+  shell/           # the phone frame: scrolling content and the bottom navigation
+  pages/<page>/    # one lazy-loaded standalone component per route (app.routes.ts)
+frontend/src/types/ # global namespaces (Model for API shapes)
+frontend/e2e/      # Playwright specs, phone and desktop projects
 ```
 
 Business logic goes in `core/<domain>/managers` (from M2), endpoints and their Pydantic schemas in `server/api/`,
@@ -72,3 +83,35 @@ dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAl
 - Sockets are disabled except to localhost; mark a test `@pytest.mark.allow_hosts([...])` when it must reach another
   address.
 - ASGI tests use `https://mintrack.test`, the test `public_url`.
+
+## Frontend
+
+```bash
+cd frontend
+npm ci
+npm run check   # prettier, Angular compiler with strict templates, spec and e2e types
+npm test        # Vitest
+npm run build   # fails over the bundle budgets (initial 400 kB, component style 8 kB)
+npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, default http://localhost:8000)
+```
+
+- **Angular:** standalone components, zoneless, `OnPush` everywhere, lazy routes declared in `app.routes.ts` with
+  their URL builders in `appRoutes`. Signals for state, RxJS for asynchronous flows, `toSignal` / `toObservable` at
+  the boundary. No NgRx.
+- **State, so one tap feels instant:** each domain gets a store service holding private writable signals and exposing
+  read-only ones. A tap updates the store first, then queues the API call. Writes to the same item are serialised
+  (`concatMap`), with errors caught inside each queued call so one failure never stops the queue. Each success
+  records the server's answer as the item's confirmed value; on error, and only when no later write for that item is
+  still queued, the store goes back to the confirmed value and a snackbar says so.
+- **Phone first:** test in the Playwright `phone` project first. Tap targets are at least 48px; content stays inside
+  `env(safe-area-inset-*)`; no horizontal scroll. Only the shell's content area scrolls (`100dvh` shell, marked
+  `cdkScrollable` for Material overlays), so the router's window scrolling does nothing: the first page with a list
+  (M3) saves and restores that element's scroll position per history entry.
+- **UI:** Material 3 for dialogs, snackbars, menus, form fields and ripples; custom components for the core lists
+  (bottom navigation, episode rows, poster cards). Import Material components one by one, never whole modules at the
+  root. Tailwind for layout and Material's colour tokens (`bg-surface`, `text-on-surface-variant`); typography from
+  Material's type tokens (`[font:var(--mat-sys-headline-small)]`). The theme follows the system (light or dark).
+- **No external resources:** no CDN, no Google Fonts (system font stack), icons bundled as SVG. The CSP blocks them
+  anyway, and the browser tests fail on any console error.
+- **Texts** go through `injectTranslator('app')`, in `core/i18n/translations/app.en.ts`, bundled with the app so
+  nothing pops in after the first paint. Paths are typed (`TranslationPath<'app'>`).

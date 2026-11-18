@@ -37,3 +37,7 @@ dev:
 clean:
     rm -rf .pytest_cache .ruff_cache .coverage .coverage.* coverage.xml
     find . -name __pycache__ -type d -prune -exec rm -rf {} +
+
+# The Angular dev server on :4200, proxying /api to just dev
+dev-frontend:
+    cd frontend && npx ng serve
