@@ -16,7 +16,10 @@ CONTENT_SECURITY_POLICY = (
     "object-src 'none'; "
     "base-uri 'self'; "
     "form-action 'self'; "
-    "frame-ancestors 'none'"
+    "frame-ancestors 'none'; "
+    # Trusted Types: only Angular's sanitiser and Material's icon loader may create HTML from strings.
+    "require-trusted-types-for 'script'; "
+    "trusted-types angular angular#unsafe-bypass angular#components"
 )
 
 SECURITY_HEADERS = {
