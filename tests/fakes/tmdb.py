@@ -30,6 +30,8 @@ class FakeTMDB:
     titles: dict[int, str] = dataclasses.field(default_factory=dict)
     # (show id, season, episode) TMDB no longer lists.
     dropped: set[tuple[int, int, int]] = dataclasses.field(default_factory=set)
+    # (external source, external id) -> ("movie" or "tv", TMDB id), for /find.
+    external_ids: dict[tuple[str, str], tuple[str, int]] = dataclasses.field(default_factory=dict)
 
     def title(self, tmdb_id: int, kind: str) -> str:
         return self.titles.get(tmdb_id, f"{kind} {tmdb_id}")
@@ -127,6 +129,14 @@ class FakeTMDB:
             if tmdb_id > MAX_ID:
                 raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND)
             return self.movie(tmdb_id)
+
+        @app.get("/3/find/{external_id}")
+        def find(external_id: str, external_source: str) -> dict[str, typing.Any]:
+            results: dict[str, list[dict[str, typing.Any]]] = {"movie_results": [], "tv_results": []}
+            if found := self.external_ids.get((external_source, external_id)):
+                kind, tmdb_id = found
+                results[f"{kind}_results"].append({"id": tmdb_id})
+            return results
 
         return app
 

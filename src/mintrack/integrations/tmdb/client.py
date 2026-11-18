@@ -1,6 +1,8 @@
+import enum
 import functools
 import itertools
 import typing
+import urllib.parse
 
 import httpx
 
@@ -16,6 +18,11 @@ CONNECT_RETRIES = 3
 # TMDB's limit of append_to_response items per request.
 MAX_APPENDS = 20
 SEARCHED_TYPES = frozenset(MediaType)
+
+
+class ExternalSource(enum.StrEnum):
+    IMDB = "imdb_id"
+    TVDB = "tvdb_id"
 
 
 class TMDBError(Exception):
@@ -91,6 +98,10 @@ class TMDBClient:
                 if f"season/{number}" in appended
             ]
         return TMDBShow.model_validate({**data, "seasons": seasons})
+
+    async def find(self, external_id: str, source: ExternalSource) -> dict[str, typing.Any]:
+        """TMDB ids of the movies and shows with this external id, as `movie_results` and `tv_results`."""
+        return await self._get(f"find/{urllib.parse.quote(external_id, safe='')}", external_source=source)
 
 
 @functools.cache

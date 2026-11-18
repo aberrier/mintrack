@@ -1,5 +1,6 @@
 from mintrack.db.base import DatabaseModel
 
+from .jellyfin import JellyfinAccount, JellyfinSyncStatus
 from .media import Episode, Media, MediaType, Season
 from .push import EpisodeNotification, PushSubscription
 from .tracking import TrackingStatus, UserMedia, WatchedEpisode, WatchedMovie
@@ -9,6 +10,8 @@ __all__ = [
     "DatabaseModel",
     "Episode",
     "EpisodeNotification",
+    "JellyfinAccount",
+    "JellyfinSyncStatus",
     "LoginFailure",
     "Media",
     "MediaType",

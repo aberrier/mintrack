@@ -9,6 +9,7 @@ requires-python = ">=3.14"
 dependencies = [
     "alembic>=1.20.1",
     "argon2-cffi>=25.1.0",
+    "cryptography>=46",
     "fastapi>=0.163.2",
     "http-ece>=1.2.1",
     "httpx>=0.28.1",
@@ -31,6 +32,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-env>=1.8.6",
     "pytest-socket>=0.8.1",
+    "respx>=0.22",
     "ruff>=0.17.5",
     "ty==0.0.105",
 ]
@@ -68,10 +70,13 @@ ignore = [
     "S104", # reason: disable security check in tests
     "S105", # reason: disable security check in tests
     "S106", # reason: disable security check in tests
+    "S107", # reason: disable security check in tests
     "PLC0415", # reason: allow import statements in local scopes
     "PLR2004", # reason: allow hardcoded comparison in tests
     "ARG001", # reason: fixtures as function parameters
     "ARG002", # reason: fixtures in functions flagged as unused
+    "PLR0913", # reason: fixtures as function parameters
+    "PLR0917", # reason: fixtures as function parameters
 ]
 "src/mintrack/db/migrations/versions/*.py" = [
     "INP001", # reason: alembic revisions are loaded by path
