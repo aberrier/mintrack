@@ -1,0 +1,81 @@
+<section class="flex flex-col gap-4" aria-labelledby="jellyfin-title">
+  <h2 id="jellyfin-title" class="[font:var(--mat-sys-title-large)]">{{ translate('app.profile.jellyfin.title') }}</h2>
+
+  @for (account of store.$accounts(); track account.id) {
+    <article class="flex flex-col gap-2 rounded-2xl bg-surface-container p-4" data-testid="jellyfin-account">
+      <div class="flex flex-col">
+        <span class="[font:var(--mat-sys-title-medium)]">{{ account.username }}</span>
+        <span class="break-all text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{
+          account.server_url
+        }}</span>
+      </div>
+      <p class="[font:var(--mat-sys-body-medium)]" data-testid="jellyfin-last-sync">
+        @if (!account.last_sync_status || account.last_sync_status === 'ok') {
+          @if (account.last_sync_at; as lastSync) {
+            {{
+              translate('app.profile.jellyfin.lastSync', {
+                date: (lastSync | date: 'short')!,
+                count: account.last_sync_imported.toString(),
+              })
+            }}
+            @if (account.last_sync_skipped) {
+              · {{ translate('app.profile.jellyfin.skipped', { count: account.last_sync_skipped.toString() }) }}
+            }
+          } @else {
+            {{ translate('app.profile.jellyfin.neverSynced') }}
+          }
+        } @else {
+          <span class="text-error">{{ translate(syncFailures[account.last_sync_status]) }}</span>
+          @if (account.last_success_at; as lastSuccess) {
+            <br />{{ translate('app.profile.jellyfin.lastSuccess', { date: (lastSuccess | date: 'short')! }) }}
+          }
+        }
+      </p>
+      <div class="flex flex-wrap gap-2">
+        <button mat-stroked-button type="button" (click)="store.sync(account)">
+          {{ translate('app.profile.jellyfin.syncNow') }}
+        </button>
+        <button mat-button type="button" (click)="store.unlink(account)">
+          {{ translate('app.profile.jellyfin.unlink') }}
+        </button>
+      </div>
+    </article>
+  } @empty {
+    @if (store.$accounts()) {
+      <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="jellyfin-empty">
+        {{ translate('app.profile.jellyfin.empty') }}
+      </p>
+    }
+  }
+
+  <form class="flex flex-col" [formGroup]="form" #linkForm="ngForm" (ngSubmit)="link(linkForm)">
+    <h3 class="mb-2 [font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.linkTitle') }}</h3>
+    <mat-form-field>
+      <mat-label>{{ translate('app.profile.jellyfin.serverUrl') }}</mat-label>
+      <input
+        matInput
+        formControlName="server_url"
+        type="url"
+        inputmode="url"
+        autocapitalize="off"
+        autocomplete="url"
+        placeholder="https://jellyfin.example.com" />
+      <mat-error>{{ translate('app.profile.jellyfin.errors.invalidAddress') }}</mat-error>
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ translate('app.profile.jellyfin.username') }}</mat-label>
+      <input matInput formControlName="username" autocapitalize="off" autocomplete="off" />
+    </mat-form-field>
+    <mat-form-field>
+      <mat-label>{{ translate('app.profile.jellyfin.password') }}</mat-label>
+      <input matInput formControlName="password" type="password" autocomplete="off" />
+    </mat-form-field>
+    @if ($linkError(); as error) {
+      <p role="alert" class="mb-4 text-error [font:var(--mat-sys-body-medium)]">{{ translate(error) }}</p>
+    }
+    <button mat-flat-button type="submit" [disabled]="$linking()">{{ translate('app.profile.jellyfin.link') }}</button>
+    <p class="mt-2 text-on-surface-variant [font:var(--mat-sys-body-small)]">
+      {{ translate('app.profile.jellyfin.passwordNote') }}
+    </p>
+  </form>
+</section>

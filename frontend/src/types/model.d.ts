@@ -138,5 +138,31 @@ declare namespace Model {
       /** null when the server cannot send push. */
       public_key: string | null;
     }
+
+    type JellyfinSyncStatus = 'ok' | 'unreachable' | 'unauthorized' | 'failed';
+
+    interface JellyfinAccount {
+      id: string;
+      server_url: string;
+      username: string;
+      last_sync_at: string | null;
+      last_success_at: string | null;
+      last_sync_status: JellyfinSyncStatus | null;
+      last_sync_imported: number;
+      last_sync_skipped: number;
+    }
+
+    interface JellyfinLinkRequest {
+      server_url: string;
+      username: string;
+      password: string;
+    }
+
+    type JellyfinLinkError =
+      | 'jellyfin_invalid_credentials'
+      | 'jellyfin_forbidden_address'
+      | 'jellyfin_unreachable'
+      | 'jellyfin_redirected'
+      | 'jellyfin_bad_response';
   }
 }
