@@ -1,7 +1,7 @@
 <section class="flex flex-col gap-3" aria-labelledby="api-tokens-title">
-  <h2 id="api-tokens-title" class="[font:var(--mat-sys-title-medium)]">
+  <h4 id="api-tokens-title" class="[font:var(--mat-sys-title-medium)]">
     {{ translate('app.profile.apiTokens.title') }}
-  </h2>
+  </h4>
   <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
     {{ translate('app.profile.apiTokens.description') }}
   </p>
@@ -17,7 +17,7 @@
   </form>
 
   @if ($created(); as created) {
-    <div role="status" class="bg-secondary-container text-on-secondary-container flex flex-col gap-2 rounded-xl p-4">
+    <div role="status" class="flex flex-col gap-2 rounded-xl bg-secondary-container p-4 text-on-secondary-container">
       <p class="[font:var(--mat-sys-body-medium)]">{{ translate('app.profile.apiTokens.showOnce') }}</p>
       <code data-testid="new-api-token" class="break-all select-all">{{ created.token }}</code>
       <div class="flex justify-end gap-2">
@@ -37,7 +37,7 @@
         <li class="flex min-h-14 items-center gap-2">
           <div class="flex min-w-0 grow flex-col">
             <span class="truncate [font:var(--mat-sys-body-large)]">{{ token.name }}</span>
-            <span class="text-on-surface-variant [font:var(--mat-sys-body-small)]">
+            <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
               {{ translate('app.profile.apiTokens.created') }} {{ date(token.created_at) }} ·
               @if (token.last_used_at) {
                 {{ translate('app.profile.apiTokens.lastUsed') }} {{ date(token.last_used_at) }}
@@ -58,15 +58,3 @@
     </ul>
   }
 </section>
-
-<ng-template #confirmRevoke let-token>
-  <h2 mat-dialog-title>{{ translate('app.profile.apiTokens.confirmTitle') }}</h2>
-  <mat-dialog-content>
-    <p class="break-words">{{ token.name }}</p>
-    <p>{{ translate('app.profile.apiTokens.confirmText') }}</p>
-  </mat-dialog-content>
-  <mat-dialog-actions align="end">
-    <button matButton type="button" [mat-dialog-close]="false">{{ translate('app.profile.apiTokens.cancel') }}</button>
-    <button matButton type="button" [mat-dialog-close]="true">{{ translate('app.profile.apiTokens.revoke') }}</button>
-  </mat-dialog-actions>
-</ng-template>

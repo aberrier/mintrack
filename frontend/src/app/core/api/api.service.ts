@@ -9,10 +9,6 @@ import { inject, Injectable } from '@angular/core';
 export class ApiService {
   private readonly http = inject(HttpClient);
 
-  readonly health = {
-    get: () => this.http.get<Model.Http.HealthResponse>('/api/health'),
-  };
-
   readonly auth = {
     login: (username: string, password: string) =>
       this.http.post<Model.Http.User>('/api/auth/login', { username, password }),
@@ -40,6 +36,8 @@ export class ApiService {
     search: (query: string, type: Model.Http.MediaType) =>
       this.http.get<Model.Http.SearchResult[]>('/api/search', { params: { query, type } }),
     show: (tmdbId: number) => this.http.get<Model.Http.Show>(`/api/shows/${tmdbId}`),
+    season: (tmdbId: number, seasonNumber: number) =>
+      this.http.get<Model.Http.SeasonEpisodes>(`/api/shows/${tmdbId}/seasons/${seasonNumber}`),
     movie: (tmdbId: number) => this.http.get<Model.Http.Movie>(`/api/movies/${tmdbId}`),
     trending: (type: Model.Http.MediaType) =>
       this.http.get<Model.Http.SearchResult[]>('/api/discover/trending', { params: { type } }),
@@ -64,7 +62,7 @@ export class ApiService {
     }: {
       mediaType: Model.Http.MediaType;
       sort?: Model.Http.LibrarySort;
-      status?: Model.Http.LibraryStatus | null;
+      status?: Model.Http.TrackingStatus | null;
     }) =>
       this.http.get<Model.Http.LibraryItem[]>('/api/library', {
         params: { media_type: mediaType, sort, ...(status ? { status } : {}) },
@@ -92,6 +90,13 @@ export class ApiService {
     list: () => this.http.get<Model.Http.JellyfinAccount[]>('/api/jellyfin/accounts'),
     link: (request: Model.Http.JellyfinLinkRequest) =>
       this.http.post<Model.Http.JellyfinAccount>('/api/jellyfin/accounts', request),
+    /** Start a Quick Connect request: its code is approved in a Jellyfin app, its secret polls and links. */
+    startQuickConnect: (request: Model.Http.JellyfinServerRequest) =>
+      this.http.post<Model.Http.QuickConnect>('/api/jellyfin/quick-connect', request),
+    quickConnectState: (request: Model.Http.QuickConnectRequest) =>
+      this.http.post<Model.Http.QuickConnectState>('/api/jellyfin/quick-connect/state', request),
+    linkQuickConnect: (request: Model.Http.QuickConnectRequest) =>
+      this.http.post<Model.Http.JellyfinAccount>('/api/jellyfin/accounts/quick-connect', request),
     unlink: (id: string) => this.http.delete<void>(`/api/jellyfin/accounts/${id}`),
     sync: (id: string) => this.http.post<void>(`/api/jellyfin/accounts/${id}/sync`, null),
   };

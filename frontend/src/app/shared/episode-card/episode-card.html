@@ -4,16 +4,13 @@
   @if (checkable()) {
     <button
       type="button"
-      class="check"
-      [class.done]="watched()"
+      appCheckButton
+      [done]="watched()"
+      [attr.aria-disabled]="watched() || null"
       [attr.aria-label]="checkLabel()"
-      (click)="check.emit()">
-      <app-check-mark [done]="watched()" />
-    </button>
+      (click)="check.emit()"></button>
   } @else if (watched()) {
-    <span class="check" role="img" [attr.aria-label]="translate('app.episodeCard.watched')">
-      <app-check-mark [done]="true" />
-    </span>
+    <span appCheckButton [done]="true" role="img" [attr.aria-label]="translate('app.episodeCard.watched')"></span>
   }
 </ng-template>
 
@@ -29,12 +26,14 @@
   <ng-template #row>
     <div class="row">
       <a [routerLink]="link()" class="main">
-        <span class="w-16 flex-none"><app-poster [path]="ep.poster_path" /></span>
+        <span class="w-16 flex-none"><app-poster [path]="ep.poster_path" [finished]="finished()" /></span>
         <span class="flex min-w-0 flex-1 flex-col items-start gap-1">
-          <h3 class="show-chip">{{ ep.show_title }}</h3>
+          @if (showTitle()) {
+            <h3 class="show-chip">{{ ep.show_title }}</h3>
+          }
           @if (code(); as code) {
             <span class="tabular-nums" data-testid="episode-code">
-              <strong class="[font:var(--mat-sys-title-medium)] font-bold!">{{ code }}</strong>
+              <strong class="[font:var(--mat-sys-title-medium)]">{{ code }}</strong>
               @if (ep.remaining) {
                 <span class="ms-1 text-on-surface-variant [font:var(--mat-sys-label-large)]">+{{ ep.remaining }}</span>
               }
@@ -79,12 +78,12 @@
 } @else {
   <div class="tile" data-testid="episode">
     <a [routerLink]="link()" class="block" [attr.aria-label]="name()">
-      <app-poster [path]="ep.poster_path" width="w342" />
+      <app-poster [path]="ep.poster_path" width="w342" [finished]="finished()" [fallback]="ep.show_title" />
       @if (code(); as code) {
         <span class="grid-code" aria-hidden="true">{{ code }}</span>
       }
     </a>
-    <span class="overlay absolute top-0 right-0"><ng-container [ngTemplateOutlet]="menuButton" /></span>
+    <span class="overlay menu-overlay absolute top-0 right-0"><ng-container [ngTemplateOutlet]="menuButton" /></span>
     <span class="on-image absolute right-0 bottom-0"><ng-container [ngTemplateOutlet]="checkButton" /></span>
   </div>
 }

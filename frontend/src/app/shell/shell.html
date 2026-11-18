@@ -1,11 +1,23 @@
 <!-- cdkScrollable: Material menus and tooltips follow this element's scrolling, as the document never scrolls. -->
 <main class="content" cdkScrollable appScrollRestoration>
+  @if ($failure(); as failure) {
+    <section class="unreachable" role="alert" data-testid="unreachable">
+      <span class="badge"><mat-icon svgIcon="cloud_off" aria-hidden="true" /></span>
+      <h1 class="[font:var(--mat-sys-title-large)]">
+        {{ translate(failure === 'unreachable' ? 'app.offline.title' : 'app.offline.errorTitle') }}
+      </h1>
+      <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+        {{ translate(failure === 'unreachable' ? 'app.offline.message' : 'app.offline.errorMessage') }}
+      </p>
+      <button type="button" class="retry" (click)="retry()">{{ translate('app.common.retry') }}</button>
+    </section>
+  }
   <router-outlet />
 </main>
 
 @if ($user()) {
   <nav class="bottom-nav" [attr.aria-label]="translate('app.nav.label')" data-testid="bottom-nav">
-    @for (item of navItems; track item.route) {
+    @for (item of $navItems(); track item.route) {
       <a
         class="nav-item"
         [routerLink]="item.route"

@@ -1,5 +1,5 @@
 import { ChangeDetectionStrategy, Component, computed, input, signal } from '@angular/core';
-import { backdropUrl } from '../core/tracking/episodes';
+import { imageUrl } from './images';
 
 /**
  * The top of a show or movie page: the TMDB backdrop fading into the page, the title and a line of facts over its
@@ -37,7 +37,7 @@ import { backdropUrl } from '../core/tracking/episodes';
       align-items: flex-end;
       min-height: 200px;
       aspect-ratio: 16 / 9;
-      max-height: 40vh;
+      max-height: 40dvh;
       overflow: hidden;
       background: var(--mat-sys-surface-container-high);
       color: var(--mat-sys-on-surface);
@@ -51,8 +51,8 @@ import { backdropUrl } from '../core/tracking/episodes';
       opacity: 0;
       transform: scale(1.04);
       transition:
-        opacity 400ms var(--ease-standard),
-        transform 600ms var(--ease-emph-decel);
+        opacity var(--duration-medium) var(--ease-standard),
+        transform var(--duration-long) var(--ease-emph-decel);
     }
     .backdrop.loaded {
       opacity: 1;
@@ -80,7 +80,7 @@ export class MediaHeader {
   /** Shown under the title, joined by dots: seasons and network, or runtime and release date. */
   readonly facts = input<string[]>([]);
 
-  protected readonly $url = computed(() => backdropUrl(this.backdropPath()));
+  protected readonly $url = computed(() => imageUrl(this.backdropPath(), 'w780'));
   protected readonly $loaded = signal(false);
   protected readonly $failed = signal(false);
 }

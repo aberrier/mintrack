@@ -1,10 +1,10 @@
 import { HttpErrorResponse, HttpStatusCode } from '@angular/common/http';
 import { computed, inject, Injectable, signal } from '@angular/core';
-import { MatSnackBar } from '@angular/material/snack-bar';
 import { SwPush } from '@angular/service-worker';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import { injectTranslator, TranslationPath } from '../i18n';
+import { injectNotify } from '../notify';
 
 /**
  * - `install`: an iPhone or iPad browser tab; push needs the app added to the Home Screen.
@@ -19,7 +19,7 @@ export type PushState = 'loading' | 'install' | 'unsupported' | 'unconfigured' |
 export class PushStore {
   private readonly swPush = inject(SwPush);
   private readonly api = inject(ApiService);
-  private readonly snackBar = inject(MatSnackBar);
+  private readonly showMessage = injectNotify();
   private readonly translate = injectTranslator('app');
 
   private readonly supported = this.swPush.isEnabled && 'PushManager' in window && 'Notification' in window;
@@ -127,7 +127,7 @@ export class PushStore {
   }
 
   private notify(message: TranslationPath<'app'>): void {
-    this.snackBar.open(this.translate(message), undefined, { duration: 4000 });
+    this.showMessage(this.translate(message));
   }
 }
 

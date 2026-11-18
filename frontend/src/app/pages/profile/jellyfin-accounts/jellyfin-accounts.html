@@ -1,5 +1,5 @@
 <section class="flex flex-col gap-4" aria-labelledby="jellyfin-title">
-  <h2 id="jellyfin-title" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.title') }}</h2>
+  <h4 id="jellyfin-title" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.title') }}</h4>
 
   @for (account of store.$accounts(); track account.id) {
     <article class="flex flex-col gap-2 rounded-xl bg-surface-container p-4" data-testid="jellyfin-account">
@@ -12,12 +12,7 @@
       <p class="[font:var(--mat-sys-body-medium)]" data-testid="jellyfin-last-sync">
         @if (!account.last_sync_status || account.last_sync_status === 'ok') {
           @if (account.last_sync_at; as lastSync) {
-            {{
-              translate('app.profile.jellyfin.lastSync', {
-                date: (lastSync | date: 'short')!,
-                count: account.last_sync_imported.toString(),
-              })
-            }}
+            {{ syncedLine(account, lastSync) }}
             @if (account.last_sync_skipped) {
               · {{ translate('app.profile.jellyfin.skipped', { count: account.last_sync_skipped.toString() }) }}
             }
@@ -27,15 +22,15 @@
         } @else {
           <span class="text-error">{{ translate(syncFailures[account.last_sync_status]) }}</span>
           @if (account.last_success_at; as lastSuccess) {
-            <br />{{ translate('app.profile.jellyfin.lastSuccess', { date: (lastSuccess | date: 'short')! }) }}
+            <br />{{ translate('app.profile.jellyfin.lastSuccess', { date: date(lastSuccess) }) }}
           }
         }
       </p>
       <div class="flex flex-wrap gap-2">
-        <button mat-stroked-button type="button" (click)="store.sync(account)">
+        <button matButton="outlined" type="button" class="min-h-12" (click)="store.sync(account)">
           {{ translate('app.profile.jellyfin.syncNow') }}
         </button>
-        <button mat-button type="button" (click)="store.unlink(account)">
+        <button matButton type="button" class="min-h-12" (click)="store.unlink(account)">
           {{ translate('app.profile.jellyfin.unlink') }}
         </button>
       </div>
@@ -48,34 +43,95 @@
     }
   }
 
-  <form class="flex flex-col" [formGroup]="form" #linkForm="ngForm" (ngSubmit)="link(linkForm)">
-    <h3 class="mb-2 [font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.linkTitle') }}</h3>
-    <mat-form-field>
-      <mat-label>{{ translate('app.profile.jellyfin.serverUrl') }}</mat-label>
-      <input
-        matInput
-        formControlName="server_url"
-        type="url"
-        inputmode="url"
-        autocapitalize="off"
-        autocomplete="url"
-        placeholder="https://jellyfin.example.com" />
-      <mat-error>{{ translate('app.profile.jellyfin.errors.invalidAddress') }}</mat-error>
-    </mat-form-field>
-    <mat-form-field>
-      <mat-label>{{ translate('app.profile.jellyfin.username') }}</mat-label>
-      <input matInput formControlName="username" autocapitalize="off" autocomplete="off" />
-    </mat-form-field>
-    <mat-form-field>
-      <mat-label>{{ translate('app.profile.jellyfin.password') }}</mat-label>
-      <input matInput formControlName="password" type="password" autocomplete="off" />
-    </mat-form-field>
-    @if ($linkError(); as error) {
-      <p role="alert" class="mb-4 text-error [font:var(--mat-sys-body-medium)]">{{ translate(error) }}</p>
+  <div class="flex flex-col gap-3" data-testid="jellyfin-link">
+    <h5 class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.linkTitle') }}</h5>
+
+    <ng-template #serverField>
+      <mat-form-field subscriptSizing="dynamic">
+        <mat-label>{{ translate('app.profile.jellyfin.serverUrl') }}</mat-label>
+        <input
+          matInput
+          [formControl]="serverUrl"
+          type="url"
+          inputmode="url"
+          autocapitalize="off"
+          autocomplete="url"
+          placeholder="https://jellyfin.example.com" />
+        <mat-error>{{ translate('app.profile.jellyfin.errors.invalidAddress') }}</mat-error>
+      </mat-form-field>
+    </ng-template>
+
+    @switch ($step()) {
+      @case ('address') {
+        <form class="flex flex-col gap-3" (submit)="$event.preventDefault(); getCode()">
+          <ng-container [ngTemplateOutlet]="serverField" />
+          @if ($error(); as error) {
+            <p role="alert" class="text-error [font:var(--mat-sys-body-medium)]">{{ translate(error) }}</p>
+          }
+          <button matButton="filled" type="submit" class="min-h-12" [disabled]="$busy()">
+            {{ translate('app.profile.jellyfin.getCode') }}
+          </button>
+          @if ($busy()) {
+            <mat-progress-bar mode="indeterminate" [attr.aria-label]="translate('app.common.loading')" />
+          }
+          <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+            {{ translate('app.profile.jellyfin.quickConnectNote') }}
+          </p>
+          <button type="button" class="text-button self-start!" (click)="restart('password')">
+            {{ translate('app.profile.jellyfin.usePassword') }}
+          </button>
+        </form>
+      }
+      @case ('code') {
+        <div class="flex flex-col gap-3" data-testid="quick-connect">
+          <p class="[font:var(--mat-sys-body-large)]">{{ translate('app.profile.jellyfin.codeIntro') }}</p>
+          <p
+            class="code self-start rounded-xl bg-secondary-container px-4 py-2 text-on-secondary-container"
+            [attr.aria-label]="translate('app.profile.jellyfin.code')"
+            data-testid="quick-connect-code">
+            {{ $code() }}
+          </p>
+          <p role="status" class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+            {{ translate($busy() ? 'app.profile.jellyfin.linking' : 'app.profile.jellyfin.waiting') }}
+          </p>
+          <mat-progress-bar mode="indeterminate" [attr.aria-label]="translate('app.profile.jellyfin.waiting')" />
+          <button matButton type="button" class="min-h-12 self-start" (click)="restart()">
+            {{ translate('app.common.cancel') }}
+          </button>
+        </div>
+      }
+      @case ('password') {
+        <form
+          class="flex flex-col gap-3"
+          [formGroup]="credentials"
+          #linkForm="ngForm"
+          (ngSubmit)="linkWithPassword(linkForm)">
+          <ng-container [ngTemplateOutlet]="serverField" />
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>{{ translate('app.profile.jellyfin.username') }}</mat-label>
+            <input matInput formControlName="username" autocapitalize="off" autocomplete="off" />
+          </mat-form-field>
+          <mat-form-field subscriptSizing="dynamic">
+            <mat-label>{{ translate('app.profile.jellyfin.password') }}</mat-label>
+            <input matInput formControlName="password" type="password" autocomplete="off" />
+          </mat-form-field>
+          @if ($error(); as error) {
+            <p role="alert" class="text-error [font:var(--mat-sys-body-medium)]">{{ translate(error) }}</p>
+          }
+          <button matButton="filled" type="submit" class="min-h-12" [disabled]="$busy()">
+            {{ translate($busy() ? 'app.profile.jellyfin.linking' : 'app.profile.jellyfin.link') }}
+          </button>
+          @if ($busy()) {
+            <mat-progress-bar mode="indeterminate" [attr.aria-label]="translate('app.profile.jellyfin.linking')" />
+          }
+          <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+            {{ translate('app.profile.jellyfin.passwordNote') }}
+          </p>
+          <button type="button" class="text-button self-start!" (click)="restart()">
+            {{ translate('app.profile.jellyfin.useQuickConnect') }}
+          </button>
+        </form>
+      }
     }
-    <button mat-flat-button type="submit" [disabled]="$linking()">{{ translate('app.profile.jellyfin.link') }}</button>
-    <p class="mt-2 text-on-surface-variant [font:var(--mat-sys-body-small)]">
-      {{ translate('app.profile.jellyfin.passwordNote') }}
-    </p>
-  </form>
+  </div>
 </section>

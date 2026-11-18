@@ -1,7 +1,7 @@
 /* The show's tracking status as a soft tonal label. */
 .status {
   padding: 4px 12px;
-  border-radius: 8px;
+  border-radius: var(--mat-sys-corner-small);
   background: var(--mat-sys-secondary-container);
   color: var(--mat-sys-on-secondary-container);
   font: var(--mat-sys-label-large);

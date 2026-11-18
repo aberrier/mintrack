@@ -3,9 +3,17 @@ import { computed, DestroyRef, inject, Injectable, signal } from '@angular/core'
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, EMPTY, finalize, startWith, Subject, switchMap, takeWhile, timer } from 'rxjs';
 import { ApiService } from '../api/api.service';
+import { TranslationPath } from '../i18n';
 
 /** Milliseconds between two reads of a pending or running import. */
 export const POLL_INTERVAL = 2000;
+
+/** Why the server refused an upload, by HTTP status. */
+const UPLOAD_ERRORS: Record<number, TranslationPath<'app'>> = {
+  409: 'app.profile.imports.errors.inProgress',
+  413: 'app.profile.imports.errors.tooLarge',
+  422: 'app.profile.imports.errors.unreadable',
+};
 
 /** The user's latest import, read again until it ends; provided per page, so each visit reads it afresh. */
 @Injectable()
@@ -15,13 +23,13 @@ export class ImportsStore {
 
   private readonly $job = signal<Model.Http.ImportJob | null | undefined>(undefined);
   private readonly $sending = signal(false);
-  private readonly $error = signal<string | null>(null);
+  private readonly $error = signal<TranslationPath<'app'> | null>(null);
 
   /** `undefined` until loaded, `null` when the user never imported. */
   readonly $latest = this.$job.asReadonly();
   readonly $active = computed(() => isActive(this.$job() ?? null));
   readonly $uploading = this.$sending.asReadonly();
-  /** The server's reason for refusing the last upload, `''` when it gave none. */
+  /** Why the last upload was refused. */
   readonly $uploadError = this.$error.asReadonly();
 
   constructor() {
@@ -51,16 +59,14 @@ export class ImportsStore {
           this.$job.set(job);
           this.poll$.next();
         },
-        error: (error: unknown) => this.$error.set(serverReason(error)),
+        error: (error: unknown) => {
+          const status = error instanceof HttpErrorResponse ? error.status : 0;
+          this.$error.set(UPLOAD_ERRORS[status] ?? 'app.profile.imports.errors.sendFailed');
+        },
       });
   }
 }
 
 function isActive(job: Model.Http.ImportJob | null): boolean {
   return job?.status === 'pending' || job?.status === 'running';
-}
-
-function serverReason(error: unknown): string {
-  const detail = error instanceof HttpErrorResponse ? (error.error as { detail?: unknown } | null)?.detail : undefined;
-  return typeof detail === 'string' ? detail : '';
 }

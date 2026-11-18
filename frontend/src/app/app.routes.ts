@@ -1,47 +1,62 @@
-import { inject } from '@angular/core';
-import { Router, Routes } from '@angular/router';
-import { appRoutes, legacyRedirects } from './app.paths';
-import { adminGuard, signedInGuard } from './core/auth/guards';
+import { Routes } from '@angular/router';
+import { appRoutes } from './app.paths';
+import { adminGuard, signedInGuard, signedOutGuard } from './core/auth/guards';
+import { TranslationPath } from './core/i18n';
 
 export { routesConfig };
+
+/** A page's title, translated by the app's title strategy; show and movie pages name themselves once loaded. */
+const title = (path: TranslationPath<'app'>) => path;
 
 const routesConfig: Routes = [
   { path: '', pathMatch: 'full', redirectTo: appRoutes.watchList() },
   { path: appRoutes.episodes(''), pathMatch: 'full', redirectTo: appRoutes.watchList() },
-  // Keeps the query, such as /library?type=movie.
-  ...Object.entries(legacyRedirects).map(([path, target]) => ({
-    path,
-    pathMatch: 'full' as const,
-    redirectTo: ({ queryParams }: { queryParams: Record<string, string> }) =>
-      inject(Router).createUrlTree([target], { queryParams }),
-  })),
   {
     path: appRoutes.watchList(''),
+    title: title('app.episodes.watchList'),
     canActivate: [signedInGuard],
     loadComponent: () => import('./pages/episodes/watch-list/watch-list'),
   },
   {
     path: appRoutes.upcoming(''),
+    title: title('app.episodes.upcoming'),
     canActivate: [signedInGuard],
     loadComponent: () => import('./pages/episodes/upcoming/upcoming'),
   },
   {
     path: appRoutes.discover(''),
+    title: title('app.nav.discover'),
     canActivate: [signedInGuard],
     loadComponent: () => import('./pages/discover/discover'),
   },
-  { path: appRoutes.login(undefined, ''), loadComponent: () => import('./pages/login/login') },
-  { path: appRoutes.password(''), loadComponent: () => import('./pages/password/password') },
-  { path: appRoutes.profile(''), canActivate: [signedInGuard], loadComponent: () => import('./pages/profile/profile') },
+  {
+    path: appRoutes.login(undefined, ''),
+    title: title('app.login.title'),
+    canActivate: [signedOutGuard],
+    loadComponent: () => import('./pages/login/login'),
+  },
+  {
+    path: appRoutes.password(''),
+    title: title('app.password.title'),
+    loadComponent: () => import('./pages/password/password'),
+  },
+  {
+    path: appRoutes.profile(''),
+    title: title('app.nav.profile'),
+    canActivate: [signedInGuard],
+    loadComponent: () => import('./pages/profile/profile'),
+  },
   {
     path: appRoutes.collection(''),
+    title: title('app.collection.title'),
     canActivate: [signedInGuard],
     loadComponent: () => import('./pages/profile/collection/collection'),
   },
   {
-    path: appRoutes.adminUsers(''),
+    path: appRoutes.admin(''),
+    title: title('app.nav.admin'),
     canActivate: [signedInGuard, adminGuard],
-    loadComponent: () => import('./pages/admin-users/admin-users'),
+    loadComponent: () => import('./pages/admin/admin'),
   },
   {
     path: appRoutes.show(':tmdbId', ''),

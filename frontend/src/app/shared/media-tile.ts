@@ -18,7 +18,7 @@ import { Poster } from './poster';
       (add)="add.emit()" />
     <a [routerLink]="link()" class="title">{{ title() }}</a>
     @if (detail(); as text) {
-      <span class="text-on-surface-variant [font:var(--mat-sys-body-small)] tabular-nums" data-testid="tile-detail">{{
+      <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)] tabular-nums" data-testid="tile-detail">{{
         text
       }}</span>
     }
@@ -54,7 +54,7 @@ import { Poster } from './poster';
       content: '';
       position: absolute;
       inset: 0;
-      border-radius: 8px;
+      border-radius: var(--mat-sys-corner-small);
     }
     .title:focus-visible {
       outline: none;

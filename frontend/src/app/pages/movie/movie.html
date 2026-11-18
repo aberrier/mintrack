@@ -1,3 +1,5 @@
+<app-back-button class="back-overlay" [fallback]="fallback" />
+
 @if ($movie(); as movie) {
   <app-media-header [title]="movie.title" [backdropPath]="movie.backdrop_path" [facts]="$facts()" />
 
@@ -10,13 +12,11 @@
       </p>
       <button
         type="button"
-        class="check"
-        [class.done]="movie.tracking?.status === 'watched'"
+        appCheckButton
+        [done]="movie.tracking?.status === 'watched'"
         [attr.aria-pressed]="movie.tracking?.status === 'watched'"
-        [attr.aria-label]="translate('app.movie.markWatched')"
-        (click)="toggle(movie)">
-        <app-check-mark [done]="movie.tracking?.status === 'watched'" />
-      </button>
+        [attr.aria-label]="translate('app.common.markWatched')"
+        (click)="toggle(movie)"></button>
     </div>
 
     <div class="flex flex-wrap items-center gap-2">
@@ -27,7 +27,7 @@
         </button>
       } @else {
         <button matButton="outlined" type="button" class="min-h-12 flex-1" (click)="watchLater(movie)">
-          {{ translate('app.movie.watchLater') }}
+          {{ translate('app.status.watch_later') }}
         </button>
       }
     </div>
@@ -36,8 +36,8 @@
       <p class="max-w-[65ch] [font:var(--mat-sys-body-large)]">{{ movie.overview }}</p>
     }
   </div>
-} @else if ($failed()) {
-  <p role="alert" class="p-4 text-on-surface-variant">{{ translate('app.common.loadFailed') }}</p>
+} @else if (page.$error(); as error) {
+  <app-load-error [message]="translate(error)" [retryable]="error !== 'app.common.notFound'" (retry)="page.retry()" />
 } @else {
   <app-skeleton kind="header" />
 }

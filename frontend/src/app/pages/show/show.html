@@ -1,3 +1,5 @@
+<app-back-button class="back-overlay" [fallback]="routes.watchList()" />
+
 @if ($show(); as show) {
   <app-media-header [title]="show.title" [backdropPath]="show.backdrop_path" [facts]="$facts()" />
 
@@ -10,7 +12,7 @@
         </button>
       } @else {
         <button matButton="outlined" type="button" class="min-h-12" (click)="track(show, 'stopped')">
-          {{ translate('app.show.stop') }}
+          {{ translate('app.common.stopWatching') }}
         </button>
       }
       <button matButton type="button" class="min-h-12" (click)="remove(show)">
@@ -47,9 +49,9 @@
           <dt>{{ translate('app.show.network') }}</dt>
           <dd>{{ show.network }}</dd>
         }
-        @if (show.release_date) {
+        @if ($firstAired(); as firstAired) {
           <dt>{{ translate('app.show.firstAired') }}</dt>
-          <dd>{{ show.release_date }}</dd>
+          <dd>{{ firstAired }}</dd>
         }
         @if (show.tmdb_status) {
           <dt>{{ translate('app.show.tmdbStatus') }}</dt>
@@ -63,9 +65,11 @@
         <h2 id="watch-next" class="section-label">{{ translate('app.show.watchNext') }}</h2>
         <app-episode-card
           class="enter mx-4"
-          [episode]="next"
+          [episode]="next.card"
+          [showTitle]="false"
           [checkable]="true"
-          (check)="markNext(show)"
+          [watched]="isWatched(show, next.episode)"
+          (check)="mark(show, [next.episode], true)"
           data-testid="watch-next" />
       </section>
     }
@@ -77,16 +81,20 @@
           [style.--i]="$index"
           [show]="show"
           [season]="season"
+          [episodes]="$episodes()[season.season_number]"
+          [failed]="$failed().has(season.season_number)"
           [now]="now"
+          [timeZone]="timeZone()"
           [expanded]="$expanded().has(season.season_number)"
           (toggle)="toggleSeason(season)"
+          (retry)="loadSeason(season.season_number)"
           (check)="checkSeason(show, season)"
           (episodeTap)="tapEpisode(show, $event)" />
       }
     </section>
   }
-} @else if ($failed()) {
-  <p role="alert" class="p-4 text-on-surface-variant">{{ translate('app.common.loadFailed') }}</p>
+} @else if (page.$error(); as error) {
+  <app-load-error [message]="translate(error)" [retryable]="error !== 'app.common.notFound'" (retry)="page.retry()" />
 } @else {
   <app-skeleton kind="header" />
 }
