@@ -48,6 +48,7 @@ src/mintrack/
   integrations/    # clients of outside services: tmdb/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)
   server/          # build_app(): /api router (public and session-protected), middlewares
+  server/mcp/      # MCP server at /mcp, outside /api: users' API tokens as Bearer tokens, tools that call the managers
   worker/          # Procrastinate: get_worker_app(), tasks on the Blueprint of tasks.py; runs inside the server
 tests/             # mirrors src/; conftest.py holds the opt-in database fixtures; fakes/ fakes outside services
 frontend/src/app/
@@ -85,6 +86,8 @@ dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAl
 - **Access:** every `/api` route needs a session (and an XSRF header on unsafe methods) unless it is on the public
   router in `server/api/asgi.py`; `tests/server/api/test_access.py` checks every route of the schema. Admin routers
   depend on `get_admin_user`. Endpoints take the request's session with `DbSessionDepType` and commit explicitly.
+  `/mcp` is outside `/api` and the schema: it takes a user's API token as Bearer token, never the session cookie, and
+  `tests/server/mcp/test_auth.py` checks it.
 
 ## Tests
 

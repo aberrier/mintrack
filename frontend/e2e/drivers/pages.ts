@@ -126,3 +126,31 @@ export class AdminUsersPage {
     return (await link.textContent())!.trim();
   }
 }
+
+/** The API tokens section of the profile page. */
+export class ApiTokensSection {
+  constructor(private readonly page: Page) {}
+
+  section() {
+    return this.page.getByRole('region', { name: 'API tokens' });
+  }
+
+  /** Create a token and return its value, shown once. */
+  async create(name: string): Promise<string> {
+    await this.section().getByLabel('Token name').fill(name);
+    await this.section().getByRole('button', { name: 'Create' }).click();
+    const token = (await this.section().getByTestId('new-api-token').textContent())!.trim();
+    await this.section().getByRole('button', { name: 'Done' }).click();
+    return token;
+  }
+
+  row(name: string) {
+    return this.section().getByRole('listitem').filter({ hasText: name });
+  }
+
+  async revoke(name: string): Promise<void> {
+    await this.row(name).getByRole('button', { name: 'Revoke' }).click();
+    await this.page.getByRole('dialog').getByRole('button', { name: 'Revoke' }).click();
+    await expect(this.page.getByRole('dialog')).toHaveCount(0);
+  }
+}

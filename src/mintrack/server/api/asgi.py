@@ -9,6 +9,7 @@ from mintrack.server.common.config import API_PREFIX, get_fastapi_common_config
 from mintrack.server.common.exception_handlers import GenericServerErrorMiddleware
 from mintrack.server.common.frontend import install_frontend
 from mintrack.server.common.security_headers import SecurityHeadersMiddleware
+from mintrack.server.mcp.server import build_mcp_router
 
 
 def build_api_router() -> fastapi.APIRouter:
@@ -43,6 +44,7 @@ def build_app(config: Config | None = None) -> fastapi.FastAPI:
 
     app = fastapi.FastAPI(**get_fastapi_common_config(config))
     app.include_router(build_api_router())
+    app.include_router(build_mcp_router(config))
     if config.server.frontend_dist is not None:
         # The app answers only what no route matches (the router's default).
         install_frontend(app, config.server.frontend_dist)

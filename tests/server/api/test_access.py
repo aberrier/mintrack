@@ -47,3 +47,8 @@ async def test_admin_routes_are_refused_to_other_users(
     for method, path in admin_routes:
         response = await api.request(method, path, headers=xsrf(api), json={})
         assert response.status_code == fastapi.status.HTTP_403_FORBIDDEN, (method, path)
+
+
+async def test_the_schema_lists_only_api_routes(api_app: fastapi.FastAPI) -> None:
+    """So the checks above see every route that a session opens; /mcp authenticates with API tokens instead."""
+    assert all(path.startswith("/api/") for path in api_app.openapi()["paths"])

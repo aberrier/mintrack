@@ -29,6 +29,8 @@ Your Jellyfin servers fill in your history on their own.
   within minutes.
 - **Easy to self-host and private.** One docker-compose file, several users
   per instance, invited by the admin. No email, no social features, no tracking.
+- **An MCP server** so an AI assistant (Claude Code, Claude Desktop...) can read
+  and update your tracking, with a token you create on your profile page.
 - **Imports from Yamtrack and TV Time**, from your profile page, with watch
   dates kept. Importing the same file again adds nothing. The file (20 MB at
   most) is deleted once imported.
@@ -176,6 +178,39 @@ time zone.
 
 Changing the secret key changes the notification keys: each device registers again the next time MinTrack is opened
 on it.
+
+
+## Connect an AI assistant (MCP)
+
+MinTrack serves an [MCP](https://modelcontextprotocol.io) server at `/mcp` (Streamable HTTP), so an assistant can
+search shows and movies, read a show's progress, mark episodes and movies watched, set a show's status, and list
+upcoming and up-next episodes, as you.
+
+1. In MinTrack, open **Profile → API tokens**, name a token after the assistant and copy it: it is shown only once.
+   Revoke it there when you no longer use it.
+2. Give the assistant the address `https://mintrack.example.com/mcp` and the header
+   `Authorization: Bearer <token>`. With Claude Code:
+
+   ```bash
+   claude mcp add --transport http mintrack https://mintrack.example.com/mcp --header "Authorization: Bearer <token>"
+   ```
+
+   Other clients take the same two settings, usually in a JSON file:
+
+   ```json
+   {
+     "mcpServers": {
+       "mintrack": {
+         "type": "http",
+         "url": "https://mintrack.example.com/mcp",
+         "headers": { "Authorization": "Bearer <token>" }
+       }
+     }
+   }
+   ```
+
+A token gives full access to your tracking: use MinTrack over HTTPS, keep the token out of shared files, and revoke
+it if it leaks.
 
 
 ## Operating MinTrack
