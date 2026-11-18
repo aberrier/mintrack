@@ -9,6 +9,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env['CI'],
   retries: 0,
+  // Locally a broken change fails fast: shorter waits and a stop after five failures; CI keeps the defaults.
+  ...(process.env['CI'] ? {} : { timeout: 20_000, expect: { timeout: 3_000 }, maxFailures: 5 }),
   // Locally, `dot` prints one character per test, then the failures; pass `--reporter=list` to see every test.
   reporter: process.env['CI'] ? [['list'], ['html', { open: 'never' }]] : 'dot',
   use: {

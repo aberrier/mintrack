@@ -95,6 +95,7 @@ export async function openEveryScreen(
       name: 'Show, About',
       title: `${showTitle} · MinTrack`,
       open: async () => {
+        await app.openShowPage(show);
         await app.openShowTab('About');
         await expect(app.showText('Channel Nine')).toBeVisible();
       },
