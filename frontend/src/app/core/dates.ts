@@ -2,17 +2,34 @@
  * Days and times as the app shows them, always in the user's time zone and in the app's English, whatever the device's
  * language. A day (YYYY-MM-DD) has no zone of its own: it is formatted as is.
  */
-export { LOCALE, dayIn, formatDate, formatDateTime, formatDay, formatMonth, formatTime, nextDay, zoneWithOffset };
+export {
+  LOCALE,
+  browserTimeZone,
+  dayIn,
+  formatDate,
+  formatDateTime,
+  formatDay,
+  formatMonth,
+  formatTime,
+  nextDay,
+  zoneWithOffset,
+};
 
 /** The app's texts are English: dates read "24 November", "Tuesday". */
 const LOCALE = 'en-GB';
 const DAY_MS = 86_400_000;
 
+/** The time zone this device is set to, such as "Europe/Paris". */
+function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 /** The calendar day (YYYY-MM-DD) of an instant in a time zone. */
 function dayIn(timeZone: string, instant = new Date()): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(
-    instant,
-  );
+  const parts = new Intl.DateTimeFormat(LOCALE, { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' })
+    .formatToParts(instant)
+    .reduce<Record<string, string>>((found, part) => ({ ...found, [part.type]: part.value }), {});
+  return `${parts['year']}-${parts['month']}-${parts['day']}`;
 }
 
 /** The day (YYYY-MM-DD) after a day. */

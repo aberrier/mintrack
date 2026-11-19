@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { afterNextRender, ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
-import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
@@ -10,7 +10,9 @@ import { firstValueFrom } from 'rxjs';
 import { appRoutes } from '../../app.paths';
 import { ApiService } from '../../core/api/api.service';
 import { AuthStore } from '../../core/auth/auth.store';
+import { browserTimeZone } from '../../core/dates';
 import { injectTranslator, TranslationPath } from '../../core/i18n';
+import { newPasswordValidators } from '../../shared/validators';
 
 /** Sets a password from an invitation or reset link: /password#<token>. */
 @Component({
@@ -34,7 +36,7 @@ export default class Password {
   protected readonly $busy = signal(false);
 
   protected readonly form = inject(NonNullableFormBuilder).group({
-    password: ['', [Validators.required, Validators.minLength(15), Validators.maxLength(128)]],
+    password: ['', newPasswordValidators],
   });
 
   constructor() {
@@ -46,9 +48,9 @@ export default class Password {
     if (this.form.invalid || this.$busy() || !this.link.hasValue()) return;
     this.$busy.set(true);
     this.$error.set(null);
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const { password } = this.form.getRawValue();
     try {
-      const user = await firstValueFrom(this.api.auth.useLink(this.token, this.form.getRawValue().password, timezone));
+      const user = await firstValueFrom(this.api.auth.useLink(this.token, password, browserTimeZone()));
       this.store.set(user);
       await this.router.navigateByUrl(appRoutes.watchList());
     } catch (error: unknown) {

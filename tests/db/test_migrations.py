@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from alembic import command
 from sqlalchemy.engine import URL
 
+from mintrack.__main__ import DATABASE_ERROR_EXIT_CODE
 from mintrack.config import get_config
 from mintrack.db.alembic import get_alembic_config, upgrade
 from mintrack.worker.app import PROCRASTINATE_SCHEMA_VERSION
@@ -43,6 +44,35 @@ def test_migrate_runs_from_the_installed_package_and_is_idempotent(
         assert sa.inspect(engine).has_table("alembic_version")
     finally:
         engine.dispose()
+
+
+def test_a_database_upgraded_by_a_newer_version_is_named_in_one_line(
+    scratch_database_url: URL, tmp_path: pathlib.Path
+) -> None:
+    upgrade(scratch_database_url)
+    engine = sa.create_engine(scratch_database_url, poolclass=sa.pool.NullPool)
+    with engine.begin() as connection:
+        connection.execute(sa.text("UPDATE alembic_version SET version_num = '9999'"))
+    engine.dispose()
+    env = {**os.environ, "MINTRACK__DATABASE__NAME": scratch_database_url.database or ""}
+
+    result = subprocess.run(  # noqa: S603
+        [str(pathlib.Path(sys.executable).parent / "mintrack"), "db", "migrate"],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == DATABASE_ERROR_EXIT_CODE
+    assert result.stderr.endswith("restore a backup taken before the upgrade (README, Upgrades and rollback).\n")
+    assert "Traceback" not in result.stderr
+
+
+def test_the_revisions_create_what_the_models_describe(test_database_url: URL) -> None:
+    # Autogenerate with the rules of env.py finds nothing to add, drop or alter: tables, columns, indexes, defaults.
+    command.check(get_alembic_config(test_database_url))
 
 
 def test_downgrading_to_base_drops_everything_the_revisions_created(scratch_database_url: URL) -> None:

@@ -3,6 +3,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { computed, inject, Injectable, InjectionToken, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from '../api/api.service';
+import { browserTimeZone } from '../dates';
 
 /** Where the app reloads from scratch; replaced in tests. */
 export const PAGE_LOCATION = new InjectionToken<Pick<Location, 'assign'>>('PAGE_LOCATION', {
@@ -27,11 +28,12 @@ export class AuthStore {
   readonly $user = this.user.asReadonly();
   readonly $isAdmin = computed(() => this.user()?.is_admin ?? false);
   /** The user's time zone, in which days start and air times show; the device's until signed in. */
-  readonly $timeZone = computed(() => this.user()?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
+  readonly $timeZone = computed(() => this.user()?.timezone ?? browserTimeZone());
   /** Why the server could not say who is signed in, if it could not. */
   readonly $failure = this.failure.asReadonly();
+  private readonly blockedUrl = signal<string | null>(null);
   /** The page that could not open meanwhile, to open on Try again. */
-  blockedUrl: string | null = null;
+  readonly $blockedUrl = this.blockedUrl.asReadonly();
 
   /** The current user, asking the server only the first time. */
   load(): Promise<Model.Http.User | null> {
@@ -46,12 +48,17 @@ export class AuthStore {
       })
       .then((me) => {
         this.failure.set(null);
-        this.blockedUrl = null;
+        this.blockedUrl.set(null);
         this.user.set(me);
         return me;
       })
       .finally(() => (this.loading = undefined));
     return this.loading;
+  }
+
+  /** Remember the page that could not open while the server could not be asked. */
+  block(url: string): void {
+    this.blockedUrl.set(url);
   }
 
   set(user: Model.Http.User): void {
@@ -69,6 +76,11 @@ export class AuthStore {
 
   async login(username: string, password: string): Promise<void> {
     this.user.set(await firstValueFrom(this.api.auth.login(username, password)));
+  }
+
+  /** Create the first admin, in this device's time zone, signed in at once. */
+  async setUp(username: string, password: string): Promise<void> {
+    this.user.set(await firstValueFrom(this.api.auth.setUp(username, password, browserTimeZone())));
   }
 
   /** Signed out locally even when the server already ended the session. */

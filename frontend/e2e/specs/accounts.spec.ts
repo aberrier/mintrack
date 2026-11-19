@@ -11,11 +11,11 @@ import {
   logIn,
   logOut,
   logOutEverywhere,
+  logOutOtherDevice,
   newLink,
   openSignedOut,
   profileShows,
   searchUsers,
-  signOutOtherDevice,
   tabNames,
   tryLogIn,
 } from '../dsl/accounts';
@@ -78,7 +78,7 @@ test.describe('Accounts', () => {
     expect(await isSignedInAfterReload(otherPage)).toBe(false);
   });
 
-  test('user sees their connected devices and signs one out', async ({ admin, otherPage }) => {
+  test('user sees their connected devices and logs one out', async ({ admin, otherPage }) => {
     // Given the admin is also signed in on another device
     await openSignedOut(otherPage);
     await logIn(otherPage, admin.account);
@@ -89,8 +89,8 @@ test.describe('Accounts', () => {
     // Then this device comes first, then the other one with when it was last active
     expect(devices).toEqual([expect.stringMatching(/ This device$/), expect.stringMatching(/ Last active /)]);
 
-    // And signing the other one out ends its session only
-    await signOutOtherDevice(admin.page);
+    // And logging the other one out ends its session only
+    await logOutOtherDevice(admin.page);
     expect(await isSignedInAfterReload(otherPage)).toBe(false);
     expect(await isSignedInAfterReload(admin.page)).toBe(true);
   });

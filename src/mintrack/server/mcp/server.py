@@ -39,7 +39,7 @@ def build_mcp_router(config: Config) -> fastapi.APIRouter:
     server.add_tool(tools.unmark_movie_watched, annotations=UNDO)
     server.add_tool(tools.set_show_status, annotations=WRITE)
     server.add_tool(tools.list_upcoming, annotations=READ)
-    server.add_tool(tools.list_up_next, annotations=READ)
+    server.add_tool(tools.list_watch_list, annotations=READ)
 
     app = server.streamable_http_app(
         streamable_http_path=MCP_PATH,

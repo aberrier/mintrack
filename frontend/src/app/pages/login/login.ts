@@ -6,15 +6,11 @@ import { MatButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
 import { ActivatedRoute, Router } from '@angular/router';
-import { firstValueFrom } from 'rxjs';
-import { appRoutes } from '../../app.paths';
 import { ApiService } from '../../core/api/api.service';
 import { AuthStore } from '../../core/auth/auth.store';
 import { safeNext } from '../../core/auth/guards';
 import { injectTranslator, TranslationPath } from '../../core/i18n';
-
-/** The same pattern as the server's. */
-const USERNAME_PATTERN = /^[A-Za-z0-9._-]{1,150}$/;
+import { newPasswordValidators, usernameValidators } from '../../shared/validators';
 
 /** The confirmation must repeat the password next to it. */
 function samePassword(control: AbstractControl<string>): { mismatch: true } | null {
@@ -36,14 +32,15 @@ export default class Login {
   private readonly route = inject(ActivatedRoute);
   private readonly fb = inject(NonNullableFormBuilder);
 
+  /** Whether the admin account can still be created; the login form shows if the server cannot say. */
   protected readonly setup = rxResource({ stream: () => this.api.auth.setupState() });
   protected readonly form = this.fb.group({
     username: ['', Validators.required],
     password: ['', Validators.required],
   });
   protected readonly setupForm = this.fb.group({
-    username: ['', [Validators.required, Validators.pattern(USERNAME_PATTERN)]],
-    password: ['', [Validators.required, Validators.minLength(15), Validators.maxLength(128)]],
+    username: ['', usernameValidators],
+    password: ['', newPasswordValidators],
     confirm: ['', [Validators.required, samePassword]],
   });
   protected readonly $error = signal<TranslationPath<'app'> | null>(null);
@@ -56,7 +53,7 @@ export default class Login {
     const { username, password } = this.form.getRawValue();
     try {
       await this.store.login(username, password);
-      await this.router.navigateByUrl(safeNext(this.route.snapshot.queryParamMap.get('next')));
+      await this.openNext();
     } catch (error: unknown) {
       this.$error.set(loginError(error));
     } finally {
@@ -71,10 +68,9 @@ export default class Login {
     this.$busy.set(true);
     this.$error.set(null);
     const { username, password } = this.setupForm.getRawValue();
-    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     try {
-      this.store.set(await firstValueFrom(this.api.auth.setUp(username, password, timezone)));
-      await this.router.navigateByUrl(appRoutes.watchList());
+      await this.store.setUp(username, password);
+      await this.openNext();
     } catch (error: unknown) {
       const closed = error instanceof HttpErrorResponse && error.status === 409;
       this.$error.set(closed ? 'app.setup.closed' : loginError(error));
@@ -82,6 +78,11 @@ export default class Login {
     } finally {
       this.$busy.set(false);
     }
+  }
+
+  /** The page asked for before logging in, or the watch list. */
+  private openNext(): Promise<boolean> {
+    return this.router.navigateByUrl(safeNext(this.route.snapshot.queryParamMap.get('next')));
   }
 }
 

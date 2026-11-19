@@ -5,7 +5,7 @@ import { MatSnackBar } from '@angular/material/snack-bar';
 import { Subject } from 'rxjs';
 import { Confetti } from '../../shared/confetti';
 import { TrackingStore } from './tracking.store';
-import { WatchListStore } from './watch-list.store';
+import { CHECKED_PAUSE_MS, WatchListStore } from './watch-list.store';
 
 const NOW = new Date('2026-06-10T12:00:00Z');
 
@@ -116,33 +116,43 @@ describe('WatchListStore', () => {
   }
 
   const settle = () => new Promise((resolve) => setTimeout(resolve));
+  /** The moment a checked card stays checked. */
+  const pause = () => new Promise((resolve) => setTimeout(resolve, CHECKED_PAUSE_MS + 10));
 
-  it('moves a checked card to the next episode of the loaded show before the server answers', () => {
+  it('shows a checked card checked for a moment, then the next episode of the loaded show, before the server answers', async () => {
     loadShow();
     loadList([card()]);
 
     store.check(store.episodes()![0], NOW);
+    store.check(store.episodes()![0], NOW);
 
+    expect(store.episodes()![0].episode_id).toBe('b');
+    expect(store.checking().has(7)).toBe(true);
+    await pause();
     const [next] = store.episodes()!;
     expect([next.episode_id, next.season_number, next.episode_number, next.remaining]).toEqual(['c', 1, 3, 0]);
+    expect(store.checking().size).toBe(0);
+    // The second tap, during the moment, marked nothing more.
     const write = http.expectOne('/api/shows/7/watched');
     expect(write.request.body).toEqual({ episode_ids: ['b'], watched: true });
   });
 
-  it('moves a card at once to the following episode the list carries', () => {
+  it('moves a card to the following episode the list carries', async () => {
     loadList([card({ remaining: 2, following: episode('c', 1, 3, '2026-01-15') })]);
 
     store.check(store.episodes()![0], NOW);
+    await pause();
 
     const [next] = store.episodes()!;
     expect([next.episode_id, next.episode_number, next.remaining]).toEqual(['c', 3, 1]);
     expect(store.checking().size).toBe(0);
   });
 
-  it('takes the card out when the episode the list says follows has not aired', () => {
+  it('takes the card out when the episode the list says follows has not aired', async () => {
     loadList([card({ remaining: 0, following: episode('d', 2, 1, '2099-01-01') })]);
 
     store.check(store.episodes()![0], NOW);
+    await pause();
 
     expect(store.episodes()).toEqual([]);
   });
@@ -170,6 +180,7 @@ describe('WatchListStore', () => {
     loadList([card({ tmdb_id: 1, episode_id: 'x' }), card()]);
 
     store.check(store.episodes()![1], NOW);
+    await pause();
     expect(store.episodes()![1].episode_id).toBe('c');
     http.expectOne('/api/shows/7/watched').error(new ProgressEvent('error'));
     await settle();
@@ -178,20 +189,22 @@ describe('WatchListStore', () => {
     expect(store.episodes()!.map((e) => e.episode_id)).toEqual(['x', 'b']);
   });
 
-  it('takes the card out when the show is up to date, without loading the show', () => {
+  it('takes the card out when the show is up to date, without loading the show', async () => {
     loadList([card({ episode_id: 'c', episode_number: 3, remaining: 0 })]);
 
     store.check(store.episodes()![0], NOW);
+    await pause();
 
     expect(store.episodes()).toEqual([]);
     http.expectNone('/api/shows/7');
   });
 
-  it('moves a show not watched for a while to the top of Watch next', () => {
+  it('moves a show not watched for a while to the top of Watch next', async () => {
     loadShow();
     loadList([card({ tmdb_id: 1, episode_id: 'x', section: 'next' }), card({ section: 'dormant' })]);
 
     store.check(store.episodes()![1], NOW);
+    await pause();
 
     expect(store.episodes()!.map((e) => [e.tmdb_id, e.section])).toEqual([
       [7, 'next'],

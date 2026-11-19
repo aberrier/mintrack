@@ -14,24 +14,45 @@
   <section class="flex flex-col gap-2" aria-labelledby="mcp-token">
     <h2 id="mcp-token">{{ translate('app.mcpHelp.token.title') }}</h2>
     <p>{{ translate('app.mcpHelp.token.text') }}</p>
+    <a matButton class="min-h-12 self-start" [routerLink]="appRoutes.settings()">
+      {{ translate('app.mcpHelp.token.open') }}
+    </a>
   </section>
 
-  <section class="flex flex-col gap-2" aria-labelledby="mcp-url">
-    <h2 id="mcp-url">{{ translate('app.mcpHelp.url.title') }}</h2>
-    <p>{{ translate('app.mcpHelp.url.text') }}</p>
-    <pre data-testid="mcp-url">{{ url }}</pre>
-    <button matButton type="button" class="min-h-12 self-start" (click)="copy(url)">
-      {{ translate('app.mcpHelp.copyUrl') }}
-    </button>
-  </section>
+  @if ($setup(); as setup) {
+    <section class="flex flex-col gap-2" aria-labelledby="mcp-url">
+      <h2 id="mcp-url">{{ translate('app.mcpHelp.url.title') }}</h2>
+      <p>{{ translate('app.mcpHelp.url.text') }}</p>
+      <pre data-testid="mcp-url">{{ setup.url }}</pre>
+      <button matButton type="button" class="min-h-12 self-start" (click)="copy(setup.url, 'app.mcpHelp.copied')">
+        {{ translate('app.mcpHelp.copyUrl') }}
+      </button>
+    </section>
 
-  <section class="flex flex-col gap-2" aria-labelledby="mcp-config">
-    <h2 id="mcp-config">{{ translate('app.mcpHelp.config.title') }}</h2>
-    <p>{{ translate('app.mcpHelp.config.json') }}</p>
-    <pre data-testid="mcp-json">{{ json }}</pre>
-    <p>{{ translate('app.mcpHelp.config.claudeCode') }}</p>
-    <pre data-testid="mcp-command">{{ command }}</pre>
-  </section>
+    <section class="flex flex-col gap-2" aria-labelledby="mcp-config">
+      <h2 id="mcp-config">{{ translate('app.mcpHelp.config.title') }}</h2>
+      <p>{{ translate('app.mcpHelp.config.json') }}</p>
+      <pre data-testid="mcp-json">{{ setup.json }}</pre>
+      <button
+        matButton
+        type="button"
+        class="min-h-12 self-start"
+        (click)="copy(setup.json, 'app.mcpHelp.configCopied')">
+        {{ translate('app.mcpHelp.copyConfig') }}
+      </button>
+      <p class="pt-4">{{ translate('app.mcpHelp.config.claudeCode') }}</p>
+      <pre data-testid="mcp-command">{{ setup.command }}</pre>
+      <button
+        matButton
+        type="button"
+        class="min-h-12 self-start"
+        (click)="copy(setup.command, 'app.mcpHelp.commandCopied')">
+        {{ translate('app.mcpHelp.copyCommand') }}
+      </button>
+    </section>
+  } @else if (about.error()) {
+    <app-load-error class="-mx-4" [message]="translate('app.common.loadFailed')" (retry)="about.reload()" />
+  }
 
   <section class="flex flex-col gap-2" aria-labelledby="mcp-tools">
     <h2 id="mcp-tools">{{ translate('app.mcpHelp.tools.title') }}</h2>

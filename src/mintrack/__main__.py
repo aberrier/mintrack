@@ -5,6 +5,7 @@ from sqlalchemy.exc import OperationalError
 
 from mintrack.cli.app import get_cli_app
 from mintrack.config import ConfigError, get_config
+from mintrack.db.alembic import NewerSchemaError
 from mintrack.observability.logging import configure_logging
 from mintrack.observability.sentry import configure_sentry
 
@@ -30,6 +31,12 @@ def main() -> None:
         # libpq's message names the host and the reason (refused, authentication...), never the password.
         database = config.database
         sys.stderr.write(f"MinTrack cannot reach PostgreSQL at {database.host}:{database.port}: {error.orig}\n")
+        raise SystemExit(DATABASE_ERROR_EXIT_CODE) from None
+    except NewerSchemaError:
+        sys.stderr.write(
+            f"MinTrack {config.project.version} cannot use this database: a newer version upgraded it. Run that "
+            "version, or restore a backup taken before the upgrade (README, Upgrades and rollback).\n"
+        )
         raise SystemExit(DATABASE_ERROR_EXIT_CODE) from None
     except Exception:
         # Typer installs its own excepthook, which bypasses Sentry's: report startup crashes explicitly.

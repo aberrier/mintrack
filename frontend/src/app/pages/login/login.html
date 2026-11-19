@@ -1,9 +1,11 @@
 <section class="enter mx-auto flex max-w-sm flex-col gap-6 px-4 pt-16 pb-8">
   <img src="icons/icon.svg" alt="" width="64" height="64" class="size-16 rounded-2xl" />
-  @if (setup.hasValue() && setup.value().open) {
+  @if (setup.isLoading()) {
+    <!-- Nothing until the server says which form to show. -->
+  } @else if (setup.hasValue() && setup.value().open) {
     <h1 class="[font:var(--mat-sys-headline-small)] font-semibold!">{{ translate('app.setup.title') }}</h1>
     <p class="text-on-surface-variant">{{ translate('app.setup.intro') }}</p>
-    <form class="flex flex-col gap-2" [formGroup]="setupForm" (ngSubmit)="createAdmin()">
+    <form class="flex flex-col gap-4" [formGroup]="setupForm" (ngSubmit)="createAdmin()">
       <mat-form-field appearance="outline">
         <mat-label>{{ translate('app.login.username') }}</mat-label>
         <input

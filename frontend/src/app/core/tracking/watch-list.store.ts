@@ -1,5 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { Observable, tap } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { catchError, EMPTY, filter, Observable, switchMap, tap } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import { AuthStore } from '../auth/auth.store';
 import { injectTranslator } from '../i18n';
@@ -10,6 +11,9 @@ import { TrackingStore } from './tracking.store';
 export type HistoryState = 'idle' | 'loading' | 'failed' | 'done';
 /** How a show leaves the watch list from its card. */
 export type SetAside = Exclude<Model.Http.ShowTrackingChoice, 'watching'>;
+
+/** How long a checked card shows its check before it moves on, so the tap visibly registered. */
+export const CHECKED_PAUSE_MS = 450;
 
 /**
  * The watch list (the next episode of each show in progress) and the watch history above it.
@@ -30,6 +34,7 @@ export class WatchListStore {
   private readonly $history = signal<Model.Http.HistoryEntry[]>([]);
   private readonly $historyState = signal<HistoryState>('idle');
   private readonly $checking = signal<ReadonlySet<number>>(new Set());
+  private readonly $libraryEmpty = signal(false);
   /** The oldest entry the server sent, from which the next page starts. */
   private cursor: Model.Http.HistoryEntry | null = null;
   private writes = 0;
@@ -41,6 +46,19 @@ export class WatchListStore {
   readonly historyState = this.$historyState.asReadonly();
   /** Shows whose card was checked and waits for the server to say what comes next. */
   readonly checking = this.$checking.asReadonly();
+  /** Nothing in the library at all, as when the user just signed up. */
+  readonly libraryEmpty = this.$libraryEmpty.asReadonly();
+
+  constructor() {
+    // A show added from Discover joins the list only once the server has it; a list loaded before then lacks it.
+    this.tracking.showAdded$
+      .pipe(
+        filter(() => this.$episodes() !== undefined),
+        switchMap(() => this.load().pipe(catchError(() => EMPTY))),
+        takeUntilDestroyed(),
+      )
+      .subscribe();
+  }
 
   load(): Observable<Model.Http.WatchListResponse> {
     return this.api.upcoming.watchList().pipe(
@@ -49,13 +67,15 @@ export class WatchListStore {
         if (this.writes > 0) return;
         this.$checking.set(new Set());
         this.$episodes.set(response.episodes);
+        this.$libraryEmpty.set(response.library_empty);
       }),
     );
   }
 
   /**
-   * Mark the card's episode watched now and move the card on: to the following episode when the loaded show says
-   * which, else the card stays checked until the server's list comes back. A failure puts the card back as it was.
+   * Mark the card's episode watched now and move the card on: checked for a moment (taps on it do nothing), then the
+   * following episode when the loaded show says which, else the card stays checked until the server's list comes
+   * back. A failure puts the card back as it was.
    */
   check(episode: Model.Http.WatchListEpisode, now = new Date()): void {
     const tmdbId = episode.tmdb_id;
@@ -87,31 +107,47 @@ export class WatchListStore {
         : { ...listed, remaining: Math.max(0, episode.remaining - 1) });
     const following = fromShow !== undefined ? fromShow : fromList;
     const waiting = following === undefined && episode.remaining > 0;
-    if (waiting) this.$checking.update((checking) => new Set(checking).add(tmdbId));
-    else
-      this.replace(
-        tmdbId,
-        following
-          ? {
-              ...episode,
-              episode_id: following.id,
-              season_number: following.season_number,
-              episode_number: following.episode_number,
-              title: following.title,
-              airstamp: following.airstamp,
-              day: following.air_date,
-              remaining: following.remaining,
-              last_watched_at: now.toISOString(),
-              section: 'next',
-              // Only the server knows the episode after that one.
-              following: undefined,
-            }
-          : null,
+    this.$checking.update((checking) => new Set(checking).add(tmdbId));
+    if (!waiting)
+      setTimeout(
+        () =>
+          this.moveOn(
+            episode,
+            following
+              ? {
+                  ...episode,
+                  episode_id: following.id,
+                  season_number: following.season_number,
+                  episode_number: following.episode_number,
+                  title: following.title,
+                  airstamp: following.airstamp,
+                  day: following.air_date,
+                  remaining: following.remaining,
+                  last_watched_at: now.toISOString(),
+                  section: 'next',
+                  // Only the server knows the episode after that one.
+                  following: undefined,
+                }
+              : null,
+          ),
+        CHECKED_PAUSE_MS,
       );
     const entry = this.addToHistory(episode, now);
     void written.then((succeeded) => {
       if (!succeeded) this.restore(episode, index);
       this.settled(succeeded, entry, waiting);
+    });
+  }
+
+  /** After the pause, the checked card gives way to `next`, unless something else already replaced it. */
+  private moveOn(checked: Model.Http.WatchListEpisode, next: Model.Http.WatchListEpisode | null): void {
+    const shown = this.$episodes()?.[this.indexOf(checked.tmdb_id)];
+    if (shown?.episode_id !== checked.episode_id || !this.$checking().has(checked.tmdb_id)) return;
+    this.replace(checked.tmdb_id, next);
+    this.$checking.update((checking) => {
+      const left = new Set(checking);
+      left.delete(checked.tmdb_id);
+      return left;
     });
   }
 

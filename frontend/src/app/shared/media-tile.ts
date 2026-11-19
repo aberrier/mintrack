@@ -14,9 +14,12 @@ import { Poster } from './poster';
       [path]="posterPath()"
       [finished]="finished()"
       [tracked]="tracked()"
+      [busy]="busy()"
       [label]="title()"
       (add)="add.emit()" />
-    <a [routerLink]="link()" class="title">{{ title() }}</a>
+    <a [routerLink]="link()" class="title"
+      ><span class="lines">{{ title() }}</span></a
+    >
     @if (detail(); as text) {
       <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)] tabular-nums" data-testid="tile-detail">{{
         text
@@ -39,16 +42,20 @@ import { Poster } from './poster';
     :host:has(.title:active) app-poster {
       transform: scale(0.97);
     }
-    /* Two lines at most, in a 48px target of its own besides the poster's. */
+    /* A 48px target of its own besides the poster's, holding two lines at most: the clamp is on the inner span so
+       the target's extra height shows no part of a third line. */
     .title {
-      display: -webkit-box;
+      display: block;
       min-height: 48px;
-      overflow: hidden;
-      -webkit-box-orient: vertical;
-      -webkit-line-clamp: 2;
       color: inherit;
       font: var(--mat-sys-title-small);
       text-decoration: none;
+    }
+    .lines {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
     }
     .title::after {
       content: '';
@@ -73,6 +80,8 @@ export class MediaTile {
   readonly finished = input(false);
   /** null: no add button; false: `+`; true: a check, in the library. */
   readonly tracked = input<boolean | null>(null);
+  /** The add is on its way to the server. */
+  readonly busy = input(false);
   /** A line under the title, such as the progress. */
   readonly detail = input<string | null>(null);
 

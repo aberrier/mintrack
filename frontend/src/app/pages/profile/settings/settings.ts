@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, signal, viewChild } from '@angular/core';
+import { rxResource } from '@angular/core/rxjs-interop';
 import { NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatAutocomplete, MatAutocompleteTrigger, MatOption } from '@angular/material/autocomplete';
 import { MatButton } from '@angular/material/button';
@@ -14,13 +15,26 @@ import { injectTranslator } from '../../../core/i18n';
 import { injectNotify } from '../../../core/notify';
 import { PushStore } from '../../../core/push/push.store';
 import { BackButton } from '../../../shared/back-button';
+import { newPasswordValidators } from '../../../shared/validators';
 import { ApiTokens } from '../api-tokens/api-tokens';
 import { Devices } from '../devices/devices';
 import { ImportCard } from '../import-card/import-card';
 import { JellyfinAccounts } from '../jellyfin-accounts/jellyfin-accounts';
 import { PushSettings } from '../push-settings/push-settings';
 
-const TIMEZONES = ['UTC', ...Intl.supportedValuesOf('timeZone').filter((zone) => zone !== 'UTC')];
+/** How a zone is searched: lower case, spaces as underscores ("new york" finds America/New_York). */
+function searchable(text: string): string {
+  return text.trim().toLowerCase().replaceAll(' ', '_');
+}
+
+/** A zone with its offset, or the text as typed when it names no zone. */
+function zoneLabel(zone: string): string {
+  try {
+    return zoneWithOffset(zone);
+  } catch {
+    return zone;
+  }
+}
 
 /**
  * The user's settings in groups: account, notifications, integrations, import history, then the devices signed in,
@@ -74,22 +88,27 @@ export default class Settings {
 
   protected readonly $user = this.store.$user;
 
+  protected readonly about = rxResource({ stream: () => this.api.about() });
+
   protected readonly timezone = this.forms.control(this.store.$user()?.timezone ?? 'UTC');
   private readonly zonesTrigger = viewChild.required(MatAutocompleteTrigger);
+  /** The server's zones, by their current names, each with its older names, which some browsers still use. */
+  private readonly zones = rxResource({ stream: () => this.api.auth.timezones() });
   protected readonly $timezoneQuery = signal('');
   protected readonly $timezones = computed(() => {
-    const query = this.$timezoneQuery().toLowerCase().replaceAll(' ', '_');
+    const query = searchable(this.$timezoneQuery());
     const now = new Date();
-    return TIMEZONES.filter((zone) => zone.toLowerCase().includes(query))
+    return (this.zones.value() ?? [])
+      .filter(({ name, aliases }) => [name, ...aliases].some((zone) => zone.toLowerCase().includes(query)))
       .slice(0, 50)
-      .map((zone) => ({ zone, label: zoneWithOffset(zone, now) }));
+      .map(({ name }) => ({ zone: name, label: zoneWithOffset(name, now) }));
   });
   /** The field shows the saved zone with its offset; what the user types stays as typed. */
-  protected readonly zoneLabel = (zone: string): string => (TIMEZONES.includes(zone) ? zoneWithOffset(zone) : zone);
+  protected readonly zoneLabel = zoneLabel;
 
   protected readonly password = this.forms.group({
     current: ['', Validators.required],
-    new: ['', [Validators.required, Validators.minLength(15), Validators.maxLength(128)]],
+    new: ['', newPasswordValidators],
   });
   protected readonly $wrongPassword = signal(false);
 
@@ -110,11 +129,23 @@ export default class Settings {
   protected commitTypedTimezone(): void {
     const trigger = this.zonesTrigger();
     if (trigger.activeOption) return;
-    const typed = this.timezone.value.trim().toLowerCase().replaceAll(' ', '_');
-    const zone = TIMEZONES.find((candidate) => candidate.toLowerCase() === typed);
+    const typed = searchable(this.timezone.value);
+    const zone = this.zones
+      .value()
+      ?.find(({ name, aliases }) => [name, ...aliases].some((candidate) => candidate.toLowerCase() === typed))?.name;
     trigger.closePanel();
     if (zone && zone !== this.store.$user()?.timezone) void this.saveTimezone(zone);
     else this.resetTimezone();
+  }
+
+  /** The panel closes when nothing matches what is typed: the text stays while the field has the focus. */
+  protected timezonePanelClosed(field: HTMLInputElement): void {
+    if (field.ownerDocument.activeElement !== field) this.resetTimezone();
+  }
+
+  /** Leaving the field with text that is no zone puts the saved one back; the open panel handles a tapped option. */
+  protected timezoneBlurred(): void {
+    if (!this.zonesTrigger().panelOpen) this.resetTimezone();
   }
 
   protected resetTimezone(): void {

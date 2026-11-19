@@ -87,6 +87,8 @@ async def test_disabling_a_user_ends_their_sessions_and_link(
         disabled = await admin.patch(f"/api/admin/users/{user.id}", json={"is_active": False}, headers=xsrf(admin))
 
         assert disabled.json()["status"] == "disabled"
+        # The sessions are gone, not when the user was last seen.
+        assert disabled.json()["last_seen_at"] is not None
         assert (await invitee.get("/api/auth/me")).status_code == 401
         assert (await log_in(invitee)).status_code == 401
         assert (await invitee.post("/api/auth/password-link", json={"token": token_of(link)})).status_code == 400

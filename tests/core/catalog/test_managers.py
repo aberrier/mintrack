@@ -62,14 +62,31 @@ async def test_shows_with_thousands_of_episodes_are_stored(db_session: AsyncSess
 
 async def test_shows_still_airing_go_stale_after_a_day_others_after_a_week() -> None:
     def media(media_type: MediaType, status: str, age: dt.timedelta) -> Media:
-        return Media(media_type=media_type, tmdb_status=status, refreshed_at=NOW - age)
+        return Media(media_type=media_type, tmdb_status=status, refreshed_at=NOW - age, language="en")
 
     hours = dt.timedelta(hours=1)
-    assert is_stale(media(MediaType.TV, "Returning Series", 25 * hours), NOW)
-    assert not is_stale(media(MediaType.TV, "Returning Series", 23 * hours), NOW)
-    assert not is_stale(media(MediaType.TV, "Ended", 6 * 24 * hours), NOW)
-    assert is_stale(media(MediaType.TV, "Ended", 8 * 24 * hours), NOW)
-    assert not is_stale(media(MediaType.MOVIE, "Released", 6 * 24 * hours), NOW)
+    assert is_stale(media(MediaType.TV, "Returning Series", 25 * hours), NOW, "en")
+    assert not is_stale(media(MediaType.TV, "Returning Series", 23 * hours), NOW, "en")
+    assert not is_stale(media(MediaType.TV, "Ended", 6 * 24 * hours), NOW, "en")
+    assert is_stale(media(MediaType.TV, "Ended", 8 * 24 * hours), NOW, "en")
+    assert not is_stale(media(MediaType.MOVIE, "Released", 6 * 24 * hours), NOW, "en")
+
+
+async def test_media_fetched_in_another_language_or_an_unknown_one_are_stale_at_once(
+    db_session: AsyncSession, tmdb: TMDBClient, user: User
+) -> None:
+    show = await cached_media(db_session, tmdb, "Lighthouse Nights")
+    await TrackingManager(db_session).set_show_status(user, show, ShowTrackingChoice.WATCHING, NOW)
+    manager = CatalogManager(db_session, tmdb)
+    just_fetched = show.refreshed_at
+
+    assert show.language == tmdb.language
+    assert not is_stale(show, just_fetched, tmdb.language)
+    assert show.id not in await manager.stale_tracked(just_fetched)
+    for other in ("fr", None):
+        show.language = other
+        assert is_stale(show, just_fetched, tmdb.language)
+        assert show.id in await manager.stale_tracked(just_fetched)
 
 
 async def test_only_tracked_media_past_their_period_are_refreshed_by_the_worker(

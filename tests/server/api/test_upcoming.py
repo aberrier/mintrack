@@ -53,6 +53,19 @@ async def test_someone_sees_coming_episodes_on_their_local_day(
     ]
 
 
+async def test_an_empty_watch_list_says_whether_the_library_is_empty(
+    alice: User, db_session: AsyncSession, api: httpx.AsyncClient
+) -> None:
+    before = (await api.get("/api/watch-list")).json()
+    last_week = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=7)
+    show, _ = await add_show(db_session, {(1, 1): last_week}, title="Stopped")
+    await follow(db_session, alice, show, TrackingStatus.STOPPED)
+    after = (await api.get("/api/watch-list")).json()
+
+    assert before == {"episodes": [], "library_empty": True}
+    assert after == {"episodes": [], "library_empty": False}
+
+
 async def test_someone_sees_what_to_watch_next(alice: User, db_session: AsyncSession, api: httpx.AsyncClient) -> None:
     last_week = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=7)
     show, episodes = await add_show(db_session, {(1, 1): last_week, (1, 2): last_week}, title="Andor")

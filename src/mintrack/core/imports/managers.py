@@ -64,10 +64,6 @@ def _validate(source: ImportSource, data: bytes, timezone: str) -> bytes:
     return keep_tvtime_tracking_files(data) if source is ImportSource.TVTIME else data
 
 
-def _now() -> dt.datetime:
-    return dt.datetime.now(dt.UTC)
-
-
 class ImportManager:
     def __init__(self, session: AsyncSession, tmdb: TMDBClient) -> None:
         self.session = session
@@ -78,7 +74,7 @@ class ImportManager:
     ) -> ImportJob:
         """Validate the file and queue it for the worker, unless the caller runs it; raises `ImportInProgressError` or
         `ImportFileError`."""
-        now = _now()
+        now = dt.datetime.now(dt.UTC)
         await self._expire_lost(now)
         active = sa.select(ImportJob.id).where(ImportJob.user_id == user.id, ImportJob.status.in_(ACTIVE_STATUSES))
         if await self.session.scalar(active) is not None:
@@ -95,7 +91,7 @@ class ImportManager:
         return job
 
     async def latest(self, user: User) -> ImportJob | None:
-        await self._expire_lost(_now())
+        await self._expire_lost(dt.datetime.now(dt.UTC))
         return await self.session.scalar(
             sa.select(ImportJob).filter_by(user_id=user.id).order_by(ImportJob.created_at.desc()).limit(1)
         )
@@ -107,7 +103,7 @@ class ImportManager:
         if job is None or job.status not in ACTIVE_STATUSES or job.file is None:
             return
         user = await self.session.get_one(User, job.user_id)
-        job.status, job.updated_at = ImportStatus.RUNNING, _now()
+        job.status, job.updated_at = ImportStatus.RUNNING, dt.datetime.now(dt.UTC)
         await self.session.commit()
 
         try:
@@ -119,12 +115,12 @@ class ImportManager:
                 await importer.apply(row)
                 if index % PROGRESS_EVERY == 0:
                     await importer.refresh_statuses()
-                    job.processed, job.updated_at = index, _now()
+                    job.processed, job.updated_at = index, dt.datetime.now(dt.UTC)
                     await self.session.commit()
             await importer.refresh_statuses()
             job.processed, job.report = len(rows), importer.report()
             job.status = ImportStatus.DONE
-            job.file, job.finished_at = None, _now()
+            job.file, job.finished_at = None, dt.datetime.now(dt.UTC)
             await self.session.commit()
         except asyncio.CancelledError:
             # The worker is shutting down: the job would otherwise stay running.
@@ -136,10 +132,11 @@ class ImportManager:
 
     async def _fail(self, job_id: uuid.UUID) -> None:
         await self.session.rollback()
+        now = dt.datetime.now(dt.UTC)
         await self.session.execute(
             sa.update(ImportJob)
             .where(ImportJob.id == job_id)
-            .values(status=ImportStatus.FAILED, file=None, finished_at=_now(), updated_at=_now())
+            .values(status=ImportStatus.FAILED, file=None, finished_at=now, updated_at=now)
         )
         await self.session.commit()
 

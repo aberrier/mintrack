@@ -1,5 +1,7 @@
 import alembic.command
 import alembic.config
+import alembic.util
+from alembic.script.revision import ResolutionError
 from sqlalchemy.engine import URL
 
 
@@ -22,8 +24,17 @@ def get_alembic_config(url: URL) -> alembic.config.Config:
     return config
 
 
+class NewerSchemaError(Exception):
+    """The database was upgraded by a newer MinTrack: this version does not know its revision."""
+
+
 def upgrade(url: URL, revision: str = "heads") -> None:
-    alembic.command.upgrade(get_alembic_config(url), revision)
+    try:
+        alembic.command.upgrade(get_alembic_config(url), revision)
+    except alembic.util.CommandError as error:
+        if isinstance(error.__cause__, ResolutionError):
+            raise NewerSchemaError from error
+        raise
 
 
 def make_revision(url: URL, message: str) -> None:

@@ -14,7 +14,7 @@ class PushSubscription(DatabaseModel):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid7)
     user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), index=True)
-    # The session that registered the device: signing out there removes it. An expired session keeps it.
+    # The session that registered the device: signing out there, or its expiry, removes it.
     session_id: Mapped[uuid.UUID | None] = mapped_column(sa.ForeignKey("sessions.id", ondelete="SET NULL"), index=True)
     endpoint: Mapped[str] = mapped_column(unique=True)
     p256dh: Mapped[str]

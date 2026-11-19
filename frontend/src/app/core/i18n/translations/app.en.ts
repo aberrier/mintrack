@@ -26,14 +26,15 @@ export default {
     notStarted: 'Haven’t started',
     emptyTitle: 'All caught up',
     empty: 'Nothing to watch next. The next episode of each show you are watching appears here.',
+    newTitle: 'Nothing to watch yet',
+    new: 'Add the shows you watch, or bring your history from another tracker.',
+    import: 'Import from TV Time or Yamtrack',
     error: 'Cannot load your watch list.',
     movedLater: 'Moved to Watch later',
     stopped: 'Stopped watching',
     undo: 'Undo',
     history: {
       title: 'Watch history',
-      show: 'Show watch history',
-      short: 'History',
       earlier: 'Show earlier',
       loading: 'Loading your history…',
       failed: 'Cannot load your history.',
@@ -109,14 +110,15 @@ export default {
     },
     logout: 'Log out',
     logoutEverywhere: 'Log out everywhere',
+    version: 'MinTrack {version}',
     devices: {
       title: 'Connected devices',
       unknown: 'Unknown device',
       current: 'This device',
       lastActive: 'Last active {date}',
-      signOut: 'Sign out',
-      signOutLabel: 'Sign out {device}',
-      signOutFailed: 'Could not sign out this device',
+      logOut: 'Log out',
+      logOutLabel: 'Log out {device}',
+      logOutFailed: 'Could not log out this device',
       loadFailed: 'Could not load your devices.',
     },
     jellyfin: {
@@ -189,7 +191,6 @@ export default {
         unreadable: 'MinTrack cannot read this file: check that it is the export described above.',
       },
       report: {
-        title: 'Import finished',
         imported: 'Added',
         alreadyPresent: 'Already there',
         unmatched: 'Not matched',
@@ -235,6 +236,7 @@ export default {
     token: {
       title: '1. Create a token',
       text: 'In Settings, API tokens, give the token a name and tap Create. Copy it at once: it is shown only once. Revoke it there to cut the assistant off.',
+      open: 'Open Settings',
     },
     url: {
       title: '2. The server address',
@@ -242,6 +244,10 @@ export default {
     },
     copyUrl: 'Copy address',
     copied: 'Address copied',
+    copyConfig: 'Copy configuration',
+    configCopied: 'Configuration copied',
+    copyCommand: 'Copy command',
+    commandCopied: 'Command copied',
     config: {
       title: '3. Add MinTrack to the assistant',
       json: 'Most assistants take a configuration like this one; replace YOUR_TOKEN with your token:',
@@ -257,7 +263,7 @@ export default {
       unmarkMovieWatched: 'Remove the watch of a movie; it stays in your library to watch later.',
       setShowStatus: 'Follow a show, put it aside to watch later, stop it or resume it.',
       listUpcoming: 'List your episodes airing over the coming weeks.',
-      listUpNext: 'List your watch list: the next episode to watch of each show.',
+      listWatchList: 'List your watch list: the next episode to watch of each show.',
     },
   },
   admin: {

@@ -16,7 +16,7 @@ const signedInGuard: CanActivateFn = async (_route, state) => {
   const store = inject(AuthStore);
   const user = await loadUser(store);
   if (user === undefined) {
-    store.blockedUrl = state.url;
+    store.block(state.url);
     return false;
   }
   return user ? true : router.parseUrl(appRoutes.login(state.url));

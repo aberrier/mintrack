@@ -28,10 +28,13 @@ just install    # uv sync --locked
 just check      # ruff, ruff format --check, ty
 just test       # pytest (needs just dev-db for the database tests)
 just format     # apply ruff fixes and formatting
-just dev        # mintrack server --reload
+just dev        # mintrack server --reload, configured by .env (copy .env.example, which is for development only)
 just dev-frontend  # ng serve on :4200, proxying /api to just dev
-just image      # build the Docker image as ghcr.io/aberrier/mintrack:edge; MINTRACK_VERSION=edge docker compose up runs it
+just image      # build the Docker image as ghcr.io/aberrier/mintrack:edge
 ```
+
+To run the built image with `docker-compose.yml`, put the image `ghcr.io/aberrier/mintrack:edge` and the values to
+edit in a `docker-compose.override.yml` (gitignored), as the CI's browser-test job does.
 
 Always run Python tools through `uv run`. Run `just` (check and test) before committing. Install just with
 `uv tool install rust-just`.
@@ -64,7 +67,8 @@ frontend/src/app/
   shared/          # components used by several pages
 frontend/src/types/ # global namespaces (Model for API shapes)
 frontend/e2e/      # Playwright acceptance suite: specs/ (domain language), dsl/ (actors, fixtures), drivers/ (pages, CLI, API)
-Dockerfile, docker-compose.yml, .env.example  # the image and the install; README "Install" repeats docker-compose.yml
+Dockerfile, docker-compose.yml  # the image and the install, self-contained; README "Install" repeats docker-compose.yml
+.env.example     # development settings for `just dev`
 ```
 
 Business logic goes in `core/<domain>/managers`, endpoints and their Pydantic schemas in `server/api/`,

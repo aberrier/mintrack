@@ -13,8 +13,9 @@ import {
 import { openWatchList, showWatchedUpTo } from '../dsl/watch-list';
 
 test('someone following no show is told what Watch list and Upcoming will show', async ({ viewer }) => {
+  // An empty library points to adding shows or importing a history
   await openWatchList(viewer);
-  expect(await emptyMessage(viewer)).toContain('Nothing to watch next');
+  expect(await emptyMessage(viewer)).toContain('bring your history from another tracker');
 
   expect(await openUpcoming(viewer)).toBe(true);
   expect(await emptyMessage(viewer)).toContain('Nothing airs in the next four weeks');

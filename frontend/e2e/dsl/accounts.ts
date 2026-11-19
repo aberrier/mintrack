@@ -71,12 +71,12 @@ export async function disable(admin: Page, username: string): Promise<void> {
   await new AdminUsersPage(admin).disable(username);
 }
 
-/** Whether the Admin tab offers to disable the user. */
 /** Type in the Admin tab's user search; returns the names still listed. */
 export async function searchUsers(admin: Page, text: string): Promise<string[]> {
   return new AdminUsersPage(admin).search(text);
 }
 
+/** Whether the Admin tab offers to disable the user. */
 export async function canDisable(admin: Page, username: string): Promise<boolean> {
   return new AdminUsersPage(admin).offersDisable(username);
 }
@@ -142,9 +142,9 @@ export async function connectedDevices(page: Page): Promise<string[]> {
   return new DevicesSection(page).list();
 }
 
-/** Sign out the other device listed in the settings, which are open. */
-export async function signOutOtherDevice(page: Page): Promise<void> {
-  await new DevicesSection(page).signOutAnother();
+/** Log out the other device listed in the settings, which are open. */
+export async function logOutOtherDevice(page: Page): Promise<void> {
+  await new DevicesSection(page).logOutAnother();
 }
 
 /** What the Profile tab's Shows row shows: titles, or the message for no show. */

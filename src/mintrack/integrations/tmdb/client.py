@@ -45,6 +45,7 @@ class TMDBNotFoundError(TMDBError):
 class TMDBClient:
     def __init__(self, config: TMDBConfig, *, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.configured = config.api_key is not None
+        self.language = config.language
         params = {"language": config.language}
         if config.api_key is not None:
             params["api_key"] = config.api_key.get_secret_value()

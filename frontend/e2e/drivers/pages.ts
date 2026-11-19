@@ -182,15 +182,15 @@ export class DevicesSection {
   async list(): Promise<string[]> {
     await expect(this.devices().first()).toBeVisible();
     return (await this.devices().allInnerTexts()).map((text) =>
-      text.replace(/\s+/g, ' ').replace(' Sign out', '').trim(),
+      text.replace(/\s+/g, ' ').replace(' Log out', '').trim(),
     );
   }
 
-  /** Sign out the first device other than this one. */
-  async signOutAnother(): Promise<void> {
+  /** Log out the first device other than this one. */
+  async logOutAnother(): Promise<void> {
     const count = await this.devices().count();
     await this.devices()
-      .getByRole('button', { name: /^Sign out / })
+      .getByRole('button', { name: /^Log out / })
       .first()
       .click();
     await expect(this.devices()).toHaveCount(count - 1);
