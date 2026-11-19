@@ -6,7 +6,7 @@ from .jellyfin import JellyfinAccount, JellyfinSyncStatus
 from .media import Episode, Media, MediaType, Season
 from .push import EpisodeNotification, PushSubscription
 from .tracking import TrackingStatus, UserMedia, WatchedEpisode, WatchedMovie
-from .user import LoginFailure, SpentLinkReason, SpentPasswordLink, User, UserSession
+from .user import LinkProblem, LoginFailure, SpentPasswordLink, User, UserSession
 
 __all__ = [
     "ApiToken",
@@ -19,12 +19,12 @@ __all__ = [
     "ImportStatus",
     "JellyfinAccount",
     "JellyfinSyncStatus",
+    "LinkProblem",
     "LoginFailure",
     "Media",
     "MediaType",
     "PushSubscription",
     "Season",
-    "SpentLinkReason",
     "SpentPasswordLink",
     "TrackingStatus",
     "User",

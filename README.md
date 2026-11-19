@@ -190,7 +190,9 @@ Pi 3, 4 or 5 with a 64-bit system). Everything is in one file: there is no `.env
    To keep an instance reachable by others closed until the admin exists, add `MINTRACK__ACCOUNTS__SETUP: "false"`
    and use the command. The admin then invites everyone else from the Admin tab, and shares each printed link by hand
    (MinTrack sends no email). A forgotten password needs a new link: from the Admin tab, or for an admin
-   `docker compose exec server mintrack users reset-link USERNAME`.
+   `docker compose exec server mintrack users reset-link USERNAME`. A link is shown once, so copy it right away; an
+   invitation link lasts 7 days and a reset link 24 hours, and a new link for the same user replaces the previous
+   one. A refused link tells its holder why: expired, already used or replaced.
 
 ### Configuration
 

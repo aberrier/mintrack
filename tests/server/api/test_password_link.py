@@ -1,13 +1,16 @@
+import asyncio
 import datetime as dt
 import pathlib
 
 import fastapi
 import httpx
 import pytest
+import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import ServerConfig, get_config
 from mintrack.core.accounts.managers import AccountManager, LinkProblem
+from mintrack.db.database import DatabaseManager
 from mintrack.db.models import User
 from mintrack.server.api.asgi import build_app
 from tests.server.api.conftest import PASSWORD, CreateUser, log_in
@@ -174,3 +177,67 @@ async def test_a_link_works_once(create_user: CreateUser, manager: AccountManage
 
     assert isinstance(first, User)
     assert second == LinkProblem.USED
+
+
+async def test_a_spent_link_says_why_for_30_days(
+    api: httpx.AsyncClient, create_user: CreateUser, manager: AccountManager
+) -> None:
+    alice = await create_user("alice", password=None)
+    old = await manager.issue_link(alice, now=now() - dt.timedelta(days=40))
+    recent = await manager.issue_link(alice, now=now() - dt.timedelta(days=31))
+    await manager.issue_link(alice, now=now() - dt.timedelta(days=1))
+
+    await manager.delete_expired_sessions(now())
+
+    assert await describe(api, old) == refused(LinkProblem.INVALID)
+    assert await describe(api, recent) == refused(LinkProblem.REPLACED)
+
+
+async def test_concurrent_uses_of_a_link_set_the_password_once(database: DatabaseManager) -> None:
+    async with AsyncSession(database.engine, expire_on_commit=False) as setup:
+        user, token = await AccountManager(setup).create_user("race-link", is_admin=False, now=now())
+        await setup.commit()
+
+    async def use_once() -> str:
+        async with AsyncSession(database.engine) as session:
+            result = await AccountManager(session).use_link(token, NEW_PASSWORD, timezone=None, now=now())
+            await asyncio.sleep(0.05)
+            await session.commit()
+            return "set" if isinstance(result, User) else result
+
+    try:
+        assert sorted(await asyncio.gather(use_once(), use_once())) == ["set", LinkProblem.USED]
+    finally:
+        async with AsyncSession(database.engine) as cleanup:
+            await cleanup.execute(sa.delete(User).where(User.id == user.id))
+            await cleanup.commit()
+
+
+async def test_a_link_replaced_while_it_is_used_fails_neither_request(database: DatabaseManager) -> None:
+    async with AsyncSession(database.engine, expire_on_commit=False) as setup:
+        user, token = await AccountManager(setup).create_user("race-replace", is_admin=False, now=now())
+        await setup.commit()
+
+    async def use_once() -> None:
+        async with AsyncSession(database.engine) as session:
+            await AccountManager(session).use_link(token, NEW_PASSWORD, timezone=None, now=now())
+            await asyncio.sleep(0.05)
+            await session.commit()
+
+    async def replace() -> None:
+        async with AsyncSession(database.engine) as session:
+            fetched = await session.get(User, user.id)
+            assert fetched is not None
+            await AccountManager(session).issue_link(fetched, now=now())
+            await asyncio.sleep(0.05)
+            await session.commit()
+
+    try:
+        await asyncio.gather(use_once(), replace(), replace())
+        async with AsyncSession(database.engine) as session:
+            spent = await AccountManager(session).check_link(token, now=now())
+        assert spent in {LinkProblem.USED, LinkProblem.REPLACED}
+    finally:
+        async with AsyncSession(database.engine) as cleanup:
+            await cleanup.execute(sa.delete(User).where(User.id == user.id))
+            await cleanup.commit()

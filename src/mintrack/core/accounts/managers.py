@@ -9,14 +9,15 @@ import uuid
 import zoneinfo
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import get_config
 from mintrack.db.models import (
+    LinkProblem,
     LoginFailure,
     PushSubscription,
-    SpentLinkReason,
     SpentPasswordLink,
     User,
     UserSession,
@@ -33,6 +34,8 @@ SESSION_TOUCH_INTERVAL = dt.timedelta(hours=1)
 INVITATION_LIFETIME = dt.timedelta(days=7)
 RESET_LIFETIME = dt.timedelta(hours=24)
 LOGIN_FAILURE_WINDOW = dt.timedelta(minutes=5)
+# How long a spent link still says why it is refused rather than "invalid"; well past the longest link lifetime.
+SPENT_LINK_RETENTION = dt.timedelta(days=30)
 # Per client address, whatever the usernames tried.
 LOGIN_FAILURE_LIMIT = 5
 _PG_TIMEZONE_NAMES = sa.table("pg_timezone_names", sa.column("name"))
@@ -71,15 +74,6 @@ class UserStatus(enum.StrEnum):
     INVITATION_EXPIRED = enum.auto()
     ACTIVE = enum.auto()
     DISABLED = enum.auto()
-
-
-class LinkProblem(enum.StrEnum):
-    """Why a password link does not work."""
-
-    INVALID = enum.auto()
-    EXPIRED = enum.auto()
-    USED = enum.auto()
-    REPLACED = enum.auto()
 
 
 def user_status(user: User, now: dt.datetime) -> UserStatus:
@@ -307,43 +301,52 @@ class AccountManager:
 
     async def delete_expired_sessions(self, now: dt.datetime) -> int:
         """Delete the sessions unused for longer than the idle timeout with the devices they registered for
-        notifications, and the login failures out of the window."""
+        notifications, the login failures out of the window and the spent password links past their retention."""
         expired = UserSession.last_used_at <= now - SESSION_IDLE_TIMEOUT
         await self.session.execute(
             sa.delete(PushSubscription).where(PushSubscription.session_id.in_(sa.select(UserSession.id).where(expired)))
         )
         deleted = await self.session.scalars(sa.delete(UserSession).where(expired).returning(UserSession.id))
         await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= now - LOGIN_FAILURE_WINDOW))
+        await self.session.execute(
+            sa.delete(SpentPasswordLink).where(SpentPasswordLink.spent_at <= now - SPENT_LINK_RETENTION)
+        )
         return len(deleted.all())
 
     async def issue_link(self, user: User, *, now: dt.datetime) -> str:
         """A new invitation (no password yet) or reset link; it replaces the user's previous one."""
         if not user.is_active:
             raise UserDisabledError
-        if user.link_token_hash is not None:
-            self._spend_link(user.link_token_hash, user.id, SpentLinkReason.REPLACED, now)
+        previous = user.link_token_hash
         token, token_hash = new_token()
         user.link_token_hash = token_hash
         user.link_expires_at = now + (INVITATION_LIFETIME if user.password_hash is None else RESET_LIFETIME)
+        if previous is not None:
+            # Autoflush updates the user row first, the order use_link locks in, so the two never deadlock.
+            await self._spend_link(previous, user.id, LinkProblem.REPLACED, now)
         return token
 
-    def _spend_link(self, token_hash: bytes, user_id: uuid.UUID, reason: SpentLinkReason, now: dt.datetime) -> None:
-        self.session.add(SpentPasswordLink(token_hash=token_hash, user_id=user_id, reason=reason, spent_at=now))
+    async def _spend_link(self, token_hash: bytes, user_id: uuid.UUID, reason: LinkProblem, now: dt.datetime) -> None:
+        # The first reason recorded stays: a link used while a new one replaces it is both, whichever commits first.
+        await self.session.execute(
+            insert(SpentPasswordLink)
+            .values(token_hash=token_hash, user_id=user_id, reason=reason, spent_at=now)
+            .on_conflict_do_nothing()
+        )
 
     async def check_link(self, token: str, *, now: dt.datetime) -> User | LinkProblem:
         """The user a live link belongs to, or why the link does not work. Reading it never consumes it."""
         token_hash = hash_token(token)
         user = await self.session.scalar(sa.select(User).where(User.link_token_hash == token_hash))
         if user is not None:
-            if not user.is_active:
-                return LinkProblem.INVALID
+            # A disabled user has no link, so a link found belongs to an active user.
             if user.link_expires_at is None or user.link_expires_at <= now:
                 return LinkProblem.EXPIRED
             return user
         spent = await self.session.scalar(
             sa.select(SpentPasswordLink.reason).where(SpentPasswordLink.token_hash == token_hash)
         )
-        return LinkProblem(spent) if spent is not None else LinkProblem.INVALID
+        return spent if spent is not None else LinkProblem.INVALID
 
     async def use_link(
         self, token: str, password: str, *, timezone: str | None, now: dt.datetime
@@ -365,7 +368,7 @@ class AccountManager:
             problem = await self.check_link(token, now=now)
             # A link valid a moment ago but used by a concurrent request is reported as used.
             return LinkProblem.USED if isinstance(problem, User) else problem
-        self._spend_link(hash_token(token), user.id, SpentLinkReason.USED, now)
+        await self._spend_link(hash_token(token), user.id, LinkProblem.USED, now)
         await self.delete_sessions(user.id)
         return user
 
