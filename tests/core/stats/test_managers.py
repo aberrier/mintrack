@@ -48,17 +48,38 @@ async def test_totals_and_minutes_count_each_episode_by_its_runtime_or_its_shows
         await watch(db_session, user, episode, NOW)
     await watch_movie(db_session, user, await add_movie(db_session, "Heat", 170, ["Action", "Crime"]), NOW)
     await watch_movie(db_session, user, await add_movie(db_session, "Untimed", None, []), NOW)
-    # Another user's watches are theirs.
-    await watch(db_session, await add_user(db_session), dark_episodes[1, 1], NOW)
+    # Another user's watches are theirs: an episode of the same show, another show and a movie, with their own genre
+    # and network.
+    other = await add_user(db_session)
+    await watch(db_session, other, dark_episodes[1, 1], NOW)
+    gloom, gloom_episodes = await add_show(db_session, {(1, 1): None}, title="Gloom")
+    gloom.network, gloom.genres = "BBC", ["Horror"]
+    await follow(db_session, other, gloom, TrackingStatus.FINISHED)
+    await watch(db_session, other, gloom_episodes[1, 1], NOW)
+    await watch_movie(db_session, other, await add_movie(db_session, "Fright", 90, ["Horror"]), NOW)
 
     stats = await StatsManager(db_session).statistics(user, NOW)
 
-    assert (stats.episodes, stats.movies, stats.shows, stats.finished_shows) == (4, 2, 3, 1)
+    # Aside has nothing watched, so it is not counted among the shows, as movies only count those watched.
+    assert (stats.episodes, stats.movies, stats.shows, stats.finished_shows) == (4, 2, 2, 1)
     # The special without a runtime counts Dark's average, 55; Quiet has none at all.
     assert (stats.episode_minutes, stats.episodes_without_runtime) == (50 + 60 + 55, 1)
     assert (stats.movie_minutes, stats.movies_without_runtime) == (170, 1)
     assert stats.genres == [Ranked("Drama", 2), Ranked("Action", 1), Ranked("Crime", 1), Ranked("Mystery", 1)]
     assert stats.networks == [Ranked("HBO", 1), Ranked("Netflix", 1)]
+
+
+async def test_an_average_runtime_counts_to_the_nearest_minute(db_session: AsyncSession) -> None:
+    user = await add_user(db_session)
+    show, episodes = await add_show(db_session, {(1, 1): None, (1, 2): None, (1, 3): None})
+    episodes[1, 1].runtime, episodes[1, 2].runtime = 45, 50
+    await follow(db_session, user, show, TrackingStatus.WATCHING)
+    await watch(db_session, user, episodes[1, 3], NOW)
+
+    stats = await StatsManager(db_session).statistics(user, NOW)
+
+    # The show's average is 47.5 minutes.
+    assert stats.episode_minutes == 48
 
 
 async def test_months_and_streaks_follow_the_users_time_zone(db_session: AsyncSession) -> None:

@@ -23,6 +23,7 @@ async def test_the_worker_refreshes_daily_what_a_page_would_and_movies_awaited_o
         "ended show": (MediaType.TV, "Ended", None, None, TrackingStatus.WATCHING),
         "recent movie": (MediaType.MOVIE, "Released", NOW.date() - dt.timedelta(days=30), None, TrackingStatus.WATCHED),
         "old movie": (MediaType.MOVIE, "Released", dt.date(2001, 1, 1), None, TrackingStatus.WATCHED),
+        "old movie without genres": (MediaType.MOVIE, "Released", dt.date(2001, 1, 1), None, TrackingStatus.WATCHED),
         "undated movie": (MediaType.MOVIE, None, None, None, TrackingStatus.WATCHED),
         "old movie awaited": (MediaType.MOVIE, "Released", dt.date(2001, 1, 1), None, TrackingStatus.WATCH_LATER),
         "old movie out": (
@@ -44,6 +45,8 @@ async def test_the_worker_refreshes_daily_what_a_page_would_and_movies_awaited_o
             digital_release_date=digital,
             refreshed_at=refreshed_at,
             language=tmdb.language,
+            # Every fetch stores a list: None is a fetch by a version without genres, as during an upgrade.
+            genres=None if name == "old movie without genres" else [],
         )
         db_session.add(media[name])
         await db_session.flush()
@@ -55,7 +58,7 @@ async def test_the_worker_refreshes_daily_what_a_page_would_and_movies_awaited_o
     stale = set(await CatalogManager(db_session, tmdb).stale_tracked(NOW))
 
     by_page = {name for name, item in media.items() if is_stale(item, NOW, tmdb.language)}
-    assert by_page == {"airing show", "recent movie", "undated movie"}
+    assert by_page == {"airing show", "recent movie", "undated movie", "old movie without genres"}
     assert {name for name, item in media.items() if item.id in stale} == by_page | {"old movie awaited"}
 
 
@@ -115,6 +118,37 @@ async def test_a_refresh_deletes_dropped_episodes_unless_someone_watched_or_rate
     assert remaining[1, 1].id == episodes[1, 1].id
 
 
+async def test_a_refresh_updates_what_tmdb_changed_about_an_episode(
+    db_session: AsyncSession, tmdb: TMDBClient, fake_tmdb: FakeTMDB
+) -> None:
+    show = await cached_media(db_session, tmdb, "Lighthouse Nights")
+    changes = {
+        "name": "Renamed",
+        "air_date": "2020-01-02",
+        "overview": "Rewritten.",
+        "still_path": "/still.jpg",
+        "vote_average": 9.5,
+        "vote_count": 321,
+        "runtime": 52,
+    }
+    fake_tmdb.changed[show.tmdb_id, 1, 1] = changes
+
+    await CatalogManager(db_session, tmdb).fetch(MediaType.TV, show.tmdb_id, NOW)
+
+    episode = (await episodes_of(db_session, show))[1, 1]
+    await db_session.refresh(episode)
+    stored = (
+        episode.title,
+        episode.air_date,
+        episode.overview,
+        episode.still_path,
+        episode.vote_average,
+        episode.vote_count,
+        episode.runtime,
+    )
+    assert stored == ("Renamed", dt.date(2020, 1, 2), "Rewritten.", "/still.jpg", 9.5, 321, 52)
+
+
 async def test_shows_with_thousands_of_episodes_are_stored(db_session: AsyncSession, tmdb: TMDBClient) -> None:
     show = await cached_media(db_session, tmdb, "Daily Quiz")
 
@@ -133,6 +167,7 @@ async def test_shows_still_airing_go_stale_after_a_day_others_after_a_week() -> 
             release_date=dt.date(2020, 5, 1),
             refreshed_at=NOW - age,
             language="en",
+            genres=[],
         )
 
     hours = dt.timedelta(hours=1)
@@ -150,6 +185,7 @@ async def test_movies_released_in_the_last_six_months_or_not_yet_go_stale_after_
             release_date=release_date,
             refreshed_at=NOW - dt.timedelta(hours=25),
             language="en",
+            genres=[],
         )
 
     assert is_stale(movie(None), NOW, "en")

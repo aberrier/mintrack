@@ -37,6 +37,8 @@ class FakeTMDB:
     titles: dict[int, str] = dataclasses.field(default_factory=dict)
     # (show id, season, episode) TMDB no longer lists.
     dropped: set[tuple[int, int, int]] = dataclasses.field(default_factory=set)
+    # (show id, season, episode) -> fields TMDB now sends differently for that episode.
+    changed: dict[tuple[int, int, int], dict[str, typing.Any]] = dataclasses.field(default_factory=dict)
     # (external source, external id) -> ("movie" or "tv", TMDB id), for /find.
     external_ids: dict[tuple[str, str], tuple[str, int]] = dataclasses.field(default_factory=dict)
     # (external source, external id) -> (show TMDB id, season, episode), for /find.
@@ -69,6 +71,7 @@ class FakeTMDB:
                 # Specials without a runtime, as TMDB often has them.
                 "runtime": None if season == 0 else EPISODE_RUNTIME,
             }
+            | self.changed.get((tmdb_id, season, number), {})
             for number, offset in enumerate(offsets, start=1)
             if (tmdb_id, season, number) not in self.dropped
         ]

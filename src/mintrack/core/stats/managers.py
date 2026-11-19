@@ -6,7 +6,7 @@ import zoneinfo
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.db.models import Episode, Media, MediaType, TrackingStatus, User, UserMedia, WatchedEpisode, WatchedMovie
+from mintrack.db.models import Episode, Media, TrackingStatus, User, UserMedia, WatchedEpisode, WatchedMovie
 
 MONTHS = 12
 TOP = 5
@@ -31,7 +31,7 @@ class Ranked:
 class Statistics:
     episodes: int
     movies: int
-    # Shows in the library, and those of them finished.
+    # Shows with a watched episode, as movies count those watched, and those of them finished.
     shows: int
     finished_shows: int
     episode_minutes: int
@@ -72,8 +72,7 @@ class StatsManager:
             await self.session.execute(
                 sa.select(sa.func.count(), sa.func.count().filter(UserMedia.status == TrackingStatus.FINISHED))
                 .select_from(UserMedia)
-                .join(Media, Media.id == UserMedia.media_id)
-                .where(UserMedia.user_id == user.id, Media.media_type == MediaType.TV)
+                .where(UserMedia.user_id == user.id, UserMedia.media_id.in_(_watched_shows(user)))
             )
         ).one()
         current_streak, longest_streak = await self._streaks(user, today)
