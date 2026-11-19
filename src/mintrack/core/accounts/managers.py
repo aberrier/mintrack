@@ -222,8 +222,7 @@ class AccountManager:
         devices = sa.delete(PushSubscription).where(PushSubscription.user_id == user_id)
         sessions = sa.delete(UserSession).where(UserSession.user_id == user_id)
         if keep is not None:
-            # A device without a session (registered before devices had one, or whose session expired) may be this
-            # one: it stays.
+            # A device whose session expired may be this one: it stays.
             devices = devices.where(PushSubscription.session_id != keep)
             sessions = sessions.where(UserSession.id != keep)
         await self.session.execute(devices)

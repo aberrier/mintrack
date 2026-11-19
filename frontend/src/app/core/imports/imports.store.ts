@@ -6,7 +6,7 @@ import { ApiService } from '../api/api.service';
 import { TranslationPath } from '../i18n';
 
 /** Milliseconds between two reads of a pending or running import. */
-export const POLL_INTERVAL = 2000;
+const POLL_INTERVAL = 2000;
 
 /** Why the server refused an upload, by HTTP status. */
 const UPLOAD_ERRORS: Record<number, TranslationPath<'app'>> = {

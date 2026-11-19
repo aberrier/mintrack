@@ -24,7 +24,7 @@ const SET_ASIDE: readonly Model.Http.TrackingStatus[] = ['stopped', 'watch_later
 /** Statuses a marked episode turns into watching. */
 const NOT_IN_PROGRESS: readonly Model.Http.TrackingStatus[] = [...SET_ASIDE, 'not_started'];
 /** The API's limit of episode ids per request. */
-export const MAX_EPISODES_PER_REQUEST = 2000;
+const MAX_EPISODES_PER_REQUEST = 2000;
 
 /** A view of the library: shows or movies, in an order, with one status or all. */
 export interface LibraryQuery {
