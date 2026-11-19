@@ -65,8 +65,9 @@ class JellyfinSeasons(typing.Protocol):
         """The number of its regular seasons, specials aside."""
         ...
 
-    async def episode_count(self, series_id: str, season: int) -> int | None:
-        """The number of episodes with a file in one of its seasons."""
+    async def season_sizes(self, series_id: str) -> collections.abc.Mapping[int, int] | None:
+        """The number of episodes with a file in each of its seasons, for a season holding exactly episodes 1 to that
+        number."""
         ...
 
 
@@ -209,9 +210,9 @@ async def _split_differently(
     season, number = numbering
     numbers = await catalog.episode_numbers(show_id)
     if season > 1 and _one_regular_season(numbers):
-        size = await seasons.episode_count(series_id, season)
-        if size is not None and number <= size:
-            return _grouped(await catalog.season_groups(show_id), season, number, size)
+        sizes = await seasons.season_sizes(series_id)
+        if sizes is not None and number <= sizes.get(season, 0):
+            return _grouped(await catalog.season_groups(show_id), season, number, sizes)
     if season == 1:
         absolute = _absolute(await catalog.listed_episode_numbers(show_id), number)
         # A season 2 in Jellyfin means its season 1 is not the whole series: TVDB and TMDB just split the seasons
@@ -239,12 +240,17 @@ async def _own_episode(item: Item, catalog: Catalog) -> tuple[int, int, int] | N
 
 
 def _grouped(
-    groups: collections.abc.Sequence[SeasonGroup], season: int, number: int, size: int
+    groups: collections.abc.Sequence[SeasonGroup], season: int, number: int, sizes: collections.abc.Mapping[int, int]
 ) -> tuple[int, int] | None:
     """The TMDB numbers that more than half of the groups splitting the show as Jellyfin does give episode `number`
-    (at most `size`) of a season of `size` episodes. Only a group whose season has `size` episodes votes: one
-    splitting the show into cours or broadcast seasons is left out, and no majority means no match."""
-    voting = [group[season] for group in groups if len(group.get(season, ())) == size]
+    (within Jellyfin's season size) of a season. Only a group whose seasons 1 to `season` have Jellyfin's `sizes`
+    votes: one splitting the show into cours or broadcast seasons is left out, a season Jellyfin has only part of
+    (downloading, still airing) matches no group's size, and no majority means no match."""
+    voting = [
+        group[season]
+        for group in groups
+        if all(len(group.get(earlier, ())) == sizes.get(earlier) for earlier in range(1, season + 1))
+    ]
     if not voting:
         return None
     [(episode, count)] = collections.Counter(episodes[number - 1] for episodes in voting).most_common(1)

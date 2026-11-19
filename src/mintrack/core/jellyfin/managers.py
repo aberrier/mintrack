@@ -314,7 +314,7 @@ class _JellyfinSeasons:
         self.client = client
         self.user_id = user_id
         self.regular_counts: dict[str, int | None] = {}
-        self.episode_counts: dict[tuple[str, int], int | None] = {}
+        self.sizes: dict[str, dict[int, int] | None] = {}
 
     async def regular_count(self, series_id: str) -> int | None:
         if series_id not in self.regular_counts:
@@ -324,12 +324,11 @@ class _JellyfinSeasons:
             )
         return self.regular_counts[series_id]
 
-    async def episode_count(self, series_id: str, season: int) -> int | None:
-        key = (series_id, season)
-        if key not in self.episode_counts:
-            numbers = await self._ask(series_id, lambda: self.client.episode_numbers(self.user_id, series_id, season))
-            self.episode_counts[key] = None if numbers is None else len(numbers)
-        return self.episode_counts[key]
+    async def season_sizes(self, series_id: str) -> collections.abc.Mapping[int, int] | None:
+        if series_id not in self.sizes:
+            numbers = await self._ask(series_id, lambda: self.client.episode_numbers(self.user_id, series_id))
+            self.sizes[series_id] = None if numbers is None else _season_sizes(numbers)
+        return self.sizes[series_id]
 
     async def _ask[T](
         self, series_id: str, request: collections.abc.Callable[[], collections.abc.Awaitable[T]]
@@ -343,6 +342,15 @@ class _JellyfinSeasons:
         except JellyfinError as error:
             logger.warning("jellyfin seasons not read", series_id=series_id, error=type(error).__name__)
             return None
+
+
+def _season_sizes(numbers: collections.abc.Iterable[tuple[int, int]]) -> dict[int, int]:
+    """The number of episodes of each season holding exactly episodes 1 to that number: a season with a gap, or
+    starting past episode 1, has no size."""
+    seasons: collections.defaultdict[int, set[int]] = collections.defaultdict(set)
+    for season, number in numbers:
+        seasons[season].add(number)
+    return {season: len(found) for season, found in seasons.items() if found == set(range(1, len(found) + 1))}
 
 
 class _Library:

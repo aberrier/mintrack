@@ -26,7 +26,7 @@ class FakeJellyfin:
         self.played: dict[str, list[dict]] = {}
         self.series: dict[str, dict] = {}
         self.seasons: dict[str, tuple[int, ...]] = {}
-        self.sizes: dict[str, dict[int, int]] = {}
+        self.episodes: dict[str, dict[int, range]] = {}
         self.requests: list[httpx.Request] = []
         self._ids = itertools.count(1)
         router.get(f"{url}/System/Info/Public").mock(side_effect=self._public_info)
@@ -57,10 +57,10 @@ class FakeJellyfin:
         name: str = "",
         year: int | None = None,
         seasons: tuple[int, ...] = (1, 2),
-        sizes: dict[int, int] | None = None,
+        sizes: dict[int, int | range] | None = None,
     ) -> str:
         """A series with these season numbers, 0 for its specials, each of three episodes unless `sizes` gives its
-        number of episodes."""
+        number of episodes or the episode numbers it holds."""
         series_id = f"series{next(self._ids)}"
         self.series[series_id] = {
             "Id": series_id,
@@ -70,7 +70,10 @@ class FakeJellyfin:
             "ProviderIds": provider_ids,
         }
         self.seasons[series_id] = seasons
-        self.sizes[series_id] = {season: (sizes or {}).get(season, 3) for season in seasons}
+        self.episodes[series_id] = {}
+        for season in seasons:
+            size = (sizes or {}).get(season, 3)
+            self.episodes[series_id][season] = range(1, size + 1) if isinstance(size, int) else size
         return series_id
 
     def play_movie(
@@ -194,14 +197,20 @@ class FakeJellyfin:
         return httpx.Response(200, json={"Items": items, "TotalRecordCount": len(items)})
 
     def _episodes(self, request: httpx.Request) -> httpx.Response:
-        """The episodes of one season, after a special the library shows within it, as Jellyfin can."""
+        """The episodes of every season, after a special the library shows within season 1, as Jellyfin can. Unless
+        asked for those with files only, each season also lists the next episode, known from the metadata only."""
         if self._user(request) is None:
             return httpx.Response(401)
         series_id = request.url.path.split("/")[-2]
         if series_id not in self.seasons:
             return httpx.Response(404)
-        season = int(request.url.params["season"])
-        numbering = [(0, 1)] + [(season, number) for number in range(1, self.sizes[series_id].get(season, 0) + 1)]
+        with_missing = request.url.params.get("isMissing") != "false"
+        numbering = [(0, 9)] + [
+            (season, number)
+            for season, numbers in self.episodes[series_id].items()
+            if season >= 1
+            for number in range(numbers.start, numbers.stop + with_missing)
+        ]
         items = [
             {
                 "Id": f"{series_id}-s{parent}e{number}",
