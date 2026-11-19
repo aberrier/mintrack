@@ -36,9 +36,10 @@ updates:
       # The types follow the Node major the app runs on (CI and the Dockerfile).
       - dependency-name: "@types/node"
         update-types: ["version-update:semver-major"]
-      # The TypeScript version is bounded by @angular/compiler-cli's peer dependency.
+      # The TypeScript version is bounded by @angular/compiler-cli's peer dependency (one minor at a time): moved by
+      # hand with Angular.
       - dependency-name: typescript
-        update-types: ["version-update:semver-major"]
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
 
   - package-ecosystem: docker
     directory: /
