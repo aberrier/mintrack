@@ -1,4 +1,5 @@
 <p align="center">
+  <img src="frontend/public/icons/icon.svg" alt="" width="96" height="96"><br>
   <b>MinTrack: a minimal, self-hosted TV and movie tracker with the TV Time experience.</b><br>
   Track movies, TV shows and anime, mark episodes in one tap, and get notified when new ones air.
 </p>
