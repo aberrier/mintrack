@@ -30,11 +30,21 @@ class FakeCatalog:
         self.results: dict[tuple[MediaType, str], list[TMDBSearchResult]] = {}
         self.media = {(MediaType.MOVIE, MATRIX), (MediaType.TV, THRONES)}
         self.searches: list[str] = []
+        # Episodes TMDB no longer lists, kept because someone watched or rated them.
+        self.kept: frozenset[tuple[int, int]] = frozenset()
 
-    def answer(self, media_type: MediaType, query: str, *results: tuple[int, str, str]) -> None:
+    def answer(
+        self, media_type: MediaType, query: str, *results: tuple[int, str, str], original_title: str | None = None
+    ) -> None:
         self.results[media_type, query] = [
             TMDBSearchResult.model_validate(
-                {"id": tmdb_id, "media_type": media_type, "title": title, "release_date": date}
+                {
+                    "id": tmdb_id,
+                    "media_type": media_type,
+                    "title": title,
+                    "original_title": original_title,
+                    "release_date": date,
+                }
             )
             for tmdb_id, title, date in results
         ]
@@ -51,6 +61,9 @@ class FakeCatalog:
         return (media_type, tmdb_id) in self.media
 
     async def episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
+        return THRONES_EPISODES | self.kept if show_id == THRONES else frozenset()
+
+    async def listed_episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
         return THRONES_EPISODES if show_id == THRONES else frozenset()
 
 
@@ -59,9 +72,21 @@ def catalog() -> FakeCatalog:
     return FakeCatalog()
 
 
-def movie(provider_ids: dict[str, str | None], name: str = "The Matrix", year: int | None = 1999) -> Item:
+def movie(
+    provider_ids: dict[str, str | None],
+    name: str = "The Matrix",
+    year: int | None = 1999,
+    original_title: str | None = None,
+) -> Item:
     return Item.model_validate(
-        {"Id": "m", "Type": "Movie", "Name": name, "ProductionYear": year, "ProviderIds": provider_ids}
+        {
+            "Id": "m",
+            "Type": "Movie",
+            "Name": name,
+            "OriginalTitle": original_title,
+            "ProductionYear": year,
+            "ProviderIds": provider_ids,
+        }
     )
 
 
@@ -188,6 +213,56 @@ async def test_an_absolute_number_past_tmdb_season_1_matches_the_episode_at_that
     catalog: FakeCatalog, number: int, expected: WatchEvent | JellyfinUnmatchedReason
 ) -> None:
     assert await match(episode(1, number), AT, series({"Tmdb": "1399"}), catalog) == expected
+
+
+async def test_an_absolute_number_is_not_guessed_when_jellyfin_has_a_season_2(catalog: FakeCatalog) -> None:
+    # Jellyfin's season 1 runs longer than TMDB's, but Jellyfin has a season 2 too: the seasons are split differently.
+    played_seasons = {"s": {1, 2}}
+
+    found = await match(episode(1, 4), AT, series({"Tmdb": "1399"}), catalog, played_seasons)
+
+    assert found is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
+
+
+async def test_an_absolute_number_counts_only_the_episodes_tmdb_lists(catalog: FakeCatalog) -> None:
+    # S01E04 is gone from TMDB, kept because someone watched it: the 5th episode is still S02E02.
+    catalog.kept = frozenset({(1, 4)})
+
+    found = await match(episode(1, 5), AT, series({"Tmdb": "1399"}), catalog, {"s": {1}})
+
+    assert found == episode_watch(2, 2)
+
+
+async def test_specials_match_their_season_0_number_and_never_an_absolute_one(catalog: FakeCatalog) -> None:
+    assert await match(episode(0, 1), AT, series({"Tmdb": "1399"}), catalog) == episode_watch(0, 1)
+    assert (
+        await match(episode(0, 4), AT, series({"Tmdb": "1399"}), catalog) is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
+    )
+
+
+@pytest.mark.parametrize(
+    ("original_title", "expected"),
+    [("Le Fabuleux Destin", movie_watch()), (None, JellyfinUnmatchedReason.NOT_FOUND)],
+)
+async def test_a_movie_named_in_another_language_matches_by_its_original_title(
+    catalog: FakeCatalog, original_title: str | None, expected: WatchEvent | JellyfinUnmatchedReason
+) -> None:
+    # Jellyfin names it in the library's language; TMDB's result has another title and the same original one.
+    name = "Die fabelhafte Welt"
+    catalog.answer(MediaType.MOVIE, name, (MATRIX, "Amelie", "2001-04-25"), original_title="Le Fabuleux Destin")
+
+    assert await match(movie({}, name, 2001, original_title), AT, {}, catalog) == expected
+
+
+@pytest.mark.parametrize(
+    ("released", "expected"), [("2000-06-01", movie_watch()), ("2001-06-01", JellyfinUnmatchedReason.NOT_FOUND)]
+)
+async def test_a_title_search_accepts_a_year_off_but_not_two(
+    catalog: FakeCatalog, released: str, expected: WatchEvent | JellyfinUnmatchedReason
+) -> None:
+    catalog.answer(MediaType.MOVIE, "The Matrix", (MATRIX, "The Matrix", released))
+
+    assert await match(movie({}, year=1999), AT, {}, catalog) == expected
 
 
 @pytest.mark.parametrize(

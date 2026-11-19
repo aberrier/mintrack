@@ -41,5 +41,5 @@ test('the items a sync did not recognize can be copied to report them', async ({
   await new Navigation(page).openSettings();
 
   await expect(jellyfin.accounts()).toContainText('1 not recognized');
-  expect(await jellyfin.copyDetails()).toBe('Details of the items not recognized copied');
+  expect(await jellyfin.copyDetails()).toBe('Details copied');
 });
