@@ -1,26 +1,62 @@
 <section class="enter mx-auto flex max-w-sm flex-col gap-6 px-4 pt-16 pb-8">
   <img src="icons/icon.svg" alt="" width="64" height="64" class="size-16 rounded-2xl" />
-  <h1 class="[font:var(--mat-sys-headline-small)] font-semibold!">{{ translate('app.login.title') }}</h1>
-  <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()">
-    <mat-form-field appearance="outline">
-      <mat-label>{{ translate('app.login.username') }}</mat-label>
-      <input
-        matInput
-        formControlName="username"
-        autocomplete="username"
-        autocapitalize="none"
-        spellcheck="false"
-        required />
-    </mat-form-field>
-    <mat-form-field appearance="outline">
-      <mat-label>{{ translate('app.login.password') }}</mat-label>
-      <input matInput type="password" formControlName="password" autocomplete="current-password" required />
-    </mat-form-field>
-    @if ($error(); as error) {
-      <p role="alert" class="text-error">{{ translate(error) }}</p>
-    }
-    <button matButton="filled" type="submit" class="min-h-12" [disabled]="$busy()">
-      {{ translate('app.login.title') }}
-    </button>
-  </form>
+  @if (setup.hasValue() && setup.value().open) {
+    <h1 class="[font:var(--mat-sys-headline-small)] font-semibold!">{{ translate('app.setup.title') }}</h1>
+    <p class="text-on-surface-variant">{{ translate('app.setup.intro') }}</p>
+    <form class="flex flex-col gap-2" [formGroup]="setupForm" (ngSubmit)="createAdmin()">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ translate('app.login.username') }}</mat-label>
+        <input
+          matInput
+          formControlName="username"
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck="false"
+          required />
+        <mat-hint>{{ translate('app.setup.usernameHint') }}</mat-hint>
+        <mat-error>{{ translate('app.setup.usernameHint') }}</mat-error>
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>{{ translate('app.login.password') }}</mat-label>
+        <input matInput type="password" formControlName="password" autocomplete="new-password" required />
+        <mat-hint>{{ translate('app.common.passwordHint') }}</mat-hint>
+        <mat-error>{{ translate('app.common.passwordHint') }}</mat-error>
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>{{ translate('app.setup.confirm') }}</mat-label>
+        <input matInput type="password" formControlName="confirm" autocomplete="new-password" required />
+        <mat-error>{{ translate('app.setup.mismatch') }}</mat-error>
+      </mat-form-field>
+      @if ($error(); as error) {
+        <p role="alert" class="text-error">{{ translate(error) }}</p>
+      }
+      <button matButton="filled" type="submit" class="min-h-12" [disabled]="$busy()">
+        {{ translate('app.setup.title') }}
+      </button>
+    </form>
+  } @else {
+    <h1 class="[font:var(--mat-sys-headline-small)] font-semibold!">{{ translate('app.login.title') }}</h1>
+    <form class="flex flex-col gap-2" [formGroup]="form" (ngSubmit)="submit()">
+      <mat-form-field appearance="outline">
+        <mat-label>{{ translate('app.login.username') }}</mat-label>
+        <input
+          matInput
+          formControlName="username"
+          autocomplete="username"
+          autocapitalize="none"
+          spellcheck="false"
+          required />
+      </mat-form-field>
+      <mat-form-field appearance="outline">
+        <mat-label>{{ translate('app.login.password') }}</mat-label>
+        <input matInput type="password" formControlName="password" autocomplete="current-password" required />
+      </mat-form-field>
+      @if ($error(); as error) {
+        <p role="alert" class="text-error">{{ translate(error) }}</p>
+      }
+      <button matButton="filled" type="submit" class="min-h-12" [disabled]="$busy()">
+        {{ translate('app.login.title') }}
+      </button>
+    </form>
+  }
 </section>

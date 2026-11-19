@@ -68,6 +68,50 @@ export class LoginPage {
   }
 }
 
+/** The admin account form the login page shows instead while no account exists. */
+export class SetupPage {
+  constructor(private readonly page: Page) {}
+
+  /** Open the app signed out; true when it offers to create the admin account once the server answered. */
+  async isOffered(): Promise<boolean> {
+    const answered = this.page.waitForResponse((response) => response.url().endsWith('/api/auth/setup'));
+    await this.page.goto('/');
+    await answered;
+    const setup = this.page.getByRole('heading', { name: 'Create the admin account' });
+    await expect(setup.or(this.page.getByRole('heading', { name: 'Log in' }))).toBeVisible();
+    return setup.isVisible();
+  }
+
+  /** From now on the server seems to have no account yet; creating one still reaches the server. */
+  async pretendNoAccount(): Promise<void> {
+    await this.page.route('/api/auth/setup', (route) =>
+      route.request().method() === 'GET' ? route.fulfill({ json: { open: true } }) : route.fallback(),
+    );
+  }
+
+  async stopPretending(): Promise<void> {
+    await this.page.unroute('/api/auth/setup');
+  }
+
+  /** Fill and submit the form; returns the message it shows (a field error or an alert). */
+  async create(username: string, password: string, confirm: string): Promise<string> {
+    await this.page.getByLabel('Username').fill(username);
+    await this.page.getByLabel('Password', { exact: true }).fill(password);
+    await this.page.getByLabel('Confirm password').fill(confirm);
+    await this.page.getByRole('button', { name: 'Create the admin account' }).click();
+    const message = this.page.getByRole('alert').or(this.page.locator('mat-error')).first();
+    await expect(message).toBeVisible();
+    return (await message.innerText()).trim();
+  }
+
+  /** The heading shown now: the admin account form or the login form. */
+  async heading(): Promise<string> {
+    const heading = this.page.getByRole('heading', { level: 1 });
+    await expect(heading).toBeVisible();
+    return (await heading.innerText()).trim();
+  }
+}
+
 export class PasswordPage {
   constructor(private readonly page: Page) {}
 

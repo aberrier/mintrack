@@ -7,6 +7,7 @@ import pydantic
 import pydantic_settings
 from pydantic.fields import FieldInfo
 
+from mintrack.core.accounts.config import AccountsConfig
 from mintrack.db.config import DatabaseConfig
 from mintrack.integrations.tmdb.config import TMDBConfig
 from mintrack.integrations.tvmaze.config import TvmazeConfig
@@ -86,6 +87,7 @@ class Config(pydantic_settings.BaseSettings):
     project: ProjectConfig = ProjectConfig()
     server: ServerConfig = ServerConfig()
     security: SecurityConfig = SecurityConfig()
+    accounts: AccountsConfig = AccountsConfig()
     # Validated even when no variable is set, so each missing field is reported by its own variable name.
     database: DatabaseConfig = pydantic.Field(default_factory=dict, validate_default=True)
     logging: ObservabilityConfig = ObservabilityConfig()
@@ -138,6 +140,7 @@ def get_config() -> Config:
 
 
 __all__ = [
+    "AccountsConfig",
     "Config",
     "ConfigError",
     "DatabaseConfig",

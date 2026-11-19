@@ -1,7 +1,15 @@
 import { expect, Page } from '@playwright/test';
 import { ApiDriver } from '../drivers/api.driver';
 import { createAdmin } from '../drivers/cli';
-import { AdminUsersPage, DevicesSection, LoginPage, Navigation, PasswordPage, ProfilePage } from '../drivers/pages';
+import {
+  AdminUsersPage,
+  DevicesSection,
+  LoginPage,
+  Navigation,
+  PasswordPage,
+  ProfilePage,
+  SetupPage,
+} from '../drivers/pages';
 
 export interface Account {
   username: string;
@@ -77,6 +85,36 @@ export async function canDisable(admin: Page, username: string): Promise<boolean
 export async function openSignedOut(page: Page, where: 'home' | 'profile' = 'home'): Promise<void> {
   await new Navigation(page).openBookmark(where === 'home' ? '/' : '/profile');
   await new LoginPage(page).waitShown();
+}
+
+/** Whether a signed-out visitor is offered to create the admin account, as the server answers. */
+export async function isAdminSetupOffered(page: Page): Promise<boolean> {
+  return new SetupPage(page).isOffered();
+}
+
+/**
+ * Open the app signed out as on a first run: the end-to-end database is shared with tests that create accounts, so
+ * only the answer saying that no account exists is made up. Returns whether the admin account form shows.
+ */
+export async function openFirstRun(page: Page): Promise<boolean> {
+  const setup = new SetupPage(page);
+  await setup.pretendNoAccount();
+  return setup.isOffered();
+}
+
+/** From now on the server's own answers reach the page again. */
+export async function accountCreatedMeanwhile(page: Page): Promise<void> {
+  await new SetupPage(page).stopPretending();
+}
+
+/** Submit the admin account form; returns the message it shows. */
+export async function createAdminAccount(page: Page, confirm = PASSWORD): Promise<string> {
+  return new SetupPage(page).create(unique('owner'), PASSWORD, confirm);
+}
+
+/** The heading of the signed-out page: the admin account form or the login form. */
+export async function signedOutHeading(page: Page): Promise<string> {
+  return new SetupPage(page).heading();
 }
 
 export async function logIn(page: Page, account: Account): Promise<void> {

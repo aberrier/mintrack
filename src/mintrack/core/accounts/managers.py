@@ -54,6 +54,10 @@ class UserDisabledError(Exception):
     pass
 
 
+class SetupClosedError(Exception):
+    pass
+
+
 class UserStatus(enum.StrEnum):
     INVITED = enum.auto()
     INVITATION_EXPIRED = enum.auto()
@@ -132,22 +136,13 @@ class AccountManager:
     ) -> tuple[User, str]:
         """Return the user and a new session token, or raise the same error for every kind of failure."""
         key, address = username.lower(), client_network(address)
-        window_start = now - LOGIN_FAILURE_WINDOW
-        # Attempts from one address wait for each other, so parallel requests can't all pass the count.
-        await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"login|{address}"))))
-        failures = await self.session.scalar(
-            sa.select(sa.func.count()).where(LoginFailure.address == address, LoginFailure.failed_at > window_start)
-        )
-        if (failures or 0) >= LOGIN_FAILURE_LIMIT:
-            raise LoginRateLimitedError
+        await self._check_failure_limit(address, now)
 
         user = await self.session.scalar(sa.select(User).where(sa.func.lower(User.username) == key))
         password_hash = user.password_hash if user is not None and user.is_active else None
         verified = await asyncio.to_thread(verify_password, password_hash, password)
         if not verified or user is None or password_hash is None:
-            await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= window_start))
-            self.session.add(LoginFailure(username=key, address=address, failed_at=now))
-            await self.session.flush()
+            await self._record_failure(key, address, now)
             raise InvalidCredentialsError
 
         await self.session.execute(
@@ -155,6 +150,49 @@ class AccountManager:
         )
         if needs_rehash(password_hash):
             user.password_hash = await asyncio.to_thread(hash_password, password)
+        return user, await self.create_session(user, now=now, user_agent=user_agent)
+
+    async def _check_failure_limit(self, address: str, now: dt.datetime) -> None:
+        # Attempts from one address wait for each other, so parallel requests can't all pass the count.
+        await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext(f"login|{address}"))))
+        failures = await self.session.scalar(
+            sa.select(sa.func.count()).where(
+                LoginFailure.address == address, LoginFailure.failed_at > now - LOGIN_FAILURE_WINDOW
+            )
+        )
+        if (failures or 0) >= LOGIN_FAILURE_LIMIT:
+            raise LoginRateLimitedError
+
+    async def _record_failure(self, key: str, address: str, now: dt.datetime) -> None:
+        await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= now - LOGIN_FAILURE_WINDOW))
+        self.session.add(LoginFailure(username=key, address=address, failed_at=now))
+        await self.session.flush()
+
+    async def setup_is_open(self) -> bool:
+        """The first admin can be created from the browser while no user exists at all."""
+        return not await self.session.scalar(sa.select(sa.exists(sa.select(User.id))))
+
+    async def create_first_admin(
+        self, username: str, password: str, *, address: str, now: dt.datetime, user_agent: str | None = None
+    ) -> tuple[User, str]:
+        """Create the first user, an active admin with this password, and a session; once only, limited like login."""
+        if not is_valid_username(username):
+            raise InvalidUsernameError
+        address = client_network(address)
+        # Concurrent requests wait for each other, so only the first one finds no user.
+        await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext("setup"))))
+        await self._check_failure_limit(address, now)
+        if not await self.setup_is_open():
+            await self._record_failure(username.lower(), address, now)
+            raise SetupClosedError
+        user = User(
+            username=username,
+            password_hash=await asyncio.to_thread(hash_password, password),
+            is_admin=True,
+            is_active=True,
+        )
+        self.session.add(user)
+        await self.session.flush()
         return user, await self.create_session(user, now=now, user_agent=user_agent)
 
     async def create_session(self, user: User, *, now: dt.datetime, user_agent: str | None = None) -> str:

@@ -13,6 +13,9 @@ export class ApiService {
     login: (username: string, password: string) =>
       this.http.post<Model.Http.User>('/api/auth/login', { username, password }),
     me: () => this.http.get<Model.Http.User>('/api/auth/me'),
+    setupState: () => this.http.get<Model.Http.SetupState>('/api/auth/setup'),
+    setUp: (username: string, password: string, timezone: string) =>
+      this.http.post<Model.Http.User>('/api/auth/setup', { username, password, timezone }),
     updateMe: (timezone: string) => this.http.patch<Model.Http.User>('/api/auth/me', { timezone }),
     logout: () => this.http.post<void>('/api/auth/logout', null),
     logoutEverywhere: () => this.http.post<void>('/api/auth/logout-all', null),
