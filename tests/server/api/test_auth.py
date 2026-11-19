@@ -158,6 +158,60 @@ async def test_logout_everywhere_ends_every_session(api_app: fastapi.FastAPI, cr
         assert (await laptop.get("/api/auth/me")).status_code == 401
 
 
+ANDROID_CHROME = (
+    "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36"
+)
+
+
+async def test_sessions_lists_the_signed_in_devices_and_signs_one_out(
+    api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
+) -> None:
+    alice = await create_user("alice")
+    async with make_client(api_app) as phone, make_client(api_app) as laptop:
+        phone.headers["User-Agent"] = ANDROID_CHROME
+        await log_in(phone)
+        await log_in(laptop)
+        laptop_session = await db_session.scalar(
+            sa.select(UserSession.id).where(UserSession.user_id == alice.id, UserSession.user_agent != ANDROID_CHROME)
+        )
+        db_session.add(
+            PushSubscription(
+                user_id=alice.id,
+                endpoint="https://push.test/laptop",
+                p256dh="k",
+                auth="a",
+                created_at=dt.datetime.now(dt.UTC),
+                session_id=laptop_session,
+            )
+        )
+
+        listed = (await laptop.get("/api/auth/sessions")).json()
+        signed_out = await phone.delete(f"/api/auth/sessions/{laptop_session}", headers=xsrf(phone))
+
+        assert [(item["device"], item["current"]) for item in listed] == [(None, True), ("Chrome on Android", False)]
+        assert signed_out.status_code == fastapi.status.HTTP_204_NO_CONTENT
+        assert (await laptop.get("/api/auth/me")).status_code == 401
+        assert (await phone.get("/api/auth/me")).status_code == 200
+        assert [item["device"] for item in (await phone.get("/api/auth/sessions")).json()] == ["Chrome on Android"]
+    assert await db_session.scalar(sa.select(sa.func.count()).select_from(PushSubscription)) == 0
+
+
+async def test_another_users_session_cannot_be_signed_out(
+    api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
+) -> None:
+    await create_user("alice")
+    bob = await create_user("bob")
+    async with make_client(api_app) as alice_client, make_client(api_app) as bob_client:
+        await log_in(alice_client)
+        await log_in(bob_client, "bob")
+        bob_session = await db_session.scalar(sa.select(UserSession.id).where(UserSession.user_id == bob.id))
+
+        response = await alice_client.delete(f"/api/auth/sessions/{bob_session}", headers=xsrf(alice_client))
+
+        assert response.status_code == fastapi.status.HTTP_404_NOT_FOUND
+        assert (await bob_client.get("/api/auth/me")).status_code == 200
+
+
 async def test_changing_the_password_keeps_only_the_current_session(
     api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
 ) -> None:

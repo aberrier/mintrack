@@ -34,6 +34,8 @@ class UserSession(DatabaseModel):
     token_hash: Mapped[bytes] = mapped_column(sa.LargeBinary, unique=True)
     created_at: Mapped[dt.datetime] = mapped_column(server_default=sa.func.now())
     last_used_at: Mapped[dt.datetime]
+    # The browser's User-Agent at sign-in, cut to a bounded length, to name the device in the list of sessions.
+    user_agent: Mapped[str | None]
 
 
 class LoginFailure(DatabaseModel):

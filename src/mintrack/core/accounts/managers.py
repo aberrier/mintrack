@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.db.models import LoginFailure, PushSubscription, User, UserSession
 
+from .devices import USER_AGENT_MAX_LENGTH
 from .passwords import hash_password, needs_rehash, verify_password
 from .tokens import hash_token, new_token
 
@@ -126,7 +127,9 @@ class AccountManager:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def login(self, username: str, password: str, *, address: str, now: dt.datetime) -> tuple[User, str]:
+    async def login(
+        self, username: str, password: str, *, address: str, now: dt.datetime, user_agent: str | None = None
+    ) -> tuple[User, str]:
         """Return the user and a new session token, or raise the same error for every kind of failure."""
         key, address = username.lower(), client_network(address)
         window_start = now - LOGIN_FAILURE_WINDOW
@@ -152,13 +155,39 @@ class AccountManager:
         )
         if needs_rehash(password_hash):
             user.password_hash = await asyncio.to_thread(hash_password, password)
-        return user, await self.create_session(user, now=now)
+        return user, await self.create_session(user, now=now, user_agent=user_agent)
 
-    async def create_session(self, user: User, *, now: dt.datetime) -> str:
+    async def create_session(self, user: User, *, now: dt.datetime, user_agent: str | None = None) -> str:
         token, token_hash = new_token()
-        self.session.add(UserSession(user_id=user.id, token_hash=token_hash, last_used_at=now))
+        self.session.add(
+            UserSession(
+                user_id=user.id,
+                token_hash=token_hash,
+                last_used_at=now,
+                user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
+            )
+        )
         await self.session.flush()
         return token
+
+    async def list_sessions(self, user_id: uuid.UUID, *, now: dt.datetime) -> list[UserSession]:
+        """The user's sessions still valid, the most recently used first."""
+        sessions = await self.session.scalars(
+            sa.select(UserSession)
+            .where(UserSession.user_id == user_id, UserSession.last_used_at > now - SESSION_IDLE_TIMEOUT)
+            .order_by(UserSession.last_used_at.desc(), UserSession.id.desc())
+        )
+        return list(sessions)
+
+    async def delete_user_session(self, user_id: uuid.UUID, session_id: uuid.UUID) -> bool:
+        """Sign out one of the user's sessions; False when the user has no such session."""
+        owned = await self.session.scalar(
+            sa.select(UserSession.id).where(UserSession.id == session_id, UserSession.user_id == user_id)
+        )
+        if owned is None:
+            return False
+        await self.delete_session(session_id)
+        return True
 
     async def get_session(self, token: str, *, now: dt.datetime) -> tuple[UserSession, User] | None:
         """The session and its user, unless the session went unused too long or the user is disabled."""
