@@ -1,7 +1,8 @@
 name: Release
 
 # Publishes X.Y.Z for every vX.Y.Z tag of a commit on master, X.Y when it is the highest of its line, and latest
-# when it is the highest of all: a patch to an older line moves neither.
+# when it is the highest of all: a patch to an older line moves neither. Then creates the GitHub release of the tag.
+# `just release X.Y.Z` sets the versions the tag must match.
 on:
   push:
     tags: ["v*"]
@@ -41,6 +42,12 @@ jobs:
             echo "::error::$TAG is not on master"
             exit 1
           fi
+          project=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          frontend=$(jq -r .version frontend/package.json)
+          if [[ "$project" != "$major.$minor.$patch" || "$frontend" != "$major.$minor.$patch" ]]; then
+            echo "::error::$TAG does not match pyproject.toml ($project) and frontend/package.json ($frontend)"
+            exit 1
+          fi
           highest() { git tag --list "$1" | grep -E "$pattern" | sort -V | tail -n 1; }
           image=ghcr.io/aberrier/mintrack
           list="$image:$major.$minor.$patch"
@@ -64,3 +71,20 @@ jobs:
           build-args: COMMIT=${{ steps.tags.outputs.commit }}
           provenance: mode=max
           sbom: true
+
+  release:
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          # The generated notes follow these lines.
+          notes="Image: \`docker pull ghcr.io/aberrier/mintrack:${TAG#v}\`"
+          gh release create "$TAG" --verify-tag --generate-notes --notes "$notes"
