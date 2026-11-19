@@ -52,8 +52,8 @@ class Catalog(typing.Protocol):
 EXTERNAL_PROVIDERS = (("Imdb", ExternalSource.IMDB), ("Tvdb", ExternalSource.TVDB))
 # Years a title search accepts between Jellyfin's production year and TMDB's release, after the exact year.
 YEAR_TOLERANCE = 1
-# The number of regular seasons (specials aside) Jellyfin has for a series, by its Jellyfin id.
-type RegularSeasons = collections.abc.Callable[[str], collections.abc.Awaitable[int]]
+# The number of regular seasons (specials aside) Jellyfin has for a series, by its Jellyfin id; None when unknown.
+type RegularSeasons = collections.abc.Callable[[str], collections.abc.Awaitable[int | None]]
 
 
 async def match(
