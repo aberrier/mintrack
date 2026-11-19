@@ -3,6 +3,7 @@ import enum
 import uuid
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mintrack.db.base import DatabaseModel
@@ -56,6 +57,8 @@ class Media(DatabaseModel):
     vote_count: Mapped[int | None]
     # A movie's first digital release, in any country; None when unknown, and for shows.
     digital_release_date: Mapped[dt.date | None]
+    # TMDB's genre names, in that language; None until fetched.
+    genres: Mapped[list[str] | None] = mapped_column(ARRAY(sa.Text))
 
 
 class Season(DatabaseModel):
@@ -86,3 +89,5 @@ class Episode(DatabaseModel):
     still_path: Mapped[str | None]
     vote_average: Mapped[float | None]
     vote_count: Mapped[int | None]
+    # Length in minutes; None when TMDB does not give it.
+    runtime: Mapped[int | None]

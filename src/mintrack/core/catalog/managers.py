@@ -172,6 +172,7 @@ class CatalogManager:
                 "language": self.tmdb.language,
                 "vote_average": movie.vote_average,
                 "vote_count": movie.vote_count,
+                "genres": [genre.name for genre in movie.genres],
             },
         )
 
@@ -192,6 +193,7 @@ class CatalogManager:
                 "language": self.tmdb.language,
                 "vote_average": show.vote_average,
                 "vote_count": show.vote_count,
+                "genres": [genre.name for genre in show.genres],
             },
         )
         seasons = [
@@ -209,6 +211,8 @@ class CatalogManager:
                 "still_path": episode.still_path,
                 "vote_average": episode.vote_average,
                 "vote_count": episode.vote_count,
+                # TMDB sends 0 for an unknown runtime too.
+                "runtime": episode.runtime or None,
             }
             for season in show.seasons
             for episode in season.episodes
@@ -218,7 +222,7 @@ class CatalogManager:
             Episode,
             episodes,
             keys=("media_id", "season_number", "episode_number"),
-            updated=("title", "air_date", "overview", "still_path", "vote_average", "vote_count"),
+            updated=("title", "air_date", "overview", "still_path", "vote_average", "vote_count", "runtime"),
         )
         await self._delete_dropped(media, seasons, episodes)
         return media

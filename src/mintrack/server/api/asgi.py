@@ -13,6 +13,7 @@ from mintrack.server.api import (
     jellyfin,
     push,
     ratings,
+    stats,
     tracking,
     upcoming,
 )
@@ -52,6 +53,7 @@ def build_api_router() -> fastapi.APIRouter:
     protected.include_router(imports.router)
     protected.include_router(api_tokens.router)
     protected.include_router(about.router)
+    protected.include_router(stats.router)
     router.include_router(protected)
     return router
 

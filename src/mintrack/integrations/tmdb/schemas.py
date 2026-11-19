@@ -50,6 +50,10 @@ class TMDBReleaseDates(TMDBModel):
 DIGITAL_RELEASE_TYPE = 4
 
 
+class TMDBGenre(TMDBModel):
+    name: str
+
+
 class TMDBMovie(TMDBModel):
     id: int
     title: str
@@ -61,6 +65,7 @@ class TMDBMovie(TMDBModel):
     status: str | None = None
     vote_average: float | None = None
     vote_count: int | None = None
+    genres: list[TMDBGenre] = []
     release_dates: TMDBReleaseDates = TMDBReleaseDates()
 
     def digital_release_date(self) -> dt.date | None:
@@ -83,6 +88,7 @@ class TMDBEpisode(TMDBModel):
     still_path: str | None = None
     vote_average: float | None = None
     vote_count: int | None = None
+    runtime: int | None = None
 
 
 class TMDBSeason(TMDBModel):
@@ -112,3 +118,4 @@ class TMDBShow(TMDBModel):
     seasons: list[TMDBSeason] = []
     vote_average: float | None = None
     vote_count: int | None = None
+    genres: list[TMDBGenre] = []
