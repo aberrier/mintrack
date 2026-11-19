@@ -4,9 +4,12 @@ import { expect, test } from '../dsl/fixtures';
 
 test.use({ serviceWorkers: 'allow' });
 
-/** Loads the app until its service worker controls the page and has cached the app shell. */
+/**
+ * Waits on the app already open until its service worker controls the page and has cached the app shell. Loading the
+ * page again while the worker installs can leave WebKit's registration pending for good, so it reloads only once the
+ * worker is active.
+ */
 async function installApp(page: Page): Promise<void> {
-  await page.goto('/');
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload();
   await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null)).toBe(true);
