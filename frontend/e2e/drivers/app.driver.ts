@@ -442,6 +442,14 @@ export class AppDriver {
     await expect(button).toHaveAttribute('aria-pressed', 'true');
   }
 
+  librarySearch(): Locator {
+    return this.page.getByLabel('Search by title');
+  }
+
+  async searchLibrary(text: string): Promise<void> {
+    await this.librarySearch().fill(text);
+  }
+
   async selectedLibraryChoices(): Promise<string[]> {
     return (await this.page.getByRole('button', { pressed: true }).allInnerTexts()).map((text) => text.trim());
   }

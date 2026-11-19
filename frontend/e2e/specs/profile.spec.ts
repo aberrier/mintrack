@@ -3,11 +3,13 @@ import {
   addMovie,
   choices,
   choose,
+  collectionSearch,
   libraryOfThree,
   mcpHelp,
   openAndGoBack,
   profile,
   reload,
+  searchCollection,
   seeAllShows,
   settings,
   titles,
@@ -90,4 +92,20 @@ test('See all opens a grid sorted and filtered by progress, both kept in the add
   await reload(viewer);
   await expect.poll(() => choices(viewer)).toEqual(['A–Z', 'Finished']);
   await expect.poll(() => titles(viewer)).toEqual([library.finished]);
+});
+
+test('searching the collection by title narrows the grid, the search kept in the address', async ({ viewer }) => {
+  // Given three shows
+  const library = await libraryOfThree(viewer);
+  await seeAllShows(viewer);
+
+  // When they search for part of a title, in another case
+  const address = await searchCollection(viewer, 'birch');
+
+  // Then only that show is listed, also after a reload
+  await expect.poll(() => titles(viewer)).toEqual([library.notStarted]);
+  expect(address).toContain('q=birch');
+  await reload(viewer);
+  expect(await collectionSearch(viewer)).toBe('birch');
+  await expect.poll(() => titles(viewer)).toEqual([library.notStarted]);
 });

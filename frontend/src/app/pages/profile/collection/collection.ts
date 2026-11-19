@@ -1,5 +1,8 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input, OnInit, signal } from '@angular/core';
 import { rxResource } from '@angular/core/rxjs-interop';
+import { MatFormField, MatLabel, MatPrefix } from '@angular/material/form-field';
+import { MatIcon } from '@angular/material/icon';
+import { MatInput } from '@angular/material/input';
 import { Router } from '@angular/router';
 import { appRoutes } from '../../../app.paths';
 import { injectTranslator } from '../../../core/i18n';
@@ -19,14 +22,28 @@ const PROGRESS: Record<Model.Http.MediaType, Model.Http.TrackingStatus[]> = {
 };
 const ALL_PROGRESS: Model.Http.TrackingStatus[] = Object.values(PROGRESS).flat();
 
-/** All the user's shows or movies as a grid, sorted and filtered by progress; both choices live in the URL. */
+/**
+ * All the user's shows or movies as a grid, searched by title, sorted and filtered by progress; the three choices live
+ * in the URL.
+ */
 @Component({
   selector: 'app-collection',
-  imports: [MediaTile, EmptyState, Skeleton, LoadError, BackButton],
+  imports: [
+    MediaTile,
+    EmptyState,
+    Skeleton,
+    LoadError,
+    BackButton,
+    MatFormField,
+    MatLabel,
+    MatPrefix,
+    MatInput,
+    MatIcon,
+  ],
   templateUrl: './collection.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export default class Collection {
+export default class Collection implements OnInit {
   private readonly store = inject(TrackingStore);
   private readonly router = inject(Router);
   protected readonly translate = injectTranslator('app');
@@ -45,6 +62,14 @@ export default class Collection {
     transform: (value) => ALL_PROGRESS.find((status) => status === value) ?? null,
   });
 
+  /** The `q` query parameter: text the titles must contain. */
+  readonly q = input<string, string | undefined>('', { transform: (value) => value ?? '' });
+  /**
+   * The search field's text, read from the address once: typing then leads and the address follows, so a navigation
+   * still on its way never puts back an older text.
+   */
+  protected readonly $search = signal('');
+
   protected readonly $progressOptions = computed(() => PROGRESS[this.type()]);
   private readonly $query = computed(
     (): LibraryQuery => ({
@@ -57,16 +82,30 @@ export default class Collection {
   protected readonly $status = computed(() => this.$query().status ?? null);
   /** The cached grid renders at once, so the scroll position comes back; the fresh one then replaces it. */
   protected readonly $items = computed(() => this.store.library()[libraryKey(this.$query())]);
+  protected readonly $shownItems = computed(() => {
+    const search = this.$search().trim().toLowerCase();
+    const items = this.$items();
+    return search && items ? items.filter((item) => item.title.toLowerCase().includes(search)) : items;
+  });
   protected readonly library = rxResource({
     params: () => this.$query(),
     stream: ({ params }) => this.store.loadLibrary(params),
   });
+
+  ngOnInit(): void {
+    this.$search.set(this.q());
+  }
 
   protected choose(params: { sort?: Model.Http.LibrarySort; progress?: Model.Http.TrackingStatus | null }): void {
     const queryParams: Record<string, string | null> = {};
     if (params.sort) queryParams['sort'] = params.sort === 'last_watched' ? null : params.sort;
     if (params.progress !== undefined) queryParams['progress'] = params.progress;
     void this.router.navigate([], { queryParams, queryParamsHandling: 'merge', replaceUrl: true });
+  }
+
+  protected search(text: string): void {
+    this.$search.set(text);
+    void this.router.navigate([], { queryParams: { q: text || null }, queryParamsHandling: 'merge', replaceUrl: true });
   }
 
   protected sortLabel(sort: Model.Http.LibrarySort): string {
