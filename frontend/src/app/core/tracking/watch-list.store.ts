@@ -1,11 +1,10 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, EMPTY, filter, Observable, switchMap, tap } from 'rxjs';
-import { episodeCode } from '../../shared/episode-card/episode-card';
 import { ApiService } from '../api/api.service';
 import { AuthStore } from '../auth/auth.store';
 import { injectTranslator } from '../i18n';
-import { injectNotify } from '../notify';
+import { injectNotifyChecked, injectNotifyUndo } from '../notify';
 import { followingEpisode, isUpcoming } from './episodes';
 import { TrackingStore } from './tracking.store';
 
@@ -28,7 +27,8 @@ export class WatchListStore {
   private readonly api = inject(ApiService);
   private readonly tracking = inject(TrackingStore);
   private readonly auth = inject(AuthStore);
-  private readonly notify = injectNotify();
+  private readonly notifyUndo = injectNotifyUndo();
+  private readonly notifyChecked = injectNotifyChecked();
   private readonly translate = injectTranslator('app');
 
   private readonly $episodes = signal<Model.Http.WatchListEpisode[] | undefined>(undefined);
@@ -138,14 +138,7 @@ export class WatchListStore {
       if (!succeeded) this.restore(episode, index);
       this.settled(succeeded, entry, waiting);
     });
-    this.notify(
-      this.translate('app.watchList.checked', {
-        episode: episodeCode(episode.season_number, episode.episode_number, true),
-      }),
-      this.translate('app.watchList.undo'),
-    )
-      .onAction()
-      .subscribe(() => this.uncheck(episode, index, entry));
+    this.notifyChecked(episode.season_number, episode.episode_number, () => this.uncheck(episode, index, entry));
   }
 
   /** Unmark a card checked by mistake: it comes back where it was, and leaves the history. */
@@ -176,12 +169,10 @@ export class WatchListStore {
     this.replace(episode.tmdb_id, null);
     this.writes++;
     void this.tracking.trackShow(episode.tmdb_id, status).then((succeeded) => this.settled(succeeded, null, false));
-    this.notify(
+    this.notifyUndo(
       this.translate(status === 'watch_later' ? 'app.watchList.movedLater' : 'app.watchList.stopped'),
-      this.translate('app.watchList.undo'),
-    )
-      .onAction()
-      .subscribe(() => this.undo(episode, index));
+      () => this.undo(episode, index),
+    );
   }
 
   /** Load the next page of history, older than what is shown. */

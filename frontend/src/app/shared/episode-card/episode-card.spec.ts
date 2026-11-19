@@ -1,6 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { CardEpisode, EpisodeCard, episodeCode } from './episode-card';
+import { CardEpisode, EpisodeCard } from './episode-card';
 
 const EPISODE: CardEpisode = {
   tmdb_id: 7,
@@ -82,11 +82,6 @@ describe('EpisodeCard', () => {
     expect((await render({ finished: true })).querySelector('[data-testid="finished-badge"]')).not.toBeNull();
     expect((await render({ variant: 'grid' })).querySelector('[data-testid="finished-badge"]')).not.toBeNull();
     expect((await render({ finished: false })).querySelector('[data-testid="finished-badge"]')).toBeNull();
-  });
-
-  it('pads season and episode numbers', () => {
-    expect(episodeCode(1, 5)).toBe('S01 | E05');
-    expect(episodeCode(12, 104)).toBe('S12 | E104');
   });
 
   it('shows a movie of the history by its title, watched', async () => {

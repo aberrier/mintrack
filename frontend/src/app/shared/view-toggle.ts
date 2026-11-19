@@ -12,15 +12,13 @@ import {
 import { MatIconButton } from '@angular/material/button';
 import { MatIcon } from '@angular/material/icon';
 import { injectTranslator } from '../core/i18n';
+import { readStored, writeStored } from '../core/stored';
 
 export type ViewMode = 'list' | 'grid';
 
 const STORAGE_PREFIX = 'mintrack.view.';
 
-/**
- * The list or grid choice of each screen, remembered on this device. Storage may be unavailable (private browsing,
- * blocked site data): the choice then lasts until the app reloads.
- */
+/** The list or grid choice of each screen, remembered on this device. */
 @Injectable({ providedIn: 'root' })
 export class ViewModes {
   private readonly modes = new Map<string, WritableSignal<ViewMode>>();
@@ -31,28 +29,16 @@ export class ViewModes {
 
   set(key: string, mode: ViewMode): void {
     this.modeFor(key).set(mode);
-    try {
-      localStorage.setItem(STORAGE_PREFIX + key, mode);
-    } catch {
-      // Kept in memory only.
-    }
+    writeStored(STORAGE_PREFIX + key, mode);
   }
 
   private modeFor(key: string): WritableSignal<ViewMode> {
     let mode = this.modes.get(key);
     if (!mode) {
-      mode = signal(readMode(key));
+      mode = signal(readStored(STORAGE_PREFIX + key) === 'grid' ? 'grid' : 'list');
       this.modes.set(key, mode);
     }
     return mode;
-  }
-}
-
-function readMode(key: string): ViewMode {
-  try {
-    return localStorage.getItem(STORAGE_PREFIX + key) === 'grid' ? 'grid' : 'list';
-  } catch {
-    return 'list';
   }
 }
 
