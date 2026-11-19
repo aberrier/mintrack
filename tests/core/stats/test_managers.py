@@ -48,9 +48,10 @@ async def test_totals_and_minutes_count_each_episode_by_its_runtime_or_its_shows
         await watch(db_session, user, episode, NOW)
     await watch_movie(db_session, user, await add_movie(db_session, "Heat", 170, ["Action", "Crime"]), NOW)
     await watch_movie(db_session, user, await add_movie(db_session, "Untimed", None, []), NOW)
-    # Another user's watches are theirs: an episode of the same show, another show and a movie, with their own genre
-    # and network.
+    # Another user's watches are theirs: an episode of the same show they follow too, another show and a movie, with
+    # their own genre and network.
     other = await add_user(db_session)
+    await follow(db_session, other, dark, TrackingStatus.WATCHING)
     await watch(db_session, other, dark_episodes[1, 1], NOW)
     gloom, gloom_episodes = await add_show(db_session, {(1, 1): None}, title="Gloom")
     gloom.network, gloom.genres = "BBC", ["Horror"]
