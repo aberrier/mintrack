@@ -6,7 +6,7 @@ import { routesConfig } from './app.routes';
 import { signedOutOn401 } from './core/auth/guards';
 import { registerIcons } from './core/icons/icons';
 import { SERVICE_WORKER_SCRIPT } from './core/pwa/trusted-types';
-import { promptForUpdates, reloadOnMissingChunk } from './core/pwa/update-prompt';
+import { promptForUpdates, reloadOnMissingChunk, watchPageExit } from './core/pwa/update-prompt';
 import { AppTitleStrategy } from './core/title';
 
 // HttpClient's XSRF support is on by default: it echoes the XSRF-TOKEN cookie in X-XSRF-TOKEN on unsafe requests.
@@ -22,5 +22,6 @@ export const appConfig: ApplicationConfig = {
     }),
     provideAppInitializer(registerIcons),
     provideAppInitializer(promptForUpdates),
+    provideAppInitializer(watchPageExit),
   ],
 };

@@ -7,6 +7,16 @@ import { injectTranslator, TranslationPath } from '../i18n';
 
 const RELOADED_KEY = 'mintrack.reloadedFor';
 
+/** Set once the page starts unloading: WebKit then cancels the page's loads under way, code included. */
+let leaving = false;
+
+/** Notes when the page starts unloading, until it shows again from the back-forward cache. */
+export function watchPageExit(): void {
+  const window = inject(DOCUMENT).defaultView;
+  window?.addEventListener('beforeunload', () => (leaving = true));
+  window?.addEventListener('pageshow', () => (leaving = false));
+}
+
 /**
  * Offers a reload when a new version is ready, or when the cached one can no longer run. An app left open in the
  * background looks for a new version each time it comes back to the screen.
@@ -51,11 +61,12 @@ export function promptForUpdates(): void {
 /**
  * A page's code that is gone from the server (a tab opened before a new version was deployed) loads the app again at
  * that page, once: a second failure for the same address is left to the router. Offline, the code is only out of
- * reach and a reload would fail too.
+ * reach and a reload would fail too; on a page being left, the load was cancelled and the reload would undo the leave.
  */
 export function reloadOnMissingChunk(error: NavigationError): void {
   const message = error.error instanceof Error ? error.error.message : String(error.error);
-  if (!/dynamically imported module|Importing a module script failed/i.test(message) || !navigator.onLine) return;
+  if (!/dynamically imported module|Importing a module script failed/i.test(message) || !navigator.onLine || leaving)
+    return;
   let reloadedFor: string | null = null;
   try {
     reloadedFor = sessionStorage.getItem(RELOADED_KEY);

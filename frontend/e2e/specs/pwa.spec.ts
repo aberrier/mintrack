@@ -44,10 +44,33 @@ test('the service worker leaves API pages to the server', async ({ admin: { page
 
 test('the settings explain that this server does not send notifications over plain HTTP', async ({
   admin: { page },
+  browserName,
 }) => {
+  test.skip(browserName === 'webkit', 'WebKit for Linux has no Push API: Safari’s case is the next scenario');
   await new Navigation(page).openSettings();
 
   const settings = page.getByTestId('push-settings');
   await expect(settings.getByRole('switch', { name: 'Notify me on this device when an episode airs' })).toBeDisabled();
   await expect(settings.getByTestId('push-hint')).toHaveText('Notifications are not set up on this server.');
+});
+
+test.describe('in a Safari tab on iPhone', () => {
+  // The settings only need to know whether the browser has a Push API.
+  test.use({ serviceWorkers: 'block' });
+
+  test.beforeEach(async ({ context, browserName }) => {
+    test.skip(browserName !== 'webkit', 'Safari on iOS');
+    // Safari on iOS has no Push API in a tab, and says whether the page runs from the Home Screen.
+    await context.addInitScript(() => Object.defineProperty(navigator, 'standalone', { value: false }));
+  });
+
+  test('the settings say to add the app to the Home Screen for notifications', async ({ admin: { page } }) => {
+    await new Navigation(page).openSettings();
+
+    const settings = page.getByTestId('push-settings');
+    await expect(
+      settings.getByRole('switch', { name: 'Notify me on this device when an episode airs' }),
+    ).toBeDisabled();
+    await expect(settings.getByTestId('push-hint')).toContainText('add MinTrack to the Home Screen');
+  });
 });

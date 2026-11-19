@@ -116,7 +116,7 @@ test.describe('Watch list', () => {
 
     // Then the card already offers the third episode
     await expect.poll(() => nextEpisodeOf(viewer, show)).toBe('S01|E03+2');
-    answer();
+    await answer();
 
     // And it is still there once the server has saved it
     await reopenWatchList(viewer);

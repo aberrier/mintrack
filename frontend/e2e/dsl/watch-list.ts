@@ -110,11 +110,18 @@ export async function reopenWatchList(viewer: Viewer): Promise<void> {
   await viewer.app.reloadWatchList();
 }
 
-/** A server that holds the next writes of watched episodes until the returned function is called. */
-export async function slowServer(viewer: Viewer): Promise<() => void> {
-  let answer!: () => void;
-  await viewer.app.holdRequests('/watched', new Promise<void>((resolve) => (answer = resolve)));
-  return answer;
+/**
+ * A server that holds the next writes of watched episodes until the returned function is called, which resolves once
+ * the server answered.
+ */
+export async function slowServer(viewer: Viewer): Promise<() => Promise<void>> {
+  let release!: () => void;
+  await viewer.app.holdRequests('/watched', new Promise<void>((resolve) => (release = resolve)));
+  return async () => {
+    const answered = viewer.app.nextResponse('/watched');
+    release();
+    await answered;
+  };
 }
 
 /** A server that refuses to save watched episodes. */

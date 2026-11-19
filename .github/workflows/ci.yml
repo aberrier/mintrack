@@ -77,13 +77,20 @@ jobs:
         run: npm run build
 
   e2e:
+    name: e2e (${{ matrix.browser }} ${{ matrix.shard }}/${{ matrix.shards }})
     runs-on: ubuntu-24.04
     timeout-minutes: 25
-    # The browser tests take most of the time: split them over three runners.
+    # The browser tests take most of the time: split over three runners for Chromium (Android phone and desktop) and
+    # two for WebKit (iPhone), which runs half as many tests.
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        include:
+          - { browser: chromium, projects: phone desktop, shard: 1, shards: 3 }
+          - { browser: chromium, projects: phone desktop, shard: 2, shards: 3 }
+          - { browser: chromium, projects: phone desktop, shard: 3, shards: 3 }
+          - { browser: webkit, projects: iphone, shard: 1, shards: 2 }
+          - { browser: webkit, projects: iphone, shard: 2, shards: 2 }
     steps:
       - uses: actions/checkout@v7
         with:
@@ -136,26 +143,45 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - uses: actions/cache@v4 # zizmor: ignore[cache-poisoning]
+        if: matrix.browser == 'chromium'
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          key: playwright-${{ runner.os }}-${{ matrix.browser }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: Install Playwright
         working-directory: frontend
-        # The tests run headless, which uses only the headless shell; a cached browser is not downloaded again. No
-        # --with-deps: the runner image already has Chromium's libraries, and apt mirrors can take minutes.
-        run: npm ci && npx playwright install --only-shell chromium
+        env:
+          BROWSER: ${{ matrix.browser }}
+        # A cached browser is not downloaded again. Chromium runs headless, which uses only the headless shell, and
+        # the runner image already has its libraries (apt mirrors can take minutes). WebKit's libraries are not on
+        # the runner: it runs from Playwright's own image, as a browser server on the host network.
+        run: |
+          npm ci
+          if [[ $BROWSER == webkit ]]; then
+            version=$(npx playwright --version | awk '{print $2}')
+            docker run --detach --rm --network host --ipc host --init --user pwuser \
+              "mcr.microsoft.com/playwright:v$version-noble" \
+              npx -y "playwright@$version" run-server --port 3765 --host 127.0.0.1
+            timeout 180 bash -c 'until curl -s -o /dev/null http://127.0.0.1:3765/; do sleep 1; done'
+          else
+            npx playwright install --only-shell chromium
+          fi
       - name: Browser tests
         working-directory: frontend
         env:
           MINTRACK_E2E_BASE_URL: http://localhost:8000
-          SHARD: ${{ matrix.shard }}
-        run: npx playwright test --shard="$SHARD/3"
+          PROJECTS: ${{ matrix.projects }}
+          SHARD: ${{ matrix.shard }}/${{ matrix.shards }}
+          BROWSER: ${{ matrix.browser }}
+        run: |
+          if [[ $BROWSER == webkit ]]; then export PW_TEST_CONNECT_WS_ENDPOINT=ws://127.0.0.1:3765/; fi
+          read -ra names <<< "$PROJECTS"
+          npx playwright test "${names[@]/#/--project=}" --shard="$SHARD"
       - name: Logs
         if: failure()
         run: docker compose logs && cat fake-tmdb.log fake-tvmaze.log
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report-${{ matrix.shard }}
+          name: playwright-report-${{ matrix.browser }}-${{ matrix.shard }}
           path: frontend/playwright-report
           retention-days: 7

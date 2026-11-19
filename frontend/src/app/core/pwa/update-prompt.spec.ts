@@ -4,7 +4,7 @@ import { NavigationError } from '@angular/router';
 import { SwUpdate, VersionEvent } from '@angular/service-worker';
 import { Subject } from 'rxjs';
 import { PAGE_LOCATION } from '../auth/auth.store';
-import { promptForUpdates, reloadOnMissingChunk } from './update-prompt';
+import { promptForUpdates, reloadOnMissingChunk, watchPageExit } from './update-prompt';
 
 function fakeRef() {
   const dismissed = new Subject<{ dismissedByAction: boolean }>();
@@ -65,6 +65,20 @@ describe('promptForUpdates', () => {
     );
 
     expect(assign).not.toHaveBeenCalled();
+  });
+
+  it('does not reload a page being left, whose loads the browser cancelled', () => {
+    const missing = new NavigationError(1, '/discover', new TypeError('Importing a module script failed'));
+    TestBed.runInInjectionContext(watchPageExit);
+
+    window.dispatchEvent(new Event('beforeunload'));
+    TestBed.runInInjectionContext(() => reloadOnMissingChunk(missing));
+    expect(assign).not.toHaveBeenCalled();
+
+    // Shown again from the back-forward cache, the page reloads for missing code again.
+    window.dispatchEvent(new Event('pageshow'));
+    TestBed.runInInjectionContext(() => reloadOnMissingChunk(missing));
+    expect(assign).toHaveBeenCalledExactlyOnceWith('/discover');
   });
 
   it('offers a reload when a new version is ready', async () => {
