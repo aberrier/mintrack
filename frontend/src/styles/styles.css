@@ -69,7 +69,7 @@ body {
   /* On a desktop screen, the phone layout stays readable in a centred column. */
   max-width: 48rem;
   margin-inline: auto;
-  animation: rise-in var(--duration-medium) var(--ease-emph-decel) both;
+  animation: rise-in var(--duration-medium) var(--ease-emph-decel) backwards;
 }
 
 /* Back over the top of a page's artwork, on a scrim of the page's surface. */
@@ -81,6 +81,8 @@ body {
   background: color-mix(in srgb, var(--mat-sys-surface) 70%, transparent);
 }
 
+/* Entering elements fill `backwards`, never `both`: the start state holds during a delay, and the finished animation
+   is released instead of keeping every list item and page on its own compositing layer. */
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -88,10 +90,12 @@ body {
   }
 }
 
-/* Cards and tiles rise in as a list appears, one after the other for the first few. Set --i to the item's index. */
+/* Cards and tiles rise in as a list appears, one after the other for the first few. Set --i to the item's index. From
+   index 24 on, items appear at once: a long list does not start hundreds of animations below the screen. */
 .enter {
-  animation: rise-in var(--duration-medium) var(--ease-emph-decel) both;
-  animation-delay: calc(min(var(--i, 0), 6) * var(--duration-stagger));
+  --enter-motion: clamp(0, 24 - var(--i, 0), 1);
+  animation: rise-in calc(var(--duration-medium) * var(--enter-motion)) var(--ease-emph-decel) backwards;
+  animation-delay: calc(min(var(--i, 0), 6) * var(--duration-stagger) * var(--enter-motion));
 }
 
 /* The shape of content still loading. It appears only after 300ms, so fast answers show no flash, then pulses. */
