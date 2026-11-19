@@ -124,8 +124,9 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: Install Playwright
         working-directory: frontend
-        # The tests run headless, which uses only the headless shell; a cached browser is not downloaded again.
-        run: npm ci && npx playwright install --with-deps --only-shell chromium
+        # The tests run headless, which uses only the headless shell; a cached browser is not downloaded again. No
+        # --with-deps: the runner image already has Chromium's libraries, and apt mirrors can take minutes.
+        run: npm ci && npx playwright install --only-shell chromium
       - name: Browser tests
         working-directory: frontend
         env:
