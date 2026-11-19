@@ -5,10 +5,13 @@ import {
   episodeSheet,
   openEpisode,
   openWatchListEpisode,
+  pickStars,
   rate,
   ratingShown,
   refusedWatchDate,
   removeRating,
+  snackBarOverSheet,
+  tapRatingButton,
   tapSheetCheck,
   tmdbScore,
   todayAt,
@@ -57,6 +60,25 @@ test('someone opens an episode from its show, marks it, dates the watch and rate
   await closeEpisode(viewer);
   await openEpisode(viewer, 1, 2);
   expect(await ratingShown(viewer)).toEqual({ stars: 2, review: '' });
+});
+
+test('on a small phone, the snackbars after a rating never cover the sheet', async ({ viewer, page }, testInfo) => {
+  test.skip(testInfo.project.name === 'desktop', 'phone layout');
+  if (testInfo.project.name === 'phone') await page.setViewportSize({ width: 360, height: 640 });
+
+  // Given an episode's sheet, taller than the screen allows, rated
+  await openShow(viewer, uniqueTitle('Signal Fires'));
+  await openEpisode(viewer, 1, 2);
+  await rate(viewer, 3);
+
+  // While "Rating saved" shows, the sheet sits above it, and Remove where it shows removes the rating
+  expect(await snackBarOverSheet(viewer)).toEqual({ message: 'Rating saved', sheetAbove: true });
+  expect(await tapRatingButton(viewer, 'Remove')).toBe('removed');
+
+  // While "Rating removed" offers Undo, new stars and Save where it shows save the new stars, not the old ones
+  expect(await snackBarOverSheet(viewer)).toEqual({ message: 'Rating removed', sheetAbove: true });
+  await pickStars(viewer, 5);
+  expect(await tapRatingButton(viewer, 'Save')).toBe('5 stars');
 });
 
 test('marking the episode of a watch list card from its sheet moves the card on', async ({ viewer }) => {
