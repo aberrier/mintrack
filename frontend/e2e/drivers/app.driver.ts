@@ -139,6 +139,11 @@ export class AppDriver {
     await this.page.route('/api/watch-list', (route) => route.fulfill({ json: response }));
   }
 
+  /** The CSS animations and transitions of the page still in effect, finished ones that hold their end state included. */
+  animationsInEffect(): Promise<number> {
+    return this.page.evaluate(() => document.getAnimations().length);
+  }
+
   /** Answer the server's error for requests whose URL ends with `suffix`. */
   async failRequests(suffix: string): Promise<void> {
     await this.page.route(

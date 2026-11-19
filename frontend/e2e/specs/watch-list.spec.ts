@@ -8,6 +8,7 @@ import {
   isGrid,
   isOnWatchList,
   isSectionOpen,
+  isStill,
   nextEpisodeOf,
   onWatchLaterShelf,
   openWatchList,
@@ -103,6 +104,33 @@ test.describe('Watch list', () => {
       await toggleSection(viewer, 'Watch next');
       await expect.poll(() => isOnWatchList(viewer, 'Recent show')).toBe(true);
     });
+  });
+
+  test('a long watch list comes to rest once its cards are in, leaving no animation in effect', async ({ viewer }) => {
+    // Given a watch list of 60 shows
+    await serveWatchList(viewer, {
+      episodes: Array.from({ length: 60 }, (_, index) => ({
+        tmdb_id: index + 1,
+        episode_id: `e${index}`,
+        show_title: `Show ${index}`,
+        poster_path: null,
+        season_number: 1,
+        episode_number: 2,
+        title: 'Next',
+        airstamp: null,
+        day: '2026-01-01',
+        remaining: 0,
+        last_watched_at: null,
+        section: 'next',
+      })),
+    });
+
+    // When they open it
+    await openWatchList(viewer);
+    expect(await sectionHeaders(viewer)).toEqual(['Watch next 60']);
+
+    // Then once the cards have risen in, no animation keeps running or holding its end state
+    await expect.poll(() => isStill(viewer)).toBe(true);
   });
 
   test('one tap on the check moves the card to the next episode before the server answers', async ({ viewer }) => {

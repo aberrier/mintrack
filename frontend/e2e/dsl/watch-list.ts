@@ -129,6 +129,11 @@ export async function refusingServer(viewer: Viewer): Promise<void> {
   await viewer.app.failRequests('/watched');
 }
 
+/** Whether the screen is still: no animation runs or holds its end state on the page. */
+export async function isStill(viewer: Viewer): Promise<boolean> {
+  return (await viewer.app.animationsInEffect()) === 0;
+}
+
 /** Whether the first card of the watch list is on screen. */
 export async function firstCardOnScreen(viewer: Viewer): Promise<boolean> {
   return expect(viewer.app.cards().first())
