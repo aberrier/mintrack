@@ -112,6 +112,14 @@ export async function openEveryScreen(
     { name: 'Settings', title: 'Settings · MinTrack', open: () => app.openSettings() },
     { name: 'MCP help', title: 'Connect an AI assistant · MinTrack', open: () => app.openMcpHelp() },
     { name: 'Notifications help', title: 'Get notifications · MinTrack', open: () => app.openPushHelp() },
+    {
+      name: 'Statistics',
+      title: 'Statistics · MinTrack',
+      open: async () => {
+        await app.openStats();
+        await app.stats();
+      },
+    },
     { name: 'Shows', title: 'Collection · MinTrack', open: () => app.openLibrary('Shows') },
     {
       name: 'Admin',

@@ -373,5 +373,37 @@ declare namespace Model {
       watched_at: string | null;
       rating: Rating | null;
     }
+
+    interface StatsMonth {
+      /** The first day of the month (YYYY-MM-DD), in the user's time zone. */
+      month: string;
+      episodes: number;
+      movies: number;
+    }
+
+    interface StatsRanked {
+      name: string;
+      /** Shows with a watched episode, and watched movies. */
+      titles: number;
+    }
+
+    interface Stats {
+      episodes: number;
+      movies: number;
+      shows: number;
+      finished_shows: number;
+      episode_minutes: number;
+      movie_minutes: number;
+      /** Left out of the minutes: TMDB gives no runtime for them. */
+      episodes_without_runtime: number;
+      movies_without_runtime: number;
+      /** The last 12 months, oldest first. */
+      months: StatsMonth[];
+      /** Days in a row with a watch, in the user's time zone. */
+      current_streak: number;
+      longest_streak: number;
+      genres: StatsRanked[];
+      networks: StatsRanked[];
+    }
   }
 }

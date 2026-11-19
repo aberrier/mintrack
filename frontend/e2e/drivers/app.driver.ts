@@ -493,6 +493,46 @@ export class AppDriver {
     return (await this.page.getByRole('heading', { level: 2 }).allInnerTexts()).map((text) => text.trim());
   }
 
+  /** The Statistics page, from its button on the Profile tab. */
+  async openStats(): Promise<void> {
+    await this.openTab('Profile');
+    await this.page.getByRole('link', { name: 'Statistics', exact: true }).click();
+    await expect(this.heading()).toHaveText('Statistics');
+  }
+
+  /**
+   * What the loaded Statistics page shows: time spent, totals and streaks by label, months, top genres and networks;
+   * null for its empty state.
+   */
+  async stats(): Promise<{
+    time: string;
+    figures: Record<string, string>;
+    months: string[];
+    genres: string[];
+    networks: string[];
+  } | null> {
+    const time = this.page.getByTestId('stats-total-time');
+    const empty = this.page.getByText('Nothing watched yet');
+    await expect(time.or(empty)).toBeVisible();
+    if (await empty.isVisible()) return null;
+    const figures: Record<string, string> = {};
+    for (const figure of await this.page.getByTestId('stats-figure').all()) {
+      figures[(await figure.locator('dt').innerText()).trim()] = (await figure.locator('dd').innerText()).trim();
+    }
+    const names = async (ranking: string) =>
+      trimmed(await this.page.getByTestId(ranking).getByTestId('stats-ranked-name').allInnerTexts());
+    return {
+      time: (await time.innerText()).trim(),
+      figures,
+      months: await this.page
+        .getByTestId('stats-months')
+        .getByRole('listitem')
+        .evaluateAll((items) => items.map((item) => item.getAttribute('aria-label') ?? '')),
+      genres: await names('stats-genres'),
+      networks: await names('stats-networks'),
+    };
+  }
+
   /** A code sample of the MCP help page: the server address, the JSON configuration or the Claude Code command. */
   async mcpSample(sample: 'url' | 'json' | 'command'): Promise<string> {
     return (await this.page.getByTestId(`mcp-${sample}`).innerText()).trim();

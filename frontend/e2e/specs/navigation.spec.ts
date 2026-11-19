@@ -54,8 +54,8 @@ test.describe('when the server cannot be reached', () => {
   });
 });
 
-// In parts that run in parallel, each checking every third screen.
-const PARTS = 3;
+// In parts that run in parallel, each checking every fourth screen.
+const PARTS = 4;
 for (let part = 0; part < PARTS; part++) {
   test(`every screen fits a 360px phone and the desktop, with 48px targets and no accessibility violation (${part + 1}/${PARTS})`, async ({
     admin: { page },

@@ -47,12 +47,12 @@ export class ApiDriver {
     return this.page.request.get(`/api/shows/${tmdbId}`);
   }
 
-  /** Add a movie found by its title, to watch later. */
-  async addMovie(title: string): Promise<void> {
+  /** Add a movie found by its title, to watch later or watched now. */
+  async addMovie(title: string, { watched = false } = {}): Promise<void> {
     const tmdbId = await this.findMovie(title);
     expect((await this.page.request.get(`/api/movies/${tmdbId}`)).ok(), `Loading movie "${title}"`).toBe(true);
     const added = await this.page.request.put(`/api/movies/${tmdbId}/tracking`, {
-      data: { watched: false },
+      data: { watched },
       headers: await this.xsrf(),
     });
     expect(added.ok(), `Adding movie "${title}"`).toBe(true);
