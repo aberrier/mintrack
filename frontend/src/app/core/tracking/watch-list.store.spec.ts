@@ -262,6 +262,27 @@ describe('WatchListStore', () => {
     http.expectOne('/api/watch-list').flush({ episodes: [card()] });
   });
 
+  it('offers to undo a check: the card comes back and the episode is unmarked', async () => {
+    loadShow();
+    loadList([card({ tmdb_id: 1, episode_id: 'x' }), card()]);
+
+    store.check(store.episodes()![1], NOW);
+    await pause();
+    http.expectOne('/api/shows/7/watched').flush({ status: 'watching', watched: { a: 'x', b: 'y' } });
+    await settle();
+    http.expectOne('/api/shows/7').flush(SHOW);
+    expect(snackBar.open).toHaveBeenCalledWith('S01E02 watched', 'Undo', { duration: 10_000 });
+    snackAction.next();
+
+    expect(store.episodes()!.map((e) => e.episode_id)).toEqual(['x', 'b']);
+    const unmark = http.expectOne('/api/shows/7/watched');
+    expect(unmark.request.body).toEqual({ episode_ids: ['b'], watched: false });
+    unmark.flush({ status: 'watching', watched: { a: 'x' } });
+    await settle();
+    http.expectOne('/api/shows/7').flush(SHOW);
+    http.expectOne('/api/watch-list').flush({ episodes: [card()] });
+  });
+
   it('says when taking a card out fails, and loads the list again', async () => {
     loadList([card()]);
 

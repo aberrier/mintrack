@@ -23,6 +23,24 @@ export async function addShow(viewer: Viewer): Promise<string> {
   return showStatus(viewer);
 }
 
+/**
+ * Add the open show while the server is slow to say which episode comes next. Returns how far down the seasons start
+ * right after the tap and once the Watch next card shows.
+ */
+export async function addShowOnSlowServer(viewer: Viewer): Promise<{ atTap: number; answered: number }> {
+  const show = `/api/shows/${viewer.app.mediaId()}`;
+  let release!: () => void;
+  await viewer.app.holdRequests(show, new Promise<void>((resolve) => (release = resolve)));
+  await viewer.app.clickButton('Add to library');
+  await expect(viewer.app.watchNextPending()).toBeAttached();
+  const atTap = await viewer.app.seasonsTop();
+  const answered = viewer.app.nextResponse(show);
+  release();
+  await answered;
+  await expect(viewer.app.watchNext()).toBeVisible();
+  return { atTap, answered: await viewer.app.seasonsTop() };
+}
+
 export async function showStatus(viewer: Viewer): Promise<string> {
   await expect(viewer.app.status('show-status')).toBeVisible();
   return (await viewer.app.status('show-status').innerText()).trim();

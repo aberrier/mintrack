@@ -2,6 +2,7 @@ import { expect, test } from '../dsl/fixtures';
 import {
   acceptEarlierEpisodes,
   addShow,
+  addShowOnSlowServer,
   answerUnmark,
   checkWatchNext,
   confettiAfter,
@@ -149,6 +150,20 @@ test('the Watch next card marks the next episode in one tap', async ({ viewer })
   await checkWatchNext(viewer);
   await expect.poll(() => watchNext(viewer)).toBe('S01|E03+2');
   expect(await isWatched(viewer, 1, 2)).toBe(true);
+});
+
+test('adding a show keeps the Watch next place, so the seasons stay still when the server answers', async ({
+  viewer,
+}) => {
+  // Given a show found by searching, and a server slow to say which episode comes next
+  await openShow(viewer, uniqueTitle('Steady Ground'));
+
+  // When they add it
+  const { atTap, answered } = await addShowOnSlowServer(viewer);
+
+  // Then the first episode fills the place kept for it, the seasons where they were
+  expect(await watchNext(viewer)).toBe('S01|E01+4');
+  expect(answered).toBe(atTap);
 });
 
 test('someone marks a movie watched', async ({ viewer }) => {

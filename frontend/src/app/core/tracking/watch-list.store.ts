@@ -1,6 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { catchError, EMPTY, filter, Observable, switchMap, tap } from 'rxjs';
+import { episodeCode } from '../../shared/episode-card/episode-card';
 import { ApiService } from '../api/api.service';
 import { AuthStore } from '../auth/auth.store';
 import { injectTranslator } from '../i18n';
@@ -137,6 +138,24 @@ export class WatchListStore {
       if (!succeeded) this.restore(episode, index);
       this.settled(succeeded, entry, waiting);
     });
+    this.notify(
+      this.translate('app.watchList.checked', {
+        episode: episodeCode(episode.season_number, episode.episode_number, true),
+      }),
+      this.translate('app.watchList.undo'),
+    )
+      .onAction()
+      .subscribe(() => this.uncheck(episode, index, entry));
+  }
+
+  /** Unmark a card checked by mistake: it comes back where it was, and leaves the history. */
+  private uncheck(episode: Model.Http.WatchListEpisode, index: number, entry: Model.Http.HistoryEntry | null): void {
+    this.restore(episode, index);
+    if (entry) this.$history.update((history) => history.filter((other) => other !== entry));
+    this.writes++;
+    void this.tracking
+      .setWatched(episode.tmdb_id, [{ id: episode.episode_id, season_number: episode.season_number }], false)
+      .then((succeeded) => this.settled(succeeded, null, true));
   }
 
   /** After the pause, the checked card gives way to `next`, unless something else already replaced it. */

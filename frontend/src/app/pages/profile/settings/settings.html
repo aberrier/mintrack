@@ -58,6 +58,29 @@
     <app-push-settings class="settings-card" />
   </section>
 
+  @if (haptics.supported) {
+    <section class="group px-4" aria-labelledby="settings-haptics">
+      <h2 id="settings-haptics" class="group-title">{{ translate('app.haptics.title') }}</h2>
+      <div class="settings-card">
+        <div class="flex min-h-12 items-center gap-4">
+          <div class="flex min-w-0 grow flex-col">
+            <span id="haptics-label" class="[font:var(--mat-sys-title-medium)]">{{
+              translate('app.haptics.toggle')
+            }}</span>
+            <span id="haptics-hint" class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+              {{ translate('app.haptics.hint') }}
+            </span>
+          </div>
+          <mat-slide-toggle
+            aria-labelledby="haptics-label"
+            aria-describedby="haptics-hint"
+            [checked]="haptics.enabled()"
+            (change)="haptics.setEnabled($event.checked)" />
+        </div>
+      </div>
+    </section>
+  }
+
   <section class="group px-4" aria-labelledby="settings-integrations">
     <h2 id="settings-integrations" class="group-title">{{ translate('app.profile.integrations') }}</h2>
     <app-jellyfin-accounts class="settings-card" />

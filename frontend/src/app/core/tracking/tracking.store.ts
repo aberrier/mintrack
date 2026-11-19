@@ -1,8 +1,22 @@
 import { inject, Injectable, signal } from '@angular/core';
-import { catchError, concat, concatMap, EMPTY, last, map, Observable, of, Subject, switchMap, tap } from 'rxjs';
+import {
+  catchError,
+  concat,
+  concatMap,
+  EMPTY,
+  finalize,
+  last,
+  map,
+  Observable,
+  of,
+  Subject,
+  switchMap,
+  tap,
+} from 'rxjs';
 import { Confetti } from '../../shared/confetti';
 import { ApiService } from '../api/api.service';
 import { AuthStore } from '../auth/auth.store';
+import { Haptics } from '../haptics';
 import { injectTranslator } from '../i18n';
 import { injectNotify } from '../notify';
 import { guessNext, isAired, isWatched, LoadedSeasons } from './episodes';
@@ -55,13 +69,14 @@ export function resultKey(mediaType: Model.Http.MediaType, tmdbId: number): Key 
  * behind the earlier writes to the same item. The server's answer becomes the item's confirmed value; on an error,
  * when no later write to that item is queued, the item goes back to its confirmed value and a snackbar says so.
  * Each write returns a promise of whether the server accepted it. When the server says a show became finished, from
- * wherever its episodes were marked, confetti falls.
+ * wherever its episodes were marked, confetti falls. Marks, and adding a title, vibrate briefly where allowed.
  */
 @Injectable({ providedIn: 'root' })
 export class TrackingStore {
   private readonly api = inject(ApiService);
   private readonly auth = inject(AuthStore);
   private readonly confetti = inject(Confetti);
+  private readonly haptics = inject(Haptics);
   private readonly notify = injectNotify();
   private readonly translate = injectTranslator('app');
 
@@ -70,6 +85,7 @@ export class TrackingStore {
   private readonly $library = signal<Record<string, Model.Http.LibraryItem[]>>({});
   private readonly $episodes = signal<Record<number, LoadedSeasons>>({});
   private readonly $added = signal<Partial<Record<Key, AddState>>>({});
+  private readonly $saving = signal<Partial<Record<number, true>>>({});
   private readonly showsAdded = new Subject<number>();
   private readonly queues = new Map<Key, Subject<Write>>();
   private readonly pending = new Map<Key, number>();
@@ -88,6 +104,11 @@ export class TrackingStore {
    * absent again if the server refused.
    */
   readonly added = this.$added.asReadonly();
+  /**
+   * Shows by TMDB id with a write on its way or being loaded again after one: their next episode is still a guess and
+   * may change.
+   */
+  readonly saving = this.$saving.asReadonly();
   /** The TMDB id of each show the server added to the library from the results. */
   readonly showAdded$ = this.showsAdded.asObservable();
 
@@ -125,6 +146,7 @@ export class TrackingStore {
    */
   setWatched(tmdbId: number, episodes: EpisodeRef[], watched: boolean): Promise<boolean> {
     if (episodes.length === 0) return Promise.resolve(true);
+    this.haptics.tap();
     return this.updateShow(
       tmdbId,
       (state) => this.marked(tmdbId, state, episodes, watched),
@@ -147,6 +169,7 @@ export class TrackingStore {
     };
     const loaded = this.$episodes()[tmdbId]?.[seasonNumber];
     if (loaded) return this.setWatched(tmdbId, targets(loaded), watched);
+    this.haptics.tap();
     return this.updateShow(
       tmdbId,
       (state) => {
@@ -170,6 +193,7 @@ export class TrackingStore {
 
   /** Add the show to the library or resume it (watching), put it aside (watch_later) or stop it. */
   trackShow(tmdbId: number, status: Model.Http.ShowTrackingChoice): Promise<boolean> {
+    if (!this.$shows()[tmdbId]?.tracking) this.haptics.tap();
     return this.updateShow(
       tmdbId,
       (state) => {
@@ -198,6 +222,7 @@ export class TrackingStore {
 
   /** Add the movie to the library, watched now or to watch later. */
   trackMovie(tmdbId: number, watched: boolean): Promise<boolean> {
+    this.haptics.tap();
     return this.updateMovieTracking(
       tmdbId,
       (tracking) => ({
@@ -229,6 +254,7 @@ export class TrackingStore {
    */
   async addFromResults(mediaType: Model.Http.MediaType, tmdbId: number): Promise<boolean> {
     const key = resultKey(mediaType, tmdbId);
+    this.haptics.tap();
     this.$added.update((added) => ({ ...added, [key]: 'saving' }));
     const saved = await (mediaType === 'tv'
       ? this.updateShow(
@@ -308,6 +334,7 @@ export class TrackingStore {
   ): Promise<boolean> {
     const set = (state: ShowState) =>
       this.$shows.update((all) => (all[tmdbId] ? { ...all, [tmdbId]: { ...all[tmdbId], ...state } } : all));
+    this.$saving.update((saving) => ({ ...saving, [tmdbId]: true }));
     const loaded = this.$shows()[tmdbId];
     const current: ShowState = {
       tracking: loaded?.tracking ?? null,
@@ -335,11 +362,18 @@ export class TrackingStore {
   /** Load a loaded show again, unless a write to it is queued, whose answer would then be undone on screen. */
   private refresh(tmdbId: number): void {
     const idle = () => (this.pending.get(`tv:${tmdbId}`) ?? 0) === 0;
-    if (!this.$shows()[tmdbId] || !idle()) return;
-    this.api.catalog.show(tmdbId).subscribe({
-      next: (show) => idle() && this.$shows.update((all) => ({ ...all, [tmdbId]: show })),
-      error: () => undefined,
-    });
+    if (!idle()) return;
+    const saved = () => {
+      if (idle()) this.$saving.update(({ [tmdbId]: _, ...others }) => others);
+    };
+    if (!this.$shows()[tmdbId]) return saved();
+    this.api.catalog
+      .show(tmdbId)
+      .pipe(finalize(saved))
+      .subscribe({
+        next: (show) => idle() && this.$shows.update((all) => ({ ...all, [tmdbId]: show })),
+        error: () => undefined,
+      });
   }
 
   private updateMovieTracking(

@@ -64,7 +64,7 @@
     <app-swipe-actions data-testid="episode">
       <div swipeAction class="flex h-full">
         @for (item of actions(); track item.id) {
-          <button type="button" class="swipe-action" (click)="action.emit(item.id)">
+          <button type="button" class="swipe-action state-layer" (click)="action.emit(item.id)">
             <mat-icon [svgIcon]="item.icon" aria-hidden="true" />
             <span>{{ item.label }}</span>
           </button>
