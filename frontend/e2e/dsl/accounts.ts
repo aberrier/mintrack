@@ -41,6 +41,8 @@ export async function signInAsNewAdmin(page: Page): Promise<Account> {
   await new ApiDriver(page).usePasswordLink(createAdmin(username), PASSWORD);
   await new Navigation(page).openBookmark('/');
   await expect(new Navigation(page).bar()).toBeVisible();
+  // The title changes once the page's code has loaded: leaving earlier makes WebKit fail that load, which the app logs.
+  await expect(page).toHaveTitle('Watch list · MinTrack');
   return account(username);
 }
 

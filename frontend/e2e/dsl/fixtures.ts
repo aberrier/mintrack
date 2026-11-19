@@ -31,12 +31,26 @@ export const test = base.extend<Fixtures>({
   consoleErrors: [
     async ({ page, allowedConsoleErrors }, use) => {
       const errors: string[] = [];
+      // A page being left logs as errors the loads WebKit cancels for the next one: from its beforeunload, which the
+      // page announces on the console, to the next page shown.
+      let leaving = false;
+      await page.addInitScript(
+        (signal) => addEventListener('beforeunload', () => console.debug(signal)),
+        LEAVING_SIGNAL,
+      );
+      page.on('domcontentloaded', () => (leaving = false));
       page.on('console', (message) => {
-        const allowed = allowedConsoleErrors.some((pattern) => pattern.test(message.text()));
-        if (message.type() === 'error' && !allowed && !isExpectedRefusal(message.text(), message.location().url))
+        if (message.text() === LEAVING_SIGNAL) leaving = true;
+        const allowed = [...allowedConsoleErrors, ENGINE_NOTICE].some((pattern) => pattern.test(message.text()));
+        if (
+          message.type() === 'error' &&
+          !allowed &&
+          !leaving &&
+          !isExpectedRefusal(message.text(), message.location().url)
+        )
           errors.push(message.text());
       });
-      page.on('pageerror', (error) => errors.push(error.message));
+      page.on('pageerror', (error) => !leaving && errors.push(error.message));
       await use(errors);
       expect(errors, 'console errors').toEqual([]);
     },
@@ -77,6 +91,13 @@ async function serveImagesLocally(context: BrowserContext): Promise<void> {
   );
   await context.route('https://image.tmdb.org/**', (route) => route.fulfill({ contentType: 'image/png', body: pixel }));
 }
+
+/**
+ * WebKit reports the viewport's interactive-widget key, which only Chromium reads (the on-screen keyboard resizes the
+ * layout there), as an error.
+ */
+const ENGINE_NOTICE = /^Viewport argument key "interactive-widget" not recognized and ignored\.$/;
+const LEAVING_SIGNAL = 'e2e: leaving the page';
 
 /** Endpoints whose 400 is an answer the scenarios provoke: a wrong password, an invalid link, a refused Jellyfin. */
 const REFUSING_ENDPOINTS = /\/api\/(auth\/(password|password-link|password-link\/use)|jellyfin\/[\w/-]+)$/;

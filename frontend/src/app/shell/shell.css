@@ -12,6 +12,11 @@
   padding: env(safe-area-inset-top) env(safe-area-inset-right) 16px env(safe-area-inset-left);
 }
 
+/* Signed out, without the bottom navigation, the content itself stays clear of the gesture bar. */
+.content:last-child {
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
 /* Material 3 navigation bar: 80px of tonal surface, a pill behind the active icon, labels always shown. */
 .bottom-nav {
   flex: none;

@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
 /**
- * Browser tests against a running MinTrack (the backend serving the built app).
- * Chromium only: it treats localhost as a secure origin for cookies and service workers; WebKit does not.
+ * Browser tests against a running MinTrack (the backend serving the built app): Chromium on an Android phone and a
+ * desktop, WebKit on an iPhone. Over http://localhost the session cookie has neither the __Host- prefix nor the Secure
+ * flag, and both engines treat localhost as a secure context, where service workers run.
  */
 export default defineConfig({
   testDir: './e2e/specs',
@@ -23,5 +24,6 @@ export default defineConfig({
   projects: [
     { name: 'phone', use: { ...devices['Pixel 7'] } },
     { name: 'desktop', use: { ...devices['Desktop Chrome'] } },
+    { name: 'iphone', use: { ...devices['iPhone 15'] } },
   ],
 });

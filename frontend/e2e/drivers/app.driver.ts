@@ -322,7 +322,9 @@ export class AppDriver {
   async confettiAfter(write: () => Promise<unknown>): Promise<boolean> {
     const scripts: string[] = [];
     const onRequest = (request: Request) => {
-      if (request.resourceType() === 'script') scripts.push(request.url());
+      // WebKit reports a module loaded by import() as another type of resource.
+      if (request.resourceType() === 'script' || new URL(request.url()).pathname.endsWith('.js'))
+        scripts.push(request.url());
     };
     this.page.on('request', onRequest);
     try {
@@ -646,7 +648,10 @@ export class AppDriver {
     const x = box.x + box.width / 2;
     // Just past the pull that loads it: what the finger pulls further scrolls into the history.
     if (touch) await this.touchDrag({ x, y: box.y + 150 }, { x, y: box.y + 200 });
-    else {
+    else if (this.page.context().browser()?.browserType().name() === 'webkit') {
+      // Playwright drives neither a finger's drag nor a wheel in mobile WebKit: the page gets the wheel's event.
+      await this.content().dispatchEvent('wheel', { deltaY: -400 });
+    } else {
       await this.page.mouse.move(x, box.y + 150);
       await this.page.mouse.wheel(0, -400);
     }
