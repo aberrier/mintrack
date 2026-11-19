@@ -39,10 +39,13 @@ html {
   );
 }
 
-// An icon button's content box is exactly the icon's size: as a block, the icon fills it instead of sitting on a text
-// baseline whose line box depends on the font.
-.mat-mdc-icon-button > .mat-icon {
-  display: block;
+// A snackbar's action (Undo) is as tall as the 48px tap target too.
+.mat-mdc-snack-bar-container {
+  @include mat.button-overrides(
+    (
+      text-container-height: 48px,
+    )
+  );
 }
 
 // A visible ring around every focused Material control, for keyboard users.

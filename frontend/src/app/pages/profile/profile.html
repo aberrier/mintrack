@@ -1,12 +1,15 @@
-<header class="flex items-center gap-4 ps-4 pe-3 pt-8">
+<!-- pe-1: the last icon, centred in its 48px button, then sits 16px from the edge like the avatar. -->
+<header class="flex items-center gap-4 ps-4 pe-1 pt-8">
   <span class="avatar" aria-hidden="true">{{ $initial() }}</span>
   <h1 class="min-w-0 flex-1 truncate [font:var(--mat-sys-headline-small)] font-semibold!">{{ $user()?.username }}</h1>
-  <a matIconButton [routerLink]="appRoutes.stats()" [attr.aria-label]="translate('app.stats.title')">
-    <mat-icon svgIcon="bar_chart" aria-hidden="true" />
-  </a>
-  <a matIconButton [routerLink]="appRoutes.settings()" [attr.aria-label]="translate('app.profile.settings')">
-    <mat-icon svgIcon="settings" aria-hidden="true" />
-  </a>
+  <div class="flex shrink-0">
+    <a matIconButton [routerLink]="appRoutes.stats()" [attr.aria-label]="translate('app.stats.title')">
+      <mat-icon svgIcon="bar_chart" aria-hidden="true" />
+    </a>
+    <a matIconButton [routerLink]="appRoutes.settings()" [attr.aria-label]="translate('app.profile.settings')">
+      <mat-icon svgIcon="settings" aria-hidden="true" />
+    </a>
+  </div>
 </header>
 
 @for (row of rows; track row.id) {
