@@ -74,6 +74,21 @@ export async function removeRating(viewer: Viewer): Promise<void> {
   await viewer.app.removeRating();
 }
 
+export async function pickStars(viewer: Viewer, stars: number): Promise<void> {
+  await viewer.app.pickStars(stars);
+}
+
+/** What the snackbar says, and whether the episode sheet ends above it. */
+export async function snackBarOverSheet(viewer: Viewer): Promise<{ message: string; sheetAbove: boolean }> {
+  return viewer.app.snackBarOverSheet();
+}
+
+/** Tap Save or Remove where the screen shows it, as a finger would; returns what it sent: "3 stars" or "removed". */
+export async function tapRatingButton(viewer: Viewer, name: 'Save' | 'Remove'): Promise<string> {
+  const { method, stars } = await viewer.app.tapRatingButton(name);
+  return method === 'DELETE' ? 'removed' : `${stars} stars`;
+}
+
 /** Use the Undo of the rating just removed, and wait until it is saved again. */
 export async function undoRemoval(viewer: Viewer): Promise<void> {
   const saved = viewer.app.nextResponse('/rating');

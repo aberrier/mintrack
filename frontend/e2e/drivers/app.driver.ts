@@ -823,6 +823,38 @@ export class AppDriver {
     await removed;
   }
 
+  async pickStars(stars: number): Promise<void> {
+    await this.ratingForm()
+      .getByRole('button', { name: `${stars} out of 5`, exact: true })
+      .click();
+  }
+
+  /**
+   * Tap the rating form's button where the screen shows it, as a finger would, without scrolling it into view first:
+   * whatever lies on top there gets the tap. Returns the rating request it sent, and the stars it saves.
+   */
+  async tapRatingButton(name: 'Save' | 'Remove'): Promise<{ method: string; stars: number | null }> {
+    const box = (await this.ratingForm().getByRole('button', { name, exact: true }).boundingBox())!;
+    const sent = this.page.waitForRequest((request) => new URL(request.url()).pathname.endsWith('/rating'));
+    const answered = this.nextResponse('/rating');
+    await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    const request = await sent;
+    await answered;
+    return { method: request.method(), stars: request.postDataJSON()?.stars ?? null };
+  }
+
+  /** The snackbar's text once it shows, and whether the episode sheet ends above it. */
+  async snackBarOverSheet(): Promise<{ message: string; sheetAbove: boolean }> {
+    const snackBar = this.snackBar();
+    await expect(snackBar).toBeVisible();
+    // Measured once it has grown to its full size.
+    await snackBar.evaluate((bar) => Promise.all(bar.getAnimations({ subtree: true }).map((each) => each.finished)));
+    const message = (await snackBar.locator('[matsnackbarlabel]').innerText()).trim();
+    const sheet = (await this.page.locator('.mat-bottom-sheet-container').boundingBox())!;
+    const bar = (await snackBar.boundingBox())!;
+    return { message, sheetAbove: sheet.y + sheet.height <= bar.y };
+  }
+
   /** The stars picked in the rating form (0 for none) and its review. */
   async ratingShown(): Promise<{ stars: number; review: string }> {
     const form = this.ratingForm();

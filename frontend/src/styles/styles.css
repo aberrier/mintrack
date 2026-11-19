@@ -359,17 +359,15 @@ body:has(.bottom-nav):not(:has(.mat-bottom-sheet-container)) .cdk-overlay-pane:h
   padding: 24px 16px calc(16px + env(safe-area-inset-bottom));
   border-top-left-radius: var(--mat-sys-corner-extra-large);
   border-top-right-radius: var(--mat-sys-corner-extra-large);
-  transition: padding-bottom var(--duration-short) var(--ease-emph-decel);
 }
 
-/* While a snackbar shows, the sheet's last buttons rise above it (a two-line snackbar and its margin), so they stay
-   visible and tappable. */
+/* While a snackbar shows, the whole sheet rises above it (a two-line snackbar and its margins), so nothing in the
+   sheet, scrolled or not, lies under the snackbar; on a short screen the sheet gets shorter so its top stays on
+   screen. The overlay positions its pane with an inline margin, hence the priority. */
+body:has(.mat-mdc-snack-bar-container) .cdk-overlay-pane.episode-sheet-panel {
+  margin-bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+}
+
 body:has(.mat-mdc-snack-bar-container) .episode-sheet-panel .mat-bottom-sheet-container {
-  padding-bottom: calc(16px + 72px + env(safe-area-inset-bottom));
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .episode-sheet-panel .mat-bottom-sheet-container {
-    transition: none;
-  }
+  max-height: min(80dvh, calc(100dvh - 104px - env(safe-area-inset-bottom)));
 }
