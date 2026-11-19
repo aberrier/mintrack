@@ -9,7 +9,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import ServerConfig, get_config
-from mintrack.core.accounts.managers import AccountManager, LinkProblem
+from mintrack.core.accounts.managers import AccountManager, LinkProblem, UserGoneError
 from mintrack.db.database import DatabaseManager
 from mintrack.db.models import User
 from mintrack.server.api.asgi import build_app
@@ -244,6 +244,22 @@ async def test_a_link_issued_while_an_invitation_is_used_lasts_24_hours(database
         async with AsyncSession(database.engine) as cleanup:
             await cleanup.execute(sa.delete(User).where(User.id == user.id))
             await cleanup.commit()
+
+
+async def test_no_link_is_issued_for_a_user_deleted_since_it_was_loaded(database: DatabaseManager) -> None:
+    async with AsyncSession(database.engine, expire_on_commit=False) as setup:
+        user, _ = await AccountManager(setup).create_user("race-delete", is_admin=False, now=now())
+        await setup.commit()
+
+    async with AsyncSession(database.engine) as issuing:
+        fetched = await issuing.get(User, user.id)
+        assert fetched is not None
+        async with AsyncSession(database.engine) as deleting:
+            await deleting.execute(sa.delete(User).where(User.id == user.id))
+            await deleting.commit()
+
+        with pytest.raises(UserGoneError):
+            await AccountManager(issuing).issue_link(fetched, now=now())
 
 
 async def test_a_link_replaced_while_it_is_used_fails_neither_request(database: DatabaseManager) -> None:
