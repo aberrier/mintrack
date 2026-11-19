@@ -24,7 +24,16 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Uuid(), nullable=False),
         sa.Column(
             "reason",
-            sa.Enum("used", "replaced", name="spentlinkreason", native_enum=False, create_constraint=True, length=None),
+            sa.Enum(
+                "invalid",
+                "expired",
+                "used",
+                "replaced",
+                name="linkproblem",
+                native_enum=False,
+                create_constraint=True,
+                length=None,
+            ),
             nullable=False,
         ),
         sa.Column("spent_at", sa.TIMESTAMP(timezone=True), nullable=False),

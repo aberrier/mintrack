@@ -92,7 +92,12 @@
                 {{ translate('app.admin.enable') }}
               </button>
             } @else {
-              <button matButton="outlined" type="button" class="min-h-12" (click)="newLink(user)">
+              <button
+                matButton="outlined"
+                type="button"
+                class="min-h-12"
+                [disabled]="$issuingFor() === user.id"
+                (click)="newLink(user)">
                 {{ translate('app.admin.newLink') }}
               </button>
               @if (user.id !== $me()?.id) {

@@ -31,7 +31,11 @@ class User(DatabaseModel):
 sa.Index("unique_users_lower_username", sa.func.lower(User.username), unique=True)
 
 
-class SpentLinkReason(enum.StrEnum):
+class LinkProblem(enum.StrEnum):
+    """Why a password link does not work; a spent link stores USED or REPLACED."""
+
+    INVALID = enum.auto()
+    EXPIRED = enum.auto()
     USED = enum.auto()
     REPLACED = enum.auto()
 
@@ -43,7 +47,7 @@ class SpentPasswordLink(DatabaseModel):
 
     token_hash: Mapped[bytes] = mapped_column(sa.LargeBinary, primary_key=True)
     user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey(User.id, ondelete="CASCADE"), index=True)
-    reason: Mapped[SpentLinkReason] = mapped_column(text_enum(SpentLinkReason))
+    reason: Mapped[LinkProblem] = mapped_column(text_enum(LinkProblem))
     spent_at: Mapped[dt.datetime]
 
 

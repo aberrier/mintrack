@@ -93,6 +93,8 @@ export default class Admin {
   protected readonly $shownLink = signal<ShownLink | null>(null);
   protected readonly $taken = signal(false);
   protected readonly $busy = signal(false);
+  /** The user a new link is being issued for: a second tap would replace the link about to be shown. */
+  protected readonly $issuingFor = signal<string | null>(null);
   protected readonly form = inject(NonNullableFormBuilder).group({
     username: ['', usernameValidators],
   });
@@ -132,11 +134,15 @@ export default class Admin {
   }
 
   protected async newLink(user: Model.Http.AdminUser): Promise<void> {
+    if (this.$issuingFor() !== null) return;
+    this.$issuingFor.set(user.id);
     try {
       const link = await firstValueFrom(this.api.adminUsers.newLink(user.id));
       this.$shownLink.set({ username: user.username, ...link });
     } catch {
       this.notify(this.translate('app.errors.unknown'));
+    } finally {
+      this.$issuingFor.set(null);
     }
     this.users.reload();
   }
