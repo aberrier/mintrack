@@ -3,9 +3,7 @@ import { readStored, writeStored } from './stored';
 
 const STORAGE_KEY = 'mintrack.haptics';
 /** Long enough for the slow vibration motors of many Android phones to be felt, short enough to read as a tick. */
-export const TAP_MS = 30;
-/** The tap's tick, then a long buzz no phone can miss: feeling only the buzz means the tick is too weak there. */
-export const TEST_PATTERN = [TAP_MS, 400, 300];
+const TAP_MS = 30;
 
 /**
  * A short vibration confirming a tap that changed the library: a check, a season, an added title. Only on a touch
@@ -30,18 +28,6 @@ export class Haptics {
 
   /** Vibrate once, briefly, when allowed. Must run while handling the tap: browsers may ignore it otherwise. */
   tap(): void {
-    if (this.$enabled()) this.vibrate(TAP_MS);
-  }
-
-  /**
-   * Vibrate the test pattern even while the switch is off, to tell whether this device vibrates at all. Returns false
-   * when the browser refused; true means only that it accepted, as the phone's own settings may still silence it.
-   */
-  test(): boolean {
-    return this.vibrate(TEST_PATTERN);
-  }
-
-  private vibrate(pattern: VibratePattern): boolean {
-    return this.supported && !!this.window?.navigator.vibrate(pattern);
+    if (this.supported && this.$enabled()) this.window?.navigator.vibrate(TAP_MS);
   }
 }

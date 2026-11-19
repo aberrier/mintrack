@@ -1,5 +1,5 @@
 import { addFromTrending, trending, TRENDING } from '../dsl/discover';
-import { recordVibrations, testVibration, turnVibrationOff, vibrationOffered, vibrations } from '../dsl/feedback';
+import { recordVibrations, takeVibrations, turnVibrationOff, vibrationOffered } from '../dsl/feedback';
 import { expect, test } from '../dsl/fixtures';
 import { closeEpisode, openEpisode, tapSheetCheck } from '../dsl/ratings';
 import {
@@ -27,29 +27,29 @@ test('every tap that changes the library vibrates once, while the tap is handled
   // When they add a show, then mark an episode, the Watch next card, a season, and unmark the season
   await openShow(viewer, uniqueTitle('Buzz Added'));
   await addShow(viewer);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
   await tapEpisode(viewer, 1, 1);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
   await checkWatchNext(viewer);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
   await tapSeason(viewer, 1);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
   await tapWatchedSeason(viewer, 1);
   await answerUnmark(viewer, 'Unmark');
   await expect.poll(() => isSeasonWatched(viewer, 1)).toBe(false);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
 
   // And so do the episode sheet's check, a movie's check and the + of a trending poster
   await openEpisode(viewer, 1, 2);
   await tapSheetCheck(viewer);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
   await closeEpisode(viewer);
   await openMovie(viewer, uniqueTitle('Buzz Movie'));
   await markMovieWatched(viewer);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
   await trending(viewer, 'Trending shows');
   await addFromTrending(viewer, 'Trending shows', TRENDING[0]);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
 });
 
 test('a watch list check vibrates, until vibration is turned off in Settings', async ({ viewer }) => {
@@ -58,17 +58,13 @@ test('a watch list check vibrates, until vibration is turned off in Settings', a
 
   await openWatchList(viewer);
   await check(viewer, watching);
-  expect(await vibrations(viewer)).toEqual([TAP]);
+  expect(await takeVibrations(viewer)).toEqual([TAP]);
 
   // When they turn vibration off, a check vibrates no more
   await turnVibrationOff(viewer);
   await openWatchList(viewer);
   await check(viewer, watching);
-  expect(await vibrations(viewer)).toEqual([]);
-
-  // But Settings' test still vibrates the tap's tick, then a long buzz, to tell whether the phone vibrates at all
-  await testVibration(viewer);
-  expect(await vibrations(viewer)).toEqual([[TAP, 400, 300]]);
+  expect(await takeVibrations(viewer)).toEqual([]);
 });
 
 test.describe('with reduced motion', () => {
@@ -81,7 +77,7 @@ test.describe('with reduced motion', () => {
     await openWatchList(viewer);
     await check(viewer, watching);
 
-    expect(await vibrations(viewer)).toEqual([TAP]);
+    expect(await takeVibrations(viewer)).toEqual([TAP]);
   });
 });
 
