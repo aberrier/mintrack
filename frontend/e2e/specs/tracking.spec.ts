@@ -18,6 +18,7 @@ import {
   showStatus,
   tapEpisode,
   tapSeason,
+  tapWatchedSeason,
   uniqueTitle,
   watchNext,
 } from '../dsl/tracking';
@@ -80,12 +81,12 @@ test('someone marks a season in one tap, and unmarks it only after confirming', 
   await expect.poll(() => showStatus(viewer)).toBe('Up to date');
 
   // When they tap the watched season again, a question comes first: cancelling keeps it
-  await tapSeason(viewer, 1);
+  expect(await tapWatchedSeason(viewer, 1)).toBe('Unmark Season 1?');
   await answerUnmark(viewer, 'Cancel');
   expect(await seasonProgress(viewer, 1)).toBe('3/3');
 
   // And confirming unmarks it
-  await tapSeason(viewer, 1);
+  await tapWatchedSeason(viewer, 1);
   await answerUnmark(viewer, 'Unmark');
   expect(await seasonProgress(viewer, 1)).toBe('0/3');
   await expect.poll(() => showStatus(viewer)).toBe('Watching');
@@ -101,7 +102,7 @@ test('the specials are marked in one tap too, and unmarked only after confirming
   expect(await isSeasonWatched(viewer, 0)).toBe(true);
 
   // Then tapping it again asks first, and confirming unmarks them
-  await tapSeason(viewer, 0);
+  expect(await tapWatchedSeason(viewer, 0)).toBe('Unmark Specials?');
   await answerUnmark(viewer, 'Unmark');
   expect(await seasonProgress(viewer, 0)).toBe('0/1');
 });

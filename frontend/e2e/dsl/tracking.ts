@@ -43,11 +43,25 @@ export async function acceptEarlierEpisodes(viewer: Viewer): Promise<string> {
   return viewer.app.acceptPreviousOffer();
 }
 
-/** One tap on a season's check; returns its `watched/aired` right after, before the server answers. */
+/**
+ * One tap on a season's check; returns its `watched/aired` right after, before the server answers. Then waits until
+ * the show the page loads again once the server saved the marks is on screen: the Watch next card it may bring moves
+ * the seasons down, under a next tap.
+ */
 export async function tapSeason(viewer: Viewer, season: number): Promise<string> {
+  const reloaded = viewer.app.nextShowLoad();
   await viewer.app.seasonCheck(season).click();
   await viewer.app.rendered();
-  return viewer.app.seasonProgress(season);
+  const progress = await viewer.app.seasonProgress(season);
+  await reloaded;
+  await viewer.app.rendered();
+  return progress;
+}
+
+/** One tap on a fully watched season's check; returns the question it asks before unmarking. */
+export async function tapWatchedSeason(viewer: Viewer, season: number): Promise<string> {
+  await viewer.app.seasonCheck(season).click();
+  return viewer.app.dialogQuestion();
 }
 
 /** The show page's Watch next card, such as "S01|E02+3". */

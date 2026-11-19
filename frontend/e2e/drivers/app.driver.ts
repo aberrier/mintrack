@@ -171,6 +171,14 @@ export class AppDriver {
     return this.page.waitForResponse((response) => new URL(response.url()).pathname.endsWith(suffix));
   }
 
+  /** The next answer to loading a show, as the show page does again once the writes to the show are saved. */
+  nextShowLoad(): Promise<unknown> {
+    return this.page.waitForResponse(
+      (response) =>
+        response.request().method() === 'GET' && /^\/api\/shows\/\d+$/.test(new URL(response.url()).pathname),
+    );
+  }
+
   searchResults(): Locator {
     return this.page.getByTestId('search-result');
   }
@@ -304,10 +312,21 @@ export class AppDriver {
     return (await this.seasonToggle(season).getByTestId('season-progress').innerText()).trim();
   }
 
-  /** Answer the open confirmation dialog with one of its buttons. */
+  /**
+   * The open confirmation dialog's question. While it is open, the page behind it is hidden from the accessibility
+   * tree, so role locators no longer find that page's buttons.
+   */
+  async dialogQuestion(): Promise<string> {
+    const title = this.page.getByRole('dialog').getByRole('heading');
+    await expect(title).toBeVisible();
+    return (await title.innerText()).trim();
+  }
+
+  /** Answer the open confirmation dialog with one of its buttons, once the page behind it shows the answer. */
   async answerDialog(button: string): Promise<void> {
     await this.page.getByRole('dialog').getByRole('button', { name: button }).click();
     await expect(this.page.getByRole('dialog')).toHaveCount(0);
+    await this.rendered();
   }
 
   confetti(): Locator {
