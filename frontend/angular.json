@@ -27,6 +27,11 @@
               {
                 "glob": "**/*",
                 "input": "public"
+              },
+              {
+                "glob": "outfit-latin-600-normal.woff2",
+                "input": "node_modules/@fontsource/outfit/files",
+                "output": "fonts"
               }
             ],
             "styles": ["src/styles/material-theme.scss", "src/styles/styles.css"],
