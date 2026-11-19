@@ -29,6 +29,8 @@ class AdminUserResponse(pydantic.BaseModel):
     is_admin: bool
     status: UserStatus
     last_seen_at: dt.datetime | None
+    # When the user's current invitation or reset link stops working, used or not; null without one.
+    link_expires_at: dt.datetime | None
 
 
 class CreateUserRequest(pydantic.BaseModel):
@@ -39,6 +41,7 @@ class LinkResponse(pydantic.BaseModel):
     """A password link, shown once: only its hash is stored."""
 
     link: str
+    expires_at: dt.datetime
 
 
 class CreatedUserResponse(LinkResponse):
@@ -56,7 +59,14 @@ def _describe(user: User) -> AdminUserResponse:
         is_admin=user.is_admin,
         status=user_status(user, utc_now()),
         last_seen_at=user.last_seen_at,
+        link_expires_at=user.link_expires_at,
     )
+
+
+def _link(user: User, token: str) -> LinkResponse:
+    """The link just issued to the user, with its deadline."""
+    link = password_link(get_config().project.public_origin, token)
+    return LinkResponse.model_validate({"link": link, "expires_at": user.link_expires_at})
 
 
 async def _get_user(db: DbSessionDepType, user_id: uuid.UUID) -> User:
@@ -82,7 +92,7 @@ async def create_user(body: CreateUserRequest, db: DbSessionDepType) -> CreatedU
     except UsernameTakenError:
         raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, "This username is taken") from None
     await db.commit()
-    return CreatedUserResponse(user=_describe(user), link=password_link(get_config().project.public_origin, token))
+    return CreatedUserResponse(user=_describe(user), **_link(user, token).model_dump())
 
 
 @router.post(
@@ -95,11 +105,11 @@ async def create_user(body: CreateUserRequest, db: DbSessionDepType) -> CreatedU
 async def create_link(user_id: uuid.UUID, db: DbSessionDepType) -> LinkResponse:
     user = await _get_user(db, user_id)
     try:
-        token = AccountManager.issue_link(user, now=utc_now())
+        token = await AccountManager(db).issue_link(user, now=utc_now())
     except UserDisabledError:
         raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, "Enable this user first") from None
     await db.commit()
-    return LinkResponse(link=password_link(get_config().project.public_origin, token))
+    return _link(user, token)
 
 
 @router.patch(

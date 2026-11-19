@@ -37,6 +37,9 @@ async def test_an_admin_invites_a_user_who_then_sets_a_password(
 
     assert created.status_code == fastapi.status.HTTP_201_CREATED
     assert created.json()["user"]["status"] == "invited"
+    expires_at = dt.datetime.fromisoformat(created.json()["expires_at"])
+    assert dt.timedelta(days=6, hours=23) < expires_at - dt.datetime.now(dt.UTC) <= dt.timedelta(days=7)
+    assert created.json()["user"]["link_expires_at"] == created.json()["expires_at"]
     assert taken.status_code == fastapi.status.HTTP_409_CONFLICT
     assert invalid.status_code == fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT
     async with make_client(api_app) as invitee:
