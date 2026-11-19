@@ -315,6 +315,12 @@ class AccountManager:
 
     async def issue_link(self, user: User, *, now: dt.datetime) -> str:
         """A new invitation (no password yet) or reset link; it replaces the user's previous one."""
+        if sa.inspect(user).persistent:
+            # Locking the row first waits for a concurrent use of the link, so the lifetime and the link to replace
+            # are read from the committed row; it is also the order use_link locks in, so the two never deadlock.
+            await self.session.scalar(
+                sa.select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True)
+            )
         if not user.is_active:
             raise UserDisabledError
         previous = user.link_token_hash
@@ -322,7 +328,6 @@ class AccountManager:
         user.link_token_hash = token_hash
         user.link_expires_at = now + (INVITATION_LIFETIME if user.password_hash is None else RESET_LIFETIME)
         if previous is not None:
-            # Autoflush updates the user row first, the order use_link locks in, so the two never deadlock.
             await self._spend_link(previous, user.id, LinkProblem.REPLACED, now)
         return token
 
@@ -336,13 +341,15 @@ class AccountManager:
 
     async def check_link(self, token: str, *, now: dt.datetime) -> User | LinkProblem:
         """The user a live link belongs to, or why the link does not work. Reading it never consumes it."""
-        token_hash = hash_token(token)
-        user = await self.session.scalar(sa.select(User).where(User.link_token_hash == token_hash))
-        if user is not None:
-            # A disabled user has no link, so a link found belongs to an active user.
-            if user.link_expires_at is None or user.link_expires_at <= now:
-                return LinkProblem.EXPIRED
-            return user
+        user = await self.session.scalar(sa.select(User).where(*_live_link(token, now)))
+        return user if user is not None else await self._link_problem(hash_token(token))
+
+    async def _link_problem(self, token_hash: bytes) -> LinkProblem:
+        """Why a link that is not live does not work; a disabled user's link is invalid."""
+        if await self.session.scalar(
+            sa.select(sa.exists().where(User.link_token_hash == token_hash, User.is_active.is_(True)))
+        ):
+            return LinkProblem.EXPIRED
         spent = await self.session.scalar(
             sa.select(SpentPasswordLink.reason).where(SpentPasswordLink.token_hash == token_hash)
         )
@@ -365,9 +372,8 @@ class AccountManager:
             execution_options={"synchronize_session": False, "populate_existing": True},
         )
         if user is None:
-            problem = await self.check_link(token, now=now)
-            # A link valid a moment ago but used by a concurrent request is reported as used.
-            return LinkProblem.USED if isinstance(problem, User) else problem
+            # A link used by a concurrent request is found among the spent links once that request commits.
+            return await self._link_problem(hash_token(token))
         await self._spend_link(hash_token(token), user.id, LinkProblem.USED, now)
         await self.delete_sessions(user.id)
         return user
