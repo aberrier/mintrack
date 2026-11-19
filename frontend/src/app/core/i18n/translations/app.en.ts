@@ -243,6 +243,7 @@ export default {
     runtimeMinutes: '{minutes}m',
     removeTitle: 'Remove this movie?',
     removeMessage: 'It leaves your library.',
+    digitalRelease: 'Digital release: {date}',
   },
   update: {
     ready: 'A new version of MinTrack is available',

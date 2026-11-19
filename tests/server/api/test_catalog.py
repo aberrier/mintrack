@@ -56,6 +56,15 @@ async def test_show_and_movie_pages_carry_the_backdrop_network_and_runtime(signe
     assert (movie["backdrop_path"], movie["network"], movie["runtime"]) == (f"/backdrop-{movie_id}.jpg", None, 118)
 
 
+async def test_a_movie_page_shows_its_first_digital_release(signed_in: httpx.AsyncClient) -> None:
+    await signed_in.get("/api/search", params={"query": "Digital Dune", "type": "movie"})
+
+    movie = (await signed_in.get(f"/api/movies/{media_id('movie', 'Digital Dune')}")).json()
+
+    yesterday = dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1)
+    assert movie["digital_release_date"] == yesterday.isoformat()
+
+
 async def test_a_show_page_lists_seasons_with_specials_last(signed_in: httpx.AsyncClient) -> None:
     await signed_in.get("/api/search", params={"query": "Night Shift"})
 

@@ -140,6 +140,18 @@ export async function today(viewer: Viewer): Promise<string> {
   return new Intl.DateTimeFormat('en-GB', { month: 'short', day: 'numeric', timeZone }).format(new Date());
 }
 
+/** Yesterday (UTC) as the app writes a day of this year, such as "17 Nov". */
+export function yesterday(): string {
+  const day = new Date(Date.now() - 86_400_000);
+  return new Intl.DateTimeFormat('en-GB', { month: 'short', day: 'numeric', timeZone: 'UTC' }).format(day);
+}
+
+/** The movie page's digital release line, or null when it shows none. */
+export async function digitalRelease(viewer: Viewer): Promise<string | null> {
+  const line = viewer.app.movieDigitalRelease();
+  return (await line.count()) ? (await line.innerText()).trim() : null;
+}
+
 export async function movieStatus(viewer: Viewer): Promise<string> {
   return (await viewer.app.status('movie-status').innerText()).trim();
 }

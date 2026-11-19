@@ -29,6 +29,23 @@ class TMDBSearchResult(TMDBModel):
     poster_path: str | None = None
 
 
+class TMDBReleaseDate(TMDBModel):
+    # 1 premiere, 2 limited theatrical, 3 theatrical, 4 digital, 5 physical, 6 TV.
+    type: int
+    release_date: dt.datetime
+
+
+class TMDBCountryReleases(TMDBModel):
+    release_dates: list[TMDBReleaseDate] = []
+
+
+class TMDBReleaseDates(TMDBModel):
+    results: list[TMDBCountryReleases] = []
+
+
+DIGITAL_RELEASE_TYPE = 4
+
+
 class TMDBMovie(TMDBModel):
     id: int
     title: str
@@ -40,6 +57,17 @@ class TMDBMovie(TMDBModel):
     status: str | None = None
     vote_average: float | None = None
     vote_count: int | None = None
+    release_dates: TMDBReleaseDates = TMDBReleaseDates()
+
+    def digital_release_date(self) -> dt.date | None:
+        """The first digital release, in any country."""
+        dates = [
+            release.release_date.date()
+            for country in self.release_dates.results
+            for release in country.release_dates
+            if release.type == DIGITAL_RELEASE_TYPE
+        ]
+        return min(dates, default=None)
 
 
 class TMDBEpisode(TMDBModel):

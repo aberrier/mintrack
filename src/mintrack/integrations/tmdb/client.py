@@ -98,7 +98,8 @@ class TMDBClient:
             return results
 
     async def movie(self, tmdb_id: int) -> TMDBMovie:
-        return TMDBMovie.model_validate(await self._get(f"movie/{tmdb_id}"))
+        """The movie with its release dates per country."""
+        return TMDBMovie.model_validate(await self._get(f"movie/{tmdb_id}", append_to_response="release_dates"))
 
     async def show(self, tmdb_id: int) -> TMDBShow:
         """The show with every season and its episodes."""

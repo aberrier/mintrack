@@ -120,6 +120,20 @@ async def notify_aired_episodes(timestamp: int) -> None:
         logger.info("episode notifications sent", episodes=count)
 
 
+@blueprint.periodic(cron="0 8 * * *")
+@blueprint.task(name="notify_digital_releases", queueing_lock="notify_digital_releases")
+async def notify_digital_releases(timestamp: int) -> None:
+    """Send push notifications for the movies on watch later just released digitally."""
+    key = get_vapid_key()
+    if key is None:
+        return
+    now = dt.datetime.fromtimestamp(timestamp, dt.UTC)
+    async with get_database().session() as session, push_client() as client:
+        count = await PushManager(session, client, key).notify_digital_releases(now)
+    if count:
+        logger.info("digital release notifications sent", movies=count)
+
+
 @blueprint.task(name=TaskName.SYNC_JELLYFIN_ACCOUNT)
 async def sync_jellyfin_account(account_id: str, *, full: bool = False) -> None:
     async with get_database().session() as session:

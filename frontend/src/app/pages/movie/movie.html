@@ -32,6 +32,12 @@
       }
     </div>
 
+    @if ($digitalRelease(); as date) {
+      <p class="-mt-3 text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="movie-digital-release">
+        {{ translate('app.movie.digitalRelease', { date }) }}
+      </p>
+    }
+
     @if (movie.overview) {
       <p class="max-w-[65ch] [font:var(--mat-sys-body-large)]">{{ movie.overview }}</p>
     }

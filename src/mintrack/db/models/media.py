@@ -54,6 +54,8 @@ class Media(DatabaseModel):
     # TMDB users' average score out of 10 and their number of votes; None until fetched again.
     vote_average: Mapped[float | None]
     vote_count: Mapped[int | None]
+    # A movie's first digital release, in any country; None when unknown, and for shows.
+    digital_release_date: Mapped[dt.date | None]
 
 
 class Season(DatabaseModel):
