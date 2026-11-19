@@ -134,6 +134,8 @@ class ShowResponse(MediaResponse):
 class MovieResponse(MediaResponse):
     tracking: MovieTrackingResponse | None
     rating: RatingResponse | None
+    # The first digital release, in any country, when TMDB knows it.
+    digital_release_date: dt.date | None
 
 
 @contextlib.contextmanager
@@ -250,6 +252,7 @@ async def get_movie(
         **MediaResponse.model_validate(media).model_dump(),
         tracking=MovieTrackingResponse.model_validate(tracking) if tracking else None,
         rating=RatingResponse.model_validate(rating) if rating else None,
+        digital_release_date=media.digital_release_date,
     )
     await session.commit()
     return response

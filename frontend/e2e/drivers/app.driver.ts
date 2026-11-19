@@ -268,6 +268,11 @@ export class AppDriver {
     return this.page.getByTestId('movie-watched');
   }
 
+  /** The movie page's line giving its first digital release, when known. */
+  movieDigitalRelease(): Locator {
+    return this.page.getByTestId('movie-digital-release');
+  }
+
   movieCheck(): Locator {
     return this.page.getByRole('button', { name: 'Mark watched', exact: true });
   }

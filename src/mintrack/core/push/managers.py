@@ -10,7 +10,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import episode_code
 from mintrack.core.upcoming.managers import IN_PROGRESS_STATUSES
-from mintrack.db.models import Episode, EpisodeNotification, Media, PushSubscription, User, UserMedia
+from mintrack.db.models import (
+    Episode,
+    EpisodeNotification,
+    Media,
+    MediaType,
+    MovieReleaseNotification,
+    PushSubscription,
+    TrackingStatus,
+    User,
+    UserMedia,
+)
 from mintrack.observability.logging import logger
 
 from .webpush import SendResult, Subscription, VapidKey, send
@@ -21,6 +31,8 @@ NOTIFICATION_WINDOW = dt.timedelta(minutes=30)
 FALLBACK_AIR_TIME = dt.timedelta(hours=9)
 # Each device costs a request per notification: a user cannot register an unbounded number of them.
 MAX_DEVICES = 20
+# A movie is notified when its first digital release is at most this many days old.
+RELEASE_WINDOW = dt.timedelta(days=7)
 ICON = "/icons/icon-192.png"
 # White on transparent: Android draws it in the status bar; iOS ignores it.
 BADGE = "/icons/badge-96.png"
@@ -58,6 +70,12 @@ def episodes_notification(show: Media, episodes: list[Episode]) -> bytes:
     else:
         body = f"{len(episodes)} new episodes"
     return notification(show.title, body, tag=str(show.id), url=f"/shows/{show.tmdb_id}")
+
+
+def release_notification(movie: Media) -> bytes:
+    return notification(
+        movie.title, "Now available digitally", tag=f"release-{movie.id}", url=f"/movies/{movie.tmdb_id}"
+    )
 
 
 TEST_NOTIFICATION = notification("MinTrack", "Notifications work on this device.", tag="test")
@@ -154,18 +172,63 @@ class PushManager:
         )
         for user_id, episode, show in claimed_episodes:
             released.setdefault((user_id, show), []).append(episode)
+        await self._send_all(
+            [(user_id, episodes_notification(show, episodes)) for (user_id, show), episodes in released.items()], now
+        )
+        return len(claimed)
+
+    async def notify_digital_releases(self, now: dt.datetime) -> int:
+        """Notify each user once about the movies they put on watch later whose first digital release, in any
+        country, is within the window: a movie added long after its release is not announced.
+
+        Days are UTC days. The pairs are committed before sending, as for episodes. Returns the number of movies
+        notified.
+        """
+        today = now.date()
+        due = (
+            sa.select(UserMedia.user_id, UserMedia.media_id)
+            .join(User, User.id == UserMedia.user_id)
+            .join(Media, Media.id == UserMedia.media_id)
+            .where(
+                User.is_active,
+                sa.exists().where(PushSubscription.user_id == User.id),
+                UserMedia.status == TrackingStatus.WATCH_LATER,
+                Media.media_type == MediaType.MOVIE,
+                Media.digital_release_date.between(today - RELEASE_WINDOW, today),
+            )
+        )
+        claimed = (
+            await self.session.execute(
+                insert(MovieReleaseNotification)
+                .from_select(["user_id", "media_id"], due)
+                .on_conflict_do_nothing()
+                .returning(MovieReleaseNotification.user_id, MovieReleaseNotification.media_id)
+            )
+        ).all()
+        await self.session.commit()
+        if not claimed:
+            return 0
+        movies = {
+            movie.id: movie
+            for movie in await self.session.scalars(
+                sa.select(Media).where(Media.id.in_({media_id for _, media_id in claimed}))
+            )
+        }
+        await self._send_all([(user_id, release_notification(movies[media_id])) for user_id, media_id in claimed], now)
+        return len(claimed)
+
+    async def _send_all(self, messages: list[tuple[uuid.UUID, bytes]], now: dt.datetime) -> None:
+        """Send each message to every device of its user, then commit the devices found gone."""
         devices: dict[uuid.UUID, list[PushSubscription]] = {}
         for subscription in await self.session.scalars(
-            sa.select(PushSubscription).where(PushSubscription.user_id.in_({user_id for user_id, _ in claimed}))
+            sa.select(PushSubscription).where(PushSubscription.user_id.in_({user_id for user_id, _ in messages}))
         ):
             devices.setdefault(subscription.user_id, []).append(subscription)
-
-        for (user_id, show), episodes in released.items():
+        for user_id, payload in messages:
             for subscription in list(devices.get(user_id, [])):
-                if await self._send(subscription, episodes_notification(show, episodes), now) is SendResult.GONE:
+                if await self._send(subscription, payload, now) is SendResult.GONE:
                     devices[user_id].remove(subscription)
         await self.session.commit()
-        return len(claimed)
 
     async def _claim(self, user: User, now: dt.datetime) -> list[tuple[uuid.UUID, uuid.UUID]]:
         """Record the user's episodes of followed shows aired within the window and not notified yet."""

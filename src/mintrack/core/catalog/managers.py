@@ -29,6 +29,9 @@ type Rows = collections.abc.Sequence[collections.abc.Mapping[str, object]]
 ENDED_STATUSES = frozenset({"Ended", "Canceled"})
 AIRING_MAX_AGE = dt.timedelta(days=1)
 MAX_AGE = dt.timedelta(days=7)
+# A movie released this recently, or not yet, refreshes daily like an airing show: its digital release dates are
+# usually announced in the months after the theatrical release.
+RECENT_MOVIE = dt.timedelta(days=180)
 # Rows per INSERT, well under PostgreSQL's 65,535 parameters per statement.
 INSERT_BATCH = 1000
 
@@ -46,7 +49,13 @@ def is_stale(media: Media, now: dt.datetime, language: str) -> bool:
     """Past its refresh period, or fetched in another language than the one configured now."""
     if media.language != language:
         return True
-    return now - media.refreshed_at > (AIRING_MAX_AGE if is_airing(media) else MAX_AGE)
+    return now - media.refreshed_at > (AIRING_MAX_AGE if refreshes_daily(media, now) else MAX_AGE)
+
+
+def refreshes_daily(media: Media, now: dt.datetime) -> bool:
+    if media.media_type is MediaType.TV:
+        return is_airing(media)
+    return media.release_date is None or media.release_date > (now - RECENT_MOVIE).date()
 
 
 async def find_media(session: AsyncSession, media_type: MediaType, tmdb_id: int) -> Media | None:
@@ -109,14 +118,20 @@ class CatalogManager:
     async def stale_tracked(self, now: dt.datetime) -> list[uuid.UUID]:
         """Media someone tracks whose metadata is older than its refresh period, or in another language."""
         tracked = sa.exists().where(UserMedia.media_id == Media.id)
-        airing = sa.and_(
-            Media.media_type == MediaType.TV,
-            sa.or_(Media.tmdb_status.is_(None), Media.tmdb_status.not_in(ENDED_STATUSES)),
+        daily = sa.or_(
+            sa.and_(
+                Media.media_type == MediaType.TV,
+                sa.or_(Media.tmdb_status.is_(None), Media.tmdb_status.not_in(ENDED_STATUSES)),
+            ),
+            sa.and_(
+                Media.media_type == MediaType.MOVIE,
+                sa.or_(Media.release_date.is_(None), Media.release_date > (now - RECENT_MOVIE).date()),
+            ),
         )
         stale = sa.or_(
             Media.language.is_distinct_from(self.tmdb.language),
             Media.refreshed_at < now - MAX_AGE,
-            sa.and_(airing, Media.refreshed_at < now - AIRING_MAX_AGE),
+            sa.and_(daily, Media.refreshed_at < now - AIRING_MAX_AGE),
         )
         return list(await self.session.scalars(sa.select(Media.id).where(tracked, stale).order_by(Media.refreshed_at)))
 
@@ -141,6 +156,7 @@ class CatalogManager:
                 "backdrop_path": movie.backdrop_path,
                 "runtime": movie.runtime or None,
                 "release_date": movie.release_date,
+                "digital_release_date": movie.digital_release_date(),
                 "tmdb_status": movie.status,
                 "refreshed_at": now,
                 "language": self.tmdb.language,

@@ -26,6 +26,7 @@ Your Jellyfin servers fill in your history on their own.
   times when available.
 - **Push notifications** when a new episode of a show you follow airs, on
   Android and iOS, through an installable web app. No app store needed.
+- **Digital release alerts** for the movies on your watch later list.
 - **Several Jellyfin accounts per user**, even on servers you don't
   administer, linked with Quick Connect: MinTrack never sees your Jellyfin
   password. What you watch there shows up in MinTrack within minutes.
@@ -250,6 +251,9 @@ Notifications need an `https://` `MINTRACK__PROJECT__PUBLIC_URL`; their keys com
 **Profile › Settings › Notifications**, which also has a button to send a test notification. MinTrack notifies you
 when an episode of a show you are watching or up to date with airs: at its air time when known, otherwise at 9:00 in
 your time zone.
+
+It also notifies you, once, when a movie on your watch later list is released digitally (to rent, buy or stream):
+the first digital release TMDB lists, in any country, checked every day at 08:00 UTC.
 
 - **Android (Chrome):** open MinTrack's address in Chrome › menu **⋮** › **Install app** (or **Add to Home screen**)
   › open MinTrack from the Home screen › **Profile › Settings › Notifications** › turn it on › **Allow**.

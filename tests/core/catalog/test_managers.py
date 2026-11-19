@@ -9,7 +9,7 @@ from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
 from mintrack.db.models import Media, MediaType, Season, User
 from mintrack.integrations.tmdb.client import TMDBClient
 from tests.conftest import cached_media, episodes_of
-from tests.fakes.tmdb import DAILY_EPISODES, FakeTMDB
+from tests.fakes.tmdb import DAILY_EPISODES, FakeTMDB, media_id
 
 NOW = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
 
@@ -74,7 +74,13 @@ async def test_shows_with_thousands_of_episodes_are_stored(db_session: AsyncSess
 
 async def test_shows_still_airing_go_stale_after_a_day_others_after_a_week() -> None:
     def media(media_type: MediaType, status: str, age: dt.timedelta) -> Media:
-        return Media(media_type=media_type, tmdb_status=status, refreshed_at=NOW - age, language="en")
+        return Media(
+            media_type=media_type,
+            tmdb_status=status,
+            release_date=dt.date(2020, 5, 1),
+            refreshed_at=NOW - age,
+            language="en",
+        )
 
     hours = dt.timedelta(hours=1)
     assert is_stale(media(MediaType.TV, "Returning Series", 25 * hours), NOW, "en")
@@ -82,6 +88,34 @@ async def test_shows_still_airing_go_stale_after_a_day_others_after_a_week() -> 
     assert not is_stale(media(MediaType.TV, "Ended", 6 * 24 * hours), NOW, "en")
     assert is_stale(media(MediaType.TV, "Ended", 8 * 24 * hours), NOW, "en")
     assert not is_stale(media(MediaType.MOVIE, "Released", 6 * 24 * hours), NOW, "en")
+
+
+async def test_movies_released_in_the_last_six_months_or_not_yet_go_stale_after_a_day() -> None:
+    def movie(release_date: dt.date | None) -> Media:
+        return Media(
+            media_type=MediaType.MOVIE,
+            release_date=release_date,
+            refreshed_at=NOW - dt.timedelta(hours=25),
+            language="en",
+        )
+
+    assert is_stale(movie(None), NOW, "en")
+    assert is_stale(movie(NOW.date() + dt.timedelta(days=30)), NOW, "en")
+    assert is_stale(movie(NOW.date() - dt.timedelta(days=179)), NOW, "en")
+    assert not is_stale(movie(NOW.date() - dt.timedelta(days=181)), NOW, "en")
+
+
+async def test_a_movie_stores_its_first_digital_release_in_any_country(
+    db_session: AsyncSession, tmdb: TMDBClient
+) -> None:
+    await tmdb.search("Digital Dune", MediaType.MOVIE)
+    manager = CatalogManager(db_session, tmdb)
+
+    digital = await manager.fetch(MediaType.MOVIE, media_id("movie", "Digital Dune"), NOW)
+    theatrical_only = await manager.fetch(MediaType.MOVIE, media_id("movie", "Cinema Only"), NOW)
+
+    assert digital.digital_release_date == dt.datetime.now(dt.UTC).date() - dt.timedelta(days=1)
+    assert theatrical_only.digital_release_date is None
 
 
 async def test_media_fetched_in_another_language_or_an_unknown_one_are_stale_at_once(

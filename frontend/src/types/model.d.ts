@@ -158,6 +158,8 @@ declare namespace Model {
     interface Movie extends Media {
       tracking: MovieTracking | null;
       rating: Rating | null;
+      /** The first digital release (YYYY-MM-DD), in any country; null when TMDB does not know it. */
+      digital_release_date: string | null;
     }
 
     type LibrarySort = 'last_watched' | 'last_added' | 'title';

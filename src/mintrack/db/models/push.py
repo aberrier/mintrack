@@ -31,3 +31,14 @@ class EpisodeNotification(DatabaseModel):
     episode_id: Mapped[uuid.UUID] = mapped_column(
         sa.ForeignKey("episodes.id", ondelete="CASCADE"), primary_key=True, index=True
     )
+
+
+class MovieReleaseNotification(DatabaseModel):
+    """A movie whose digital release a user was notified about, so each one is sent once."""
+
+    __tablename__ = "movie_release_notifications"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    media_id: Mapped[uuid.UUID] = mapped_column(
+        sa.ForeignKey("media.id", ondelete="CASCADE"), primary_key=True, index=True
+    )

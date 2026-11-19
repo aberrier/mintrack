@@ -72,6 +72,11 @@ export default class Movie {
     return watchedAt ? formatDate(watchedAt, this.timeZone()) : null;
   });
 
+  protected readonly $digitalRelease = computed(() => {
+    const day = this.$movie()?.digital_release_date;
+    return day ? formatDate(day, this.timeZone()) : null;
+  });
+
   /** The check: watched now, or back to watch later. */
   protected toggle(movie: Model.Http.Movie): void {
     void this.store.trackMovie(movie.tmdb_id, movie.tracking?.status !== 'watched');

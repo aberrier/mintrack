@@ -4,7 +4,8 @@ A search for any query returns one show and one movie titled after the query, wi
 gets its own media; a search of one type returns the one of that type. Trending lists one show and one movie per
 title of `trending`. A show has two seasons of three episodes and one special, dated relative to today: the last episode
 airs in a week, unless the title starts with "Ended" (it aired) or "Undated" (no date yet). A title starting with
-"Daily" has 10,000 episodes in its first season. Run it for browser tests with
+"Daily" has 10,000 episodes in its first season. A movie titled "Digital..." has digital releases (see
+`release_dates`). Run it for browser tests with
 `uv run uvicorn tests.fakes.tmdb:app --host 0.0.0.0 --port 8001`.
 """
 
@@ -96,10 +97,11 @@ class FakeTMDB:
                 data[item] = self.season(tmdb_id, int(item.removeprefix("season/")))
         return data
 
-    def movie(self, tmdb_id: int) -> dict[str, typing.Any]:
-        return {
+    def movie(self, tmdb_id: int, appended: list[str]) -> dict[str, typing.Any]:
+        title = self.title(tmdb_id, "Movie")
+        data: dict[str, typing.Any] = {
             "id": tmdb_id,
-            "title": self.title(tmdb_id, "Movie"),
+            "title": title,
             "overview": "",
             "poster_path": None,
             "backdrop_path": f"/backdrop-{tmdb_id}.jpg",
@@ -110,6 +112,29 @@ class FakeTMDB:
             "vote_average": 0,
             "vote_count": 0,
         }
+        if "release_dates" in appended:
+            data["release_dates"] = {"results": self.release_dates(title)}
+        return data
+
+    def release_dates(self, title: str) -> list[dict[str, typing.Any]]:
+        """A theatrical release in the US; a title starting with "Digital" is also released digitally, yesterday in
+        France and in 30 days in the US."""
+        today = dt.datetime.now(dt.UTC).date()
+
+        def release(release_type: int, day: dt.date) -> dict[str, typing.Any]:
+            return {
+                "certification": "",
+                "iso_639_1": "",
+                "note": "",
+                "release_date": f"{day}T00:00:00.000Z",
+                "type": release_type,
+            }
+
+        results = [{"iso_3166_1": "US", "release_dates": [release(3, dt.date(2020, 5, 1))]}]
+        if title.startswith("Digital"):
+            results[0]["release_dates"].append(release(4, today + dt.timedelta(days=30)))
+            results.append({"iso_3166_1": "FR", "release_dates": [release(4, today - dt.timedelta(days=1))]})
+        return results
 
     def result(self, kind: MediaType, title: str) -> dict[str, typing.Any]:
         """A search or trending result of that kind, whose title its pages then answer."""
@@ -159,10 +184,10 @@ class FakeTMDB:
             return self.show(tmdb_id, append_to_response.split(","))
 
         @app.get("/3/movie/{tmdb_id}")
-        def movie(tmdb_id: int) -> dict[str, typing.Any]:
+        def movie(tmdb_id: int, append_to_response: str = "") -> dict[str, typing.Any]:
             if tmdb_id > MAX_ID:
                 raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND)
-            return self.movie(tmdb_id)
+            return self.movie(tmdb_id, append_to_response.split(","))
 
         @app.get("/3/find/{external_id}")
         def find(external_id: str, external_source: str) -> dict[str, typing.Any]:
