@@ -217,7 +217,7 @@ async def test_changing_the_password_keeps_only_the_current_session(
     api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
 ) -> None:
     alice = await create_user("alice")
-    # A device registered before devices were tied to a session may be this one: it stays.
+    # A device whose session expired may be this one: it stays.
     db_session.add(
         PushSubscription(
             user_id=alice.id, endpoint="https://push.test/old", p256dh="k", auth="a", created_at=dt.datetime.now(dt.UTC)
