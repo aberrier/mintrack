@@ -1,7 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { FormGroupDirective, NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormGroupDirective, NonNullableFormBuilder, ReactiveFormsModule } from '@angular/forms';
 import { MatButton, MatIconButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel, MatPrefix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
@@ -14,6 +14,7 @@ import { formatDateTime } from '../../core/dates';
 import { injectTranslator, TranslationPath } from '../../core/i18n';
 import { injectNotify } from '../../core/notify';
 import { LoadError } from '../../shared/load-error';
+import { usernameValidators } from '../../shared/validators';
 
 interface ShownLink {
   username: string;
@@ -94,7 +95,7 @@ export default class Admin {
   protected readonly $taken = signal(false);
   protected readonly $busy = signal(false);
   protected readonly form = inject(NonNullableFormBuilder).group({
-    username: ['', [Validators.required, Validators.pattern(/^[A-Za-z0-9._-]{1,150}$/)]],
+    username: ['', usernameValidators],
   });
 
   constructor() {

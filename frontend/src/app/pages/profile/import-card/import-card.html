@@ -3,16 +3,22 @@
     <div role="status" data-testid="import-status" class="flex flex-col gap-2">
       <p class="[font:var(--mat-sys-title-medium)]" data-testid="import-heading">{{ heading(job) }}</p>
       @switch (job.status) {
+        @case ('running') {
+          @if (job.total) {
+            <p>{{ translate('app.profile.imports.progress') }} {{ job.processed }} / {{ job.total }}</p>
+            <mat-progress-bar
+              mode="determinate"
+              [value]="(100 * job.processed) / job.total"
+              [attr.aria-label]="translate('app.profile.imports.progressLabel')" />
+          } @else {
+            <!-- The file is still being read: the total is not known yet. -->
+            <p>{{ translate('app.profile.imports.waiting') }}</p>
+            <mat-progress-bar mode="indeterminate" [attr.aria-label]="translate('app.profile.imports.progressLabel')" />
+          }
+        }
         @case ('pending') {
           <p>{{ translate('app.profile.imports.waiting') }}</p>
           <mat-progress-bar mode="indeterminate" [attr.aria-label]="translate('app.profile.imports.progressLabel')" />
-        }
-        @case ('running') {
-          <p>{{ translate('app.profile.imports.progress') }} {{ job.processed }} / {{ job.total }}</p>
-          <mat-progress-bar
-            mode="determinate"
-            [value]="job.total ? (100 * job.processed) / job.total : 0"
-            [attr.aria-label]="translate('app.profile.imports.progressLabel')" />
         }
         @case ('failed') {
           <p class="text-error">{{ translate('app.profile.imports.failed') }}</p>

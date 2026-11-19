@@ -13,6 +13,18 @@ declare namespace Model {
       open: boolean;
     }
 
+    interface Timezone {
+      name: string;
+      /** Older names of the same zone, such as Asia/Calcutta for Asia/Kolkata. */
+      aliases: string[];
+    }
+
+    interface About {
+      version: string;
+      /** The MCP server's address on the server's public URL. */
+      mcp_url: string;
+    }
+
     interface PasswordLink {
       username: string;
     }
@@ -189,6 +201,8 @@ declare namespace Model {
     interface WatchListResponse {
       /** Most recently watched first. */
       episodes: WatchListEpisode[];
+      /** Nothing in the user's library at all. */
+      library_empty: boolean;
     }
 
     interface HistoryEntry {

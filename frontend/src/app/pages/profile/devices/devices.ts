@@ -34,12 +34,12 @@ import { injectNotify } from '../../../core/notify';
                 type="button"
                 class="min-h-12"
                 [attr.aria-label]="
-                  translate('app.profile.devices.signOutLabel', {
+                  translate('app.profile.devices.logOutLabel', {
                     device: session.device ?? translate('app.profile.devices.unknown'),
                   })
                 "
-                (click)="signOut(session)">
-                {{ translate('app.profile.devices.signOut') }}
+                (click)="logOut(session)">
+                {{ translate('app.profile.devices.logOut') }}
               </button>
             }
           </li>
@@ -61,10 +61,10 @@ export class Devices {
 
   protected readonly sessions = rxResource({ stream: () => this.api.auth.sessions() });
 
-  protected signOut(session: Model.Http.Session): void {
+  protected logOut(session: Model.Http.Session): void {
     this.api.auth.deleteSession(session.id).subscribe({
       next: () => this.sessions.reload(),
-      error: () => this.notify(this.translate('app.profile.devices.signOutFailed')),
+      error: () => this.notify(this.translate('app.profile.devices.logOutFailed')),
     });
   }
 

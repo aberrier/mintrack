@@ -1,4 +1,6 @@
 import datetime as dt
+import pathlib
+import re
 import typing
 
 import fastapi
@@ -17,6 +19,9 @@ TITLE = "Breaking Bad"
 SHOW_ID = media_id("tv", TITLE)
 MOVIE_ID = media_id("movie", TITLE)
 PILOT: dict[str, object] = {"tmdb_id": SHOW_ID, "season_number": 1, "episode_number": 1}
+HELP_PAGE = (
+    pathlib.Path(__file__).parents[3] / "frontend" / "src" / "app" / "pages" / "profile" / "mcp-help" / "mcp-help.ts"
+)
 
 
 async def call(client: Client, tool: str, arguments: dict[str, object]) -> dict[str, typing.Any]:
@@ -41,13 +46,21 @@ async def test_the_server_lists_its_tools_with_their_hints(mcp_app: fastapi.Fast
         "search_media": (True, None, True),
         "get_show_progress": (True, None, False),
         "list_upcoming": (True, None, False),
-        "list_up_next": (True, None, False),
+        "list_watch_list": (True, None, False),
         "mark_episode_watched": (False, False, False),
         "mark_movie_watched": (False, False, False),
         "set_show_status": (False, False, False),
         "unmark_episode_watched": (False, True, False),
         "unmark_movie_watched": (False, True, False),
     }
+
+
+async def test_the_apps_help_page_lists_the_servers_tools(mcp_app: fastapi.FastAPI, token_user: TokenUser) -> None:
+    async with mcp_client(mcp_app, token_user.token) as client:
+        served = [tool.name for tool in (await client.list_tools()).tools]
+
+    help_page = HELP_PAGE.read_text(encoding="utf-8")
+    assert sorted(re.findall(r"\{ name: '(\w+)'", help_page)) == sorted(served)
 
 
 async def test_search_then_mark_an_episode_in_the_users_time_zone(
@@ -136,12 +149,14 @@ async def test_each_write_tool_updates_the_tokens_users_tracking(
     assert result["status"] == status
 
 
-async def test_upcoming_and_up_next_follow_the_users_progress(mcp_app: fastapi.FastAPI, token_user: TokenUser) -> None:
+async def test_upcoming_and_the_watch_list_follow_the_users_progress(
+    mcp_app: fastapi.FastAPI, token_user: TokenUser
+) -> None:
     async with mcp_client(mcp_app, token_user.token) as client:
         await call(client, "search_media", {"query": TITLE})
         await call(client, "mark_episode_watched", PILOT)
         upcoming = await call(client, "list_upcoming", {})
-        up_next = await call(client, "list_up_next", {})
+        watch_list = await call(client, "list_watch_list", {})
 
     def episode(season: int, number: int, day: str) -> dict[str, object]:
         return {
@@ -156,8 +171,8 @@ async def test_upcoming_and_up_next_follow_the_users_progress(mcp_app: fastapi.F
 
     in_a_week = days_from_today(7)
     assert upcoming == {"days": [{"day": in_a_week, "episodes": [episode(2, 3, in_a_week)]}]}
-    assert up_next["result"][0].pop("last_watched_at") is not None
-    assert up_next == {"result": [episode(1, 2, days_from_today(-29)) | {"remaining": 3, "section": "next"}]}
+    assert watch_list["result"][0].pop("last_watched_at") is not None
+    assert watch_list == {"result": [episode(1, 2, days_from_today(-29)) | {"remaining": 3, "section": "next"}]}
 
 
 async def test_another_users_tracking_is_not_shown(
@@ -168,12 +183,12 @@ async def test_another_users_tracking_is_not_shown(
     async with mcp_client(mcp_app, token_user.token) as client:
         search = await call(client, "search_media", {"query": TITLE})
         progress = await call(client, "get_show_progress", {"tmdb_id": SHOW_ID})
-        up_next = await call(client, "list_up_next", {})
+        watch_list = await call(client, "list_watch_list", {})
 
     assert search["result"][0]["tracking_status"] is None
     assert progress["status"] is None
     assert all(season["watched"] == 0 for season in progress["seasons"])
-    assert up_next == {"result": []}
+    assert watch_list == {"result": []}
 
 
 @pytest.mark.parametrize(

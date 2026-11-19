@@ -306,13 +306,13 @@ async def set_show_status(
 
 async def list_upcoming() -> Upcoming:
     """The user's episodes not watched yet airing from today over the coming weeks, grouped by day in their time
-    zone; airstamp is UTC when the exact time is known. Aired episodes left to watch are in list_up_next."""
+    zone; airstamp is UTC when the exact time is known. Aired episodes left to watch are in list_watch_list."""
     async with user_session() as (session, user):
         upcoming = await UpcomingManager(session).upcoming(user, now=dt.datetime.now(dt.UTC))
     return Upcoming.model_validate(upcoming)
 
 
-async def list_up_next() -> list[WatchListEpisode]:
+async def list_watch_list() -> list[WatchListEpisode]:
     """The user's watch list: the next episode to watch of each show they follow, the first one of a show not
     started; in the sections next, dormant and not_started, most recently watched first."""
     async with user_session() as (session, user):

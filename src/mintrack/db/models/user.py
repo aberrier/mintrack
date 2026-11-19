@@ -21,6 +21,8 @@ class User(DatabaseModel):
     # The one live invitation or reset link: a new link replaces it, using it or disabling the user clears it.
     link_token_hash: Mapped[bytes | None] = mapped_column(sa.LargeBinary, unique=True)
     link_expires_at: Mapped[dt.datetime | None]
+    # The last use of one of the user's sessions, as last written to it; it stays once the sessions are gone.
+    last_seen_at: Mapped[dt.datetime | None]
 
 
 sa.Index("unique_users_lower_username", sa.func.lower(User.username), unique=True)

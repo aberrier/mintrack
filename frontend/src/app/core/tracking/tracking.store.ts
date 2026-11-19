@@ -8,6 +8,8 @@ import { injectNotify } from '../notify';
 import { guessNext, isAired, isWatched, LoadedSeasons } from './episodes';
 
 type Key = `${Model.Http.MediaType}:${number}`;
+/** A title added from the results: on its way to the server, or written. */
+export type AddState = 'saving' | 'saved';
 
 /** What a write to a show changes: its tracking, its seasons' counts and the episode to watch next guessed from them. */
 type ShowState = Pick<Model.Http.Show, 'tracking' | 'next_episode' | 'seasons'>;
@@ -67,7 +69,8 @@ export class TrackingStore {
   private readonly $movies = signal<Record<number, Model.Http.Movie>>({});
   private readonly $library = signal<Record<string, Model.Http.LibraryItem[]>>({});
   private readonly $episodes = signal<Record<number, LoadedSeasons>>({});
-  private readonly $added = signal<Partial<Record<Key, boolean>>>({});
+  private readonly $added = signal<Partial<Record<Key, AddState>>>({});
+  private readonly showsAdded = new Subject<number>();
   private readonly queues = new Map<Key, Subject<Write>>();
   private readonly pending = new Map<Key, number>();
   private readonly confirmed = new Map<Key, unknown>();
@@ -80,8 +83,13 @@ export class TrackingStore {
   readonly movies = this.$movies.asReadonly();
   /** The last library loaded for each query, by `libraryKey`. */
   readonly library = this.$library.asReadonly();
-  /** Titles added from search or trending results, by `resultKey`: true at once, false again if the server refused. */
+  /**
+   * Titles added from search or trending results, by `resultKey`: saving at once, saved once the server wrote it,
+   * absent again if the server refused.
+   */
   readonly added = this.$added.asReadonly();
+  /** The TMDB id of each show the server added to the library from the results. */
+  readonly showAdded$ = this.showsAdded.asObservable();
 
   loadShow(tmdbId: number): Observable<Model.Http.Show> {
     return this.api.catalog.show(tmdbId).pipe(tap((show) => this.$shows.update((all) => ({ ...all, [tmdbId]: show }))));
@@ -180,6 +188,7 @@ export class TrackingStore {
   }
 
   untrackShow(tmdbId: number): Promise<boolean> {
+    this.forgetAdded('tv', tmdbId);
     return this.updateShow(
       tmdbId,
       (state) => ({ ...state, tracking: null, next_episode: null }),
@@ -200,11 +209,18 @@ export class TrackingStore {
   }
 
   untrackMovie(tmdbId: number): Promise<boolean> {
+    this.forgetAdded('movie', tmdbId);
     return this.updateMovieTracking(
       tmdbId,
       () => null,
       () => this.api.tracking.untrackMovie(tmdbId).pipe(map(() => null)),
     );
+  }
+
+  /** A title removed from the library is no longer shown as added in the results. */
+  private forgetAdded(mediaType: Model.Http.MediaType, tmdbId: number): void {
+    const key = resultKey(mediaType, tmdbId);
+    this.$added.update(({ [key]: _, ...others }) => others);
   }
 
   /**
@@ -213,7 +229,7 @@ export class TrackingStore {
    */
   async addFromResults(mediaType: Model.Http.MediaType, tmdbId: number): Promise<boolean> {
     const key = resultKey(mediaType, tmdbId);
-    this.$added.update((added) => ({ ...added, [key]: true }));
+    this.$added.update((added) => ({ ...added, [key]: 'saving' }));
     const saved = await (mediaType === 'tv'
       ? this.updateShow(
           tmdbId,
@@ -225,7 +241,8 @@ export class TrackingStore {
           (tracking) => tracking ?? { status: 'watch_later', watched_at: null },
           () => this.api.catalog.movie(tmdbId).pipe(switchMap(() => this.api.tracking.trackMovie(tmdbId, false))),
         ));
-    if (!saved) this.$added.update((added) => ({ ...added, [key]: false }));
+    this.$added.update(({ [key]: _, ...others }) => (saved ? { ...others, [key]: 'saved' } : others));
+    if (saved && mediaType === 'tv') this.showsAdded.next(tmdbId);
     return saved;
   }
 

@@ -24,10 +24,17 @@ describe('Poster', () => {
     expect(poster.querySelector('button')).toBeNull();
   });
 
-  it('carries a Finished badge on finished shows', async () => {
-    const poster = await render({ finished: true });
+  it('carries a Finished badge on finished shows, without the in-library check', async () => {
+    const poster = await render({ finished: true, tracked: true });
 
     expect(poster.querySelector('[data-testid="finished-badge"]')?.getAttribute('aria-label')).toBe('Finished');
+    expect(poster.querySelector('button')).toBeNull();
+  });
+
+  it('says the add is on its way until the server has it', async () => {
+    const poster = await render({ tracked: true, busy: true });
+
+    expect(poster.querySelector('button')?.getAttribute('aria-busy')).toBe('true');
   });
 
   it('offers to add the title, then says it is in the library', async () => {

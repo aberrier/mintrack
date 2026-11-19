@@ -32,7 +32,10 @@ def episode_code(season_number: int, episode_number: int) -> str:
     return f"S{season_number:02}E{episode_number:02}"
 
 
-def is_stale(media: Media, now: dt.datetime) -> bool:
+def is_stale(media: Media, now: dt.datetime, language: str) -> bool:
+    """Past its refresh period, or fetched in another language than the one configured now."""
+    if media.language != language:
+        return True
     return now - media.refreshed_at > (AIRING_MAX_AGE if is_airing(media) else MAX_AGE)
 
 
@@ -80,7 +83,7 @@ class CatalogManager:
         """The cached media, fetched from TMDB on its first request; a stale one gets a refresh deferred in the
         session's transaction."""
         if media := await find_media(self.session, media_type, tmdb_id):
-            if self.tmdb.configured and is_stale(media, now):
+            if self.tmdb.configured and is_stale(media, now, self.tmdb.language):
                 await defer_refresh(self.session, media.id)
             return media
         # Ends the read transaction, so no pooled connection waits on TMDB.
@@ -94,13 +97,14 @@ class CatalogManager:
         return await self._store_show(await self.tmdb.show(tmdb_id), now)
 
     async def stale_tracked(self, now: dt.datetime) -> list[uuid.UUID]:
-        """Media someone tracks whose metadata is older than its refresh period."""
+        """Media someone tracks whose metadata is older than its refresh period, or in another language."""
         tracked = sa.exists().where(UserMedia.media_id == Media.id)
         airing = sa.and_(
             Media.media_type == MediaType.TV,
             sa.or_(Media.tmdb_status.is_(None), Media.tmdb_status.not_in(ENDED_STATUSES)),
         )
         stale = sa.or_(
+            Media.language.is_distinct_from(self.tmdb.language),
             Media.refreshed_at < now - MAX_AGE,
             sa.and_(airing, Media.refreshed_at < now - AIRING_MAX_AGE),
         )
@@ -129,6 +133,7 @@ class CatalogManager:
                 "release_date": movie.release_date,
                 "tmdb_status": movie.status,
                 "refreshed_at": now,
+                "language": self.tmdb.language,
             },
         )
 
@@ -146,6 +151,7 @@ class CatalogManager:
                 "tmdb_status": show.status,
                 "tvdb_id": show.external_ids.tvdb_id,
                 "refreshed_at": now,
+                "language": self.tmdb.language,
             },
         )
         seasons = [

@@ -17,7 +17,7 @@ class SecurityConfig(pydantic.BaseModel):
             return f"is required in prod; {SECRET_KEY_HINT}"
         secret = self.secret_key.get_secret_value()
         if secret == SECRET_KEY_PLACEHOLDER:
-            return f"is still the .env.example placeholder; {SECRET_KEY_HINT}"
+            return f"is still the placeholder of docker-compose.yml; {SECRET_KEY_HINT}"
         if len(secret) < SECRET_KEY_MIN_LENGTH:
             return f"must be at least {SECRET_KEY_MIN_LENGTH} characters; {SECRET_KEY_HINT}"
         return None

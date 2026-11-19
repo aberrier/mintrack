@@ -32,7 +32,7 @@ const translations = { app };
 type Translations = typeof translations;
 type TranslationKinds = keyof Translations;
 
-/** Given translation kinds, the paths available, such as `app.home.status.online`. */
+/** Given translation kinds, the paths available, such as `app.watchList.emptyTitle`. */
 type TranslationPath<K extends TranslationKinds> = string & PathInto<Pick<Translations, K>>;
 
 type PathInto<T extends object> = keyof {

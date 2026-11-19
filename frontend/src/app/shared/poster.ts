@@ -5,9 +5,9 @@ import { imageUrl } from './images';
 
 /**
  * A TMDB poster at its 2:3 ratio, fading in over a plain surface once loaded; the surface stays when there is none or
- * it fails. It can carry a Finished check in a corner, and an add button (`+`, then a check once in the library) that emits `add`:
- * a poster with that button must not sit inside a link, but a link stretched over it from a sibling stays under the
- * button.
+ * it fails. It can carry a Finished check in a corner, or else an add button (`+`, then a check once in the library)
+ * that emits `add`: a poster with that button must not sit inside a link, but a link stretched over it from a sibling
+ * stays under the button. A finished title is in the library, so the badge alone says both.
  */
 @Component({
   selector: 'app-poster',
@@ -29,7 +29,6 @@ import { imageUrl } from './images';
       @if (finished()) {
         <span
           class="badge"
-          [class.start]="tracked() !== null"
           role="img"
           [attr.aria-label]="translate('app.poster.finished')"
           data-testid="finished-badge">
@@ -37,13 +36,15 @@ import { imageUrl } from './images';
         </span>
       }
     </div>
-    @if (tracked() !== null) {
+    @if (tracked() !== null && !finished()) {
       <button
         type="button"
         class="add"
         [class.done]="tracked()"
+        [class.busy]="busy()"
         [attr.aria-label]="translate(tracked() ? 'app.poster.added' : 'app.poster.add', { title: label() })"
         [attr.aria-disabled]="tracked() ? 'true' : null"
+        [attr.aria-busy]="busy() ? 'true' : null"
         (click)="tracked() || add.emit()">
         <span class="square">
           <mat-icon svgIcon="add" class="plus" aria-hidden="true" />
@@ -88,7 +89,7 @@ import { imageUrl } from './images';
       -webkit-line-clamp: 4;
       overflow-wrap: anywhere;
     }
-    /* A small check in the top right corner; in the top left when the add button holds that corner. */
+    /* A small check in the top right corner. */
     .badge {
       position: absolute;
       top: 4px;
@@ -101,10 +102,6 @@ import { imageUrl } from './images';
       background: var(--mat-sys-primary);
       color: var(--mat-sys-on-primary);
       box-shadow: var(--mat-sys-level1);
-    }
-    .badge.start {
-      right: auto;
-      left: 4px;
     }
     .badge mat-icon {
       width: 16px;
@@ -135,10 +132,15 @@ import { imageUrl } from './images';
       color: var(--mat-sys-on-surface);
       transition:
         background-color var(--duration-toggle) var(--ease-standard),
+        opacity var(--duration-toggle) var(--ease-standard),
         transform var(--duration-short) var(--ease-standard);
     }
     .add:active .square {
       transform: scale(0.9);
+    }
+    /* Faded until the server has the title: leaving the app meanwhile could lose it. */
+    .add.busy .square {
+      opacity: 0.6;
     }
     /* The check pops in; what leaves goes quicker and plainly, so the pop never plays backwards. */
     .square mat-icon {
@@ -189,6 +191,8 @@ export class Poster {
   readonly finished = input(false);
   /** null: no add button; false: `+`; true: a check, in the library. */
   readonly tracked = input<boolean | null>(null);
+  /** The add is on its way to the server. */
+  readonly busy = input(false);
   /** Names the add button. */
   readonly label = input('');
   /** Written on the poster's place when there is no image, for tiles that show no title of their own. */

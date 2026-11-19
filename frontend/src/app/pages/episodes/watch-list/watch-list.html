@@ -11,18 +11,10 @@
   <h2 id="history-title" class="sr-only">{{ translate('app.watchList.history.title') }}</h2>
   @switch (store.historyState()) {
     @case ('idle') {
+      <!-- The history first loads by scrolling or pulling up from the top; then this button loads more as well. -->
       @if (store.history().length) {
         <button type="button" class="text-button" (click)="store.loadOlderHistory()">
           {{ translate('app.watchList.history.earlier') }}
-        </button>
-      } @else {
-        <button
-          type="button"
-          class="text-button history-toggle flex items-center gap-2"
-          [attr.aria-label]="translate('app.watchList.history.show')"
-          (click)="store.loadOlderHistory()">
-          <mat-icon svgIcon="history" aria-hidden="true" />
-          {{ translate('app.watchList.history.short') }}
         </button>
       }
     }
@@ -42,7 +34,7 @@
   <div [class]="$mode() === 'grid' ? 'card-grid' : 'card-list'">
     @for (item of $history(); track item.entry.id) {
       <app-episode-card
-        class="enter"
+        class="enter past"
         [episode]="item.card"
         [variant]="$mode()"
         [watched]="true"
@@ -76,7 +68,8 @@
       </h2>
       @if (section.open) {
         <div [id]="'watch-list-' + section.id + '-cards'" [class]="$mode() === 'grid' ? 'card-grid' : 'card-list'">
-          @for (episode of section.episodes; track episode.tmdb_id) {
+          <!-- Tracked by episode: once checked, the next episode of the show rises in as a new card. -->
+          @for (episode of section.episodes; track episode.episode_id) {
             <app-episode-card
               class="enter"
               [style.--i]="$index"
@@ -92,7 +85,17 @@
       }
     </section>
   } @empty {
-    @if (store.episodes()) {
+    @if (store.episodes() && store.libraryEmpty()) {
+      <app-empty-state
+        icon="explore"
+        [title]="translate('app.watchList.newTitle')"
+        [actionLink]="routes.discover()"
+        [actionLabel]="translate('app.common.findShows')"
+        [secondaryLink]="routes.settings()"
+        [secondaryLabel]="translate('app.watchList.import')">
+        <span data-testid="empty">{{ translate('app.watchList.new') }}</span>
+      </app-empty-state>
+    } @else if (store.episodes()) {
       <app-empty-state
         icon="check_circle"
         [title]="translate('app.watchList.emptyTitle')"

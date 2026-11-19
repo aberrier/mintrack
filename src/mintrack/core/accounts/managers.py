@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mintrack.config import get_config
 from mintrack.db.models import LoginFailure, PushSubscription, User, UserSession
 
 from .devices import USER_AGENT_MAX_LENGTH
@@ -96,6 +97,24 @@ def canonical_timezone(name: str) -> str:
     return name
 
 
+@functools.cache
+def timezone_choices() -> dict[str, list[str]]:
+    """Each zone to choose from by its current name, with its legacy names: UTC (rather than Etc/UTC) first, then
+    the others sorted."""
+    preferred = {"Etc/UTC": "UTC"}
+    links = _timezone_links()
+    choices: dict[str, list[str]] = {"UTC": []}
+    for zone in sorted(available_timezones()):
+        if zone not in links:
+            choices.setdefault(preferred.get(zone, zone), [])
+    for name in sorted(links):
+        target = canonical_timezone(name)
+        target = preferred.get(target, target)
+        if target in choices and name != target:
+            choices[target].append(name)
+    return choices
+
+
 async def database_timezone(session: AsyncSession, name: str) -> str | None:
     """`name`, or else its current name, as PostgreSQL knows it; None when PostgreSQL knows neither."""
     for candidate in dict.fromkeys((name, canonical_timezone(name))):
@@ -169,15 +188,16 @@ class AccountManager:
         await self.session.flush()
 
     async def setup_is_open(self) -> bool:
-        """The first admin can be created from the browser while no user exists at all."""
-        return not await self.session.scalar(sa.select(sa.exists(sa.select(User.id))))
+        """The first admin can be created from the browser while the setting allows it and no user exists at all."""
+        return get_config().accounts.setup and not await self.session.scalar(sa.select(sa.exists(sa.select(User.id))))
 
     async def create_first_admin(
-        self, username: str, password: str, *, address: str, now: dt.datetime, user_agent: str | None = None
-    ) -> tuple[User, str]:
-        """Create the first user, an active admin with this password, and a session; once only, limited like login."""
-        if not is_valid_username(username):
-            raise InvalidUsernameError
+        self, username: str, password: str, *, address: str, now: dt.datetime, timezone: str | None = None
+    ) -> User:
+        """Create the first user, an active admin with this password; once only, limited like login.
+
+        The caller checks the username against USERNAME_PATTERN. A time zone PostgreSQL does not know is ignored.
+        """
         address = client_network(address)
         # Concurrent requests wait for each other, so only the first one finds no user.
         await self.session.execute(sa.select(sa.func.pg_advisory_xact_lock(sa.func.hashtext("setup"))))
@@ -191,9 +211,11 @@ class AccountManager:
             is_admin=True,
             is_active=True,
         )
+        if timezone is not None and (known := await database_timezone(self.session, timezone)) is not None:
+            user.timezone = known
         self.session.add(user)
         await self.session.flush()
-        return user, await self.create_session(user, now=now, user_agent=user_agent)
+        return user
 
     async def create_session(self, user: User, *, now: dt.datetime, user_agent: str | None = None) -> str:
         token, token_hash = new_token()
@@ -205,6 +227,7 @@ class AccountManager:
                 user_agent=user_agent[:USER_AGENT_MAX_LENGTH] if user_agent else None,
             )
         )
+        user.last_seen_at = now
         await self.session.flush()
         return token
 
@@ -243,11 +266,11 @@ class AccountManager:
         return None if row is None else (row[0], row[1])
 
     @staticmethod
-    def touch_session(user_session: UserSession, *, now: dt.datetime) -> bool:
-        """Record the use of a session, at most once per interval; True when it was recorded."""
+    def touch_session(user_session: UserSession, user: User, *, now: dt.datetime) -> bool:
+        """Record the use of a session by its user, at most once per interval; True when it was recorded."""
         if now - user_session.last_used_at < SESSION_TOUCH_INTERVAL:
             return False
-        user_session.last_used_at = now
+        user_session.last_used_at = user.last_seen_at = now
         return True
 
     async def delete_session(self, session_id: uuid.UUID) -> None:
@@ -260,19 +283,20 @@ class AccountManager:
         devices = sa.delete(PushSubscription).where(PushSubscription.user_id == user_id)
         sessions = sa.delete(UserSession).where(UserSession.user_id == user_id)
         if keep is not None:
-            # A device whose session expired may be this one: it stays.
+            # Devices registered by `keep`, or by no session any more, stay: the latter may be this one.
             devices = devices.where(PushSubscription.session_id != keep)
             sessions = sessions.where(UserSession.id != keep)
         await self.session.execute(devices)
         await self.session.execute(sessions)
 
     async def delete_expired_sessions(self, now: dt.datetime) -> int:
-        """Delete the sessions unused for longer than the idle timeout, and the login failures out of the window."""
-        deleted = await self.session.scalars(
-            sa.delete(UserSession)
-            .where(UserSession.last_used_at <= now - SESSION_IDLE_TIMEOUT)
-            .returning(UserSession.id)
+        """Delete the sessions unused for longer than the idle timeout with the devices they registered for
+        notifications, and the login failures out of the window."""
+        expired = UserSession.last_used_at <= now - SESSION_IDLE_TIMEOUT
+        await self.session.execute(
+            sa.delete(PushSubscription).where(PushSubscription.session_id.in_(sa.select(UserSession.id).where(expired)))
         )
+        deleted = await self.session.scalars(sa.delete(UserSession).where(expired).returning(UserSession.id))
         await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= now - LOGIN_FAILURE_WINDOW))
         return len(deleted.all())
 
@@ -331,15 +355,8 @@ class AccountManager:
     async def get_user(self, username: str) -> User | None:
         return await self.session.scalar(sa.select(User).where(sa.func.lower(User.username) == username.lower()))
 
-    async def list_users(self) -> list[tuple[User, dt.datetime | None]]:
-        """Every user with the last time one of their sessions was used."""
-        rows = await self.session.execute(
-            sa.select(User, sa.func.max(UserSession.last_used_at))
-            .outerjoin(UserSession)
-            .group_by(User.id)
-            .order_by(sa.func.lower(User.username))
-        )
-        return [(user, last_seen) for user, last_seen in rows]
+    async def list_users(self) -> list[User]:
+        return list(await self.session.scalars(sa.select(User).order_by(sa.func.lower(User.username))))
 
     async def set_active(self, user: User, *, active: bool) -> None:
         """Enable or disable a user; disabling revokes their sessions and link and keeps one active admin."""

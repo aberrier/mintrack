@@ -49,13 +49,13 @@ class UpdateUserRequest(pydantic.BaseModel):
     is_active: bool
 
 
-def _describe(user: User, last_seen_at: dt.datetime | None = None) -> AdminUserResponse:
+def _describe(user: User) -> AdminUserResponse:
     return AdminUserResponse(
         id=user.id,
         username=user.username,
         is_admin=user.is_admin,
         status=user_status(user, utc_now()),
-        last_seen_at=last_seen_at,
+        last_seen_at=user.last_seen_at,
     )
 
 
@@ -68,7 +68,7 @@ async def _get_user(db: DbSessionDepType, user_id: uuid.UUID) -> User:
 
 @router.get("")
 async def list_users(db: DbSessionDepType) -> list[AdminUserResponse]:
-    return [_describe(user, last_seen_at) for user, last_seen_at in await AccountManager(db).list_users()]
+    return [_describe(user) for user in await AccountManager(db).list_users()]
 
 
 @router.post(

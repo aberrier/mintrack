@@ -61,7 +61,7 @@ describe('auth guards', () => {
 
     expect(await result).toBe(false);
     expect(TestBed.inject(AuthStore).$failure()).toBe('unreachable');
-    expect(TestBed.inject(AuthStore).blockedUrl).toBe('/profile');
+    expect(TestBed.inject(AuthStore).$blockedUrl()).toBe('/profile');
   });
 
   it('tells a server error apart from a server out of reach', async () => {
