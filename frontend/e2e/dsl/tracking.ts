@@ -86,7 +86,10 @@ export async function answerUnmark(viewer: Viewer, answer: 'Unmark' | 'Cancel'):
   await viewer.app.answerDialog(answer);
 }
 
-/** Whether confetti fell over the screen once the server saved what `tap` marked. */
+/**
+ * Whether confetti fell over the screen once the server saved what `tap` marked. `tap` returns only once the page
+ * handled that answer, as `tapSeason` does by waiting for the show's reload that follows it.
+ */
 export async function confettiAfter(viewer: Viewer, tap: () => Promise<unknown>): Promise<boolean> {
   return viewer.app.confettiAfter(tap);
 }
