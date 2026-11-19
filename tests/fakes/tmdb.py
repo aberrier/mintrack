@@ -54,8 +54,10 @@ class FakeTMDB:
                 "season_number": season,
                 "episode_number": number,
                 "name": f"Episode {number}",
-                "overview": "",
+                "overview": f"What happens in episode {number}.",
                 "still_path": None,
+                "vote_average": 7.5,
+                "vote_count": 12 * number,
                 "air_date": "" if offset is None else (today + dt.timedelta(days=offset)).isoformat(),
             }
             for number, offset in enumerate(offsets, start=1)
@@ -84,6 +86,8 @@ class FakeTMDB:
             "first_air_date": self.episodes(tmdb_id, 1)[0]["air_date"],
             "status": "Ended" if title.startswith("Ended") else "Returning Series",
             "seasons": [{"season_number": number} for number in (0, 1, 2)],
+            "vote_average": 8.25,
+            "vote_count": 1234,
         }
         for item in appended:
             if item == "external_ids":
@@ -102,6 +106,9 @@ class FakeTMDB:
             "runtime": 118,
             "release_date": "2020-05-01",
             "status": "Released",
+            # TMDB's answer for a movie nobody voted for.
+            "vote_average": 0,
+            "vote_count": 0,
         }
 
     def result(self, kind: MediaType, title: str) -> dict[str, typing.Any]:

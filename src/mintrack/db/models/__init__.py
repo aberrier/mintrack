@@ -5,6 +5,7 @@ from .import_job import ImportJob, ImportReport, ImportSource, ImportStatus
 from .jellyfin import JellyfinAccount, JellyfinSyncStatus
 from .media import Episode, Media, MediaType, Season
 from .push import EpisodeNotification, PushSubscription
+from .rating import EpisodeRating, MediaRating
 from .tracking import TrackingStatus, UserMedia, WatchedEpisode, WatchedMovie
 from .user import LinkProblem, LoginFailure, SpentPasswordLink, User, UserSession
 
@@ -13,6 +14,7 @@ __all__ = [
     "DatabaseModel",
     "Episode",
     "EpisodeNotification",
+    "EpisodeRating",
     "ImportJob",
     "ImportReport",
     "ImportSource",
@@ -22,6 +24,7 @@ __all__ = [
     "LinkProblem",
     "LoginFailure",
     "Media",
+    "MediaRating",
     "MediaType",
     "PushSubscription",
     "Season",

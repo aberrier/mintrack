@@ -51,6 +51,9 @@ class Media(DatabaseModel):
     refreshed_at: Mapped[dt.datetime]
     # The TMDB language of its texts (MINTRACK__TMDB__LANGUAGE then); None when unknown. Another one makes it stale.
     language: Mapped[str | None]
+    # TMDB users' average score out of 10 and their number of votes; None until fetched again.
+    vote_average: Mapped[float | None]
+    vote_count: Mapped[int | None]
 
 
 class Season(DatabaseModel):
@@ -76,3 +79,8 @@ class Episode(DatabaseModel):
     air_date: Mapped[dt.date | None]
     # Exact air time in UTC when known; TMDB only gives the date.
     airstamp: Mapped[dt.datetime | None]
+    overview: Mapped[str] = mapped_column(server_default="")
+    # A frame of the episode, as a TMDB image path.
+    still_path: Mapped[str | None]
+    vote_average: Mapped[float | None]
+    vote_count: Mapped[int | None]

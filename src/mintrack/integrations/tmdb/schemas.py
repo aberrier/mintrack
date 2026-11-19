@@ -38,6 +38,8 @@ class TMDBMovie(TMDBModel):
     runtime: int | None = None
     release_date: OptionalDate = None
     status: str | None = None
+    vote_average: float | None = None
+    vote_count: int | None = None
 
 
 class TMDBEpisode(TMDBModel):
@@ -45,6 +47,10 @@ class TMDBEpisode(TMDBModel):
     episode_number: int
     name: Text = ""
     air_date: OptionalDate = None
+    overview: Text = ""
+    still_path: str | None = None
+    vote_average: float | None = None
+    vote_count: int | None = None
 
 
 class TMDBSeason(TMDBModel):
@@ -72,3 +78,5 @@ class TMDBShow(TMDBModel):
     status: str | None = None
     external_ids: TMDBExternalIds = TMDBExternalIds()
     seasons: list[TMDBSeason] = []
+    vote_average: float | None = None
+    vote_count: int | None = None

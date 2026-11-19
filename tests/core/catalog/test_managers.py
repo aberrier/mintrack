@@ -4,6 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager, is_stale
+from mintrack.core.ratings.managers import Rating, RatingManager
 from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
 from mintrack.db.models import Media, MediaType, Season, User
 from mintrack.integrations.tmdb.client import TMDBClient
@@ -20,8 +21,17 @@ async def test_a_first_visit_stores_the_show_its_seasons_and_episodes(
 
     seasons = await db_session.scalars(sa.select(Season.season_number).where(Season.media_id == show.id))
     assert (show.title, show.tmdb_status, show.tvdb_id) == ("Lighthouse Nights", "Returning Series", show.tmdb_id)
+    assert (show.vote_average, show.vote_count) == (8.25, 1234)
     assert sorted(seasons) == [0, 1, 2]
-    assert len(await episodes_of(db_session, show)) == 7
+    episodes = await episodes_of(db_session, show)
+    assert len(episodes) == 7
+    second = episodes[1, 2]
+    assert (second.overview, second.still_path, second.vote_average, second.vote_count) == (
+        "What happens in episode 2.",
+        None,
+        7.5,
+        24,
+    )
 
 
 async def test_later_visits_read_the_cache(db_session: AsyncSession, tmdb: TMDBClient, fake_tmdb: FakeTMDB) -> None:
@@ -33,20 +43,22 @@ async def test_later_visits_read_the_cache(db_session: AsyncSession, tmdb: TMDBC
     assert (again.id, again.title) == (show.id, "Lighthouse Nights")
 
 
-async def test_a_refresh_deletes_dropped_episodes_unless_someone_watched_them(
+async def test_a_refresh_deletes_dropped_episodes_unless_someone_watched_or_rated_them(
     db_session: AsyncSession, tmdb: TMDBClient, fake_tmdb: FakeTMDB, user: User
 ) -> None:
     show = await cached_media(db_session, tmdb, "Lighthouse Nights")
     episodes = await episodes_of(db_session, show)
     today = dt.datetime.now(dt.UTC)
     await TrackingManager(db_session).mark_episodes(user, show, [episodes[1, 3].id], today, now=today)
-    fake_tmdb.dropped |= {(show.tmdb_id, 1, 2), (show.tmdb_id, 1, 3)}
+    await RatingManager(db_session).rate_episode(user, episodes[2, 1].id, Rating(stars=4, review=""), today)
+    fake_tmdb.dropped |= {(show.tmdb_id, 1, 2), (show.tmdb_id, 1, 3), (show.tmdb_id, 2, 1)}
 
     await CatalogManager(db_session, tmdb).fetch(MediaType.TV, show.tmdb_id, NOW)
 
     remaining = await episodes_of(db_session, show)
     assert (1, 2) not in remaining
     assert remaining[1, 3].id == episodes[1, 3].id
+    assert remaining[2, 1].id == episodes[2, 1].id
     assert remaining[1, 1].id == episodes[1, 1].id
 
 
