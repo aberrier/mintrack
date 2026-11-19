@@ -332,6 +332,12 @@ into a new volume:
 
 Keep the old volume until MinTrack works on the new one; `docker volume rm mintrack_db` then frees it.
 
+## Releases
+
+1. On a clean, up-to-date `master`, run `just release 1.4.2`: it sets the version, commits it and tags `v1.4.2`.
+2. Push as it prints: `git push --atomic origin master v1.4.2`.
+3. The Release workflow checks the tag against the version, publishes the image and creates the GitHub release.
+
 ## Stack
 
 - **Backend:** Python, FastAPI, SQLAlchemy and Alembic on PostgreSQL, with
