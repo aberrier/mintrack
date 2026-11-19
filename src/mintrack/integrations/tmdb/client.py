@@ -8,13 +8,14 @@ import typing
 import urllib.parse
 
 import httpx
+import pydantic
 
 from mintrack.config import get_config
 from mintrack.db.models import MediaType
 from mintrack.observability.logging import logger
 
 from .config import TMDBConfig
-from .schemas import TMDBEpisodeGroup, TMDBMovie, TMDBSearchResult, TMDBSeason, TMDBShow
+from .schemas import TMDBEpisodeGroup, TMDBEpisodeGroups, TMDBMovie, TMDBSearchResult, TMDBSeason, TMDBShow
 
 TIMEOUT_SECONDS = 10
 CONNECT_RETRIES = 3
@@ -123,13 +124,21 @@ class TMDBClient:
 
     async def season_groups(self, tmdb_id: int) -> list[TMDBEpisodeGroup]:
         """The show's episode groups that split it into seasons (TMDB's production and TV types), with their
-        episodes; at most `MAX_SEASON_GROUPS`."""
-        data = await self._get(f"tv/{tmdb_id}/episode_groups")
-        ids = [group["id"] for group in data.get("results") or [] if group.get("type") in SEASON_GROUP_TYPES]
-        return [
-            TMDBEpisodeGroup.model_validate(await self._get(f"tv/episode_group/{urllib.parse.quote(id_, safe='')}"))
-            for id_ in ids[:MAX_SEASON_GROUPS]
-        ]
+        episodes; at most `MAX_SEASON_GROUPS`. A group TMDB does not find or sends in an unexpected shape is left
+        out."""
+        try:
+            listed = TMDBEpisodeGroups.model_validate(await self._get(f"tv/{tmdb_id}/episode_groups"))
+        except TMDBNotFoundError, pydantic.ValidationError:
+            return []
+        ids = dict.fromkeys(group.id for group in listed.results if group.type in SEASON_GROUP_TYPES)
+        groups = []
+        for id_ in list(ids)[:MAX_SEASON_GROUPS]:
+            path = f"tv/episode_group/{urllib.parse.quote(id_, safe='')}"
+            try:
+                groups.append(TMDBEpisodeGroup.model_validate(await self._get(path)))
+            except (TMDBNotFoundError, pydantic.ValidationError) as error:
+                logger.warning("TMDB episode group skipped", group_id=id_, error=type(error).__name__)
+        return groups
 
     async def find(self, external_id: str, source: ExternalSource) -> dict[str, typing.Any]:
         """TMDB ids of what has this external id: `movie_results`, `tv_results` and `tv_episode_results`."""

@@ -1,9 +1,11 @@
 import collections.abc
+import dataclasses
 import datetime as dt
+import itertools
 
 import pytest
 
-from mintrack.core.jellyfin.matching import Found, RegularSeasons, SeasonGroup, WatchEvent, match, unmatched_item
+from mintrack.core.jellyfin.matching import Found, JellyfinSeasons, SeasonGroup, WatchEvent, match, unmatched_item
 from mintrack.db.models import JellyfinUnmatchedReason, MediaType
 from mintrack.integrations.jellyfin.client import Item
 from mintrack.integrations.tmdb.client import ExternalSource
@@ -14,6 +16,9 @@ MATRIX = 603
 THRONES = 1399
 # Two seasons of three episodes and one special.
 THRONES_EPISODES = frozenset({(0, 1), (1, 1), (1, 2), (1, 3), (2, 1), (2, 2), (2, 3)})
+ANIME = 37854
+# Six episodes, all in season 1.
+ANIME_EPISODES = frozenset((1, number) for number in range(1, 7))
 
 
 class FakeCatalog:
@@ -28,10 +33,11 @@ class FakeCatalog:
             (ExternalSource.IMDB, "tt1480055"): Found(episodes=((THRONES, 1, 1),)),
         }
         self.results: dict[tuple[MediaType, str], list[TMDBSearchResult]] = {}
-        self.media = {(MediaType.MOVIE, MATRIX), (MediaType.TV, THRONES)}
+        self.media = {(MediaType.MOVIE, MATRIX), (MediaType.TV, THRONES), (MediaType.TV, ANIME)}
         self.searches: list[str] = []
         # Episodes TMDB no longer lists, kept because someone watched or rated them.
         self.kept: frozenset[tuple[int, int]] = frozenset()
+        self.groups: dict[int, list[SeasonGroup]] = {}
 
     def answer(
         self, media_type: MediaType, query: str, *results: tuple[int, str, str], original_title: str | None = None
@@ -61,13 +67,13 @@ class FakeCatalog:
         return (media_type, tmdb_id) in self.media
 
     async def episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
-        return THRONES_EPISODES | self.kept if show_id == THRONES else frozenset()
+        return await self.listed_episode_numbers(show_id) | self.kept
 
     async def listed_episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
-        return THRONES_EPISODES if show_id == THRONES else frozenset()
+        return {THRONES: THRONES_EPISODES, ANIME: ANIME_EPISODES}.get(show_id, frozenset())
 
     async def season_groups(self, show_id: int) -> collections.abc.Sequence[SeasonGroup]:
-        return []
+        return self.groups.get(show_id, [])
 
 
 @pytest.fixture
@@ -93,12 +99,17 @@ def movie(
     )
 
 
-def episode(season: int | None, number: int | None, provider_ids: dict[str, str | None] | None = None) -> Item:
+def episode(
+    season: int | None,
+    number: int | None,
+    provider_ids: dict[str, str | None] | None = None,
+    name: str = "Winter Is Coming",
+) -> Item:
     return Item.model_validate(
         {
             "Id": "e",
             "Type": "Episode",
-            "Name": "Winter Is Coming",
+            "Name": name,
             "ProductionYear": 2011,
             "SeriesId": "s",
             "SeriesName": "Game of Thrones",
@@ -114,13 +125,28 @@ def series(provider_ids: dict[str, str | None], name: str = "Game of Thrones") -
     return {"s": Item.model_validate(item)}
 
 
-def jellyfin_seasons(count: int) -> RegularSeasons:
-    """Jellyfin's answer for the number of regular seasons of any series."""
+@dataclasses.dataclass
+class FakeJellyfinSeasons:
+    """Jellyfin's answers for any series: its number of regular seasons, and of episodes in each season."""
 
-    async def regular_seasons(_: str) -> int:
-        return count
+    count: int
+    sizes: dict[int, int] = dataclasses.field(default_factory=dict)
 
-    return regular_seasons
+    async def regular_count(self, series_id: str) -> int:
+        return self.count
+
+    async def episode_count(self, series_id: str, season: int) -> int | None:
+        return self.sizes.get(season)
+
+
+def jellyfin_seasons(count: int, sizes: dict[int, int] | None = None) -> JellyfinSeasons:
+    return FakeJellyfinSeasons(count, sizes or {})
+
+
+def split(*sizes: int) -> SeasonGroup:
+    """An episode group splitting TMDB's season 1 into seasons of these sizes, numbered from 1."""
+    numbers = itertools.count(1)
+    return {order: tuple((1, next(numbers)) for _ in range(size)) for order, size in enumerate(sizes, start=1)}
 
 
 def movie_watch(tmdb_id: int = MATRIX) -> WatchEvent:
@@ -227,6 +253,89 @@ async def test_an_episode_without_usable_numbers_is_matched_by_its_own_ids(
 
 
 @pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("SHOW02E03 Ice and Fire", episode_watch(2, 3)),
+        ("show s2e3", episode_watch(2, 3)),
+        # After a show's initials, a code TMDB has no episode for.
+        ("ANTM14E07", JellyfinUnmatchedReason.EPISODE_NOT_FOUND),
+        # A release version.
+        ("Show - S01E02v2", episode_watch(1, 2)),
+        # Checksums, bracketed or not.
+        ("[Group] Show - S01E02 (1080p) [A1E2B3C4]", episode_watch(1, 2)),
+        ("Show - S01E02 AB12E345", episode_watch(1, 2)),
+        ("Show AB12E345", JellyfinUnmatchedReason.NO_NUMBERS),
+        # A code only in brackets, two codes, a multi-episode file, a year.
+        ("[Group] Show (S01E02)", JellyfinUnmatchedReason.NO_NUMBERS),
+        ("Show S01E02 S01E03", JellyfinUnmatchedReason.NO_NUMBERS),
+        ("Show S01E02E03", JellyfinUnmatchedReason.NO_NUMBERS),
+        ("Show 2024E01", JellyfinUnmatchedReason.NO_NUMBERS),
+    ],
+)
+async def test_an_episode_without_numbers_is_matched_by_the_one_episode_code_in_its_name(
+    catalog: FakeCatalog, name: str, expected: WatchEvent | JellyfinUnmatchedReason
+) -> None:
+    assert await match(episode(None, None, name=name), AT, series({"Tmdb": "1399"}), catalog) == expected
+
+
+@pytest.mark.parametrize(
+    "special",
+    [
+        # Its own ids win over the code in its name.
+        episode(None, None, {"Imdb": "tt1480055"}, name="Show S02E03"),
+        # And over TMDB's season 0 numbering, which Jellyfin's specials often do not follow.
+        episode(0, 1, {"Imdb": "tt1480055"}),
+    ],
+)
+async def test_an_episode_without_numbers_or_a_special_is_matched_by_its_own_ids_first(
+    catalog: FakeCatalog, special: Item
+) -> None:
+    assert await match(special, AT, series({"Tmdb": "1399"}), catalog) == episode_watch(1, 1)
+
+
+@pytest.mark.parametrize(
+    ("groups", "sizes", "expected"),
+    [
+        # The one group splitting the show as Jellyfin does: S02E02 is TMDB's S01E05.
+        ([split(3, 3)], {2: 3}, WatchEvent(MediaType.TV, ANIME, AT, 1, 5)),
+        # Outvoting a group that numbers the same seasons differently, while splits into cours do not vote.
+        (
+            [split(3, 3), split(3, 3), {1: ((1, 1),), 2: ((1, 6), (1, 2), (1, 3))}, split(2, 2, 2)],
+            {2: 3},
+            WatchEvent(MediaType.TV, ANIME, AT, 1, 5),
+        ),
+        # A single group whose season 2 is not Jellyfin's.
+        ([split(2, 4)], {2: 3}, None),
+        # Many broadcast splits, none with Jellyfin's season 2.
+        ([split(2, 2, 2), split(1, 5), split(4, 2), split(5, 1)], {2: 3}, None),
+        # Two groups splitting as Jellyfin does disagree.
+        ([split(3, 3), {1: ((1, 1),), 2: ((1, 6), (1, 2), (1, 3))}], {2: 3}, None),
+        # A group naming an episode TMDB does not have.
+        ([{1: ((1, 1),), 2: ((1, 7), (1, 8), (1, 9))}], {2: 3}, None),
+        # Jellyfin cannot tell the size of its season 2.
+        ([split(3, 3)], {}, None),
+    ],
+)
+async def test_a_season_tmdb_merged_into_season_1_is_matched_through_the_groups_splitting_it_as_jellyfin_does(
+    catalog: FakeCatalog, groups: list[SeasonGroup], sizes: dict[int, int], expected: WatchEvent | None
+) -> None:
+    catalog.groups[ANIME] = groups
+    jellyfin_episode = episode(2, 2)
+
+    found = await match(jellyfin_episode, AT, series({"Tmdb": str(ANIME)}), catalog, jellyfin_seasons(2, sizes))
+
+    assert found == (JellyfinUnmatchedReason.EPISODE_NOT_FOUND if expected is None else expected)
+
+
+async def test_episode_groups_are_only_read_for_a_show_tmdb_lists_in_one_season(catalog: FakeCatalog) -> None:
+    catalog.groups[THRONES] = [{1: ((1, 1),), 3: ((2, 1),)}]
+
+    found = await match(episode(3, 1), AT, series({"Tmdb": "1399"}), catalog, jellyfin_seasons(3, {3: 1}))
+
+    assert found is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
+
+
+@pytest.mark.parametrize(
     ("number", "expected"),
     [(4, episode_watch(2, 1)), (6, episode_watch(2, 3)), (7, JellyfinUnmatchedReason.EPISODE_NOT_FOUND)],
 )
@@ -240,7 +349,7 @@ async def test_an_absolute_number_past_tmdb_season_1_matches_the_episode_at_that
 
 @pytest.mark.parametrize("regular_seasons", [jellyfin_seasons(2), None])
 async def test_an_absolute_number_is_guessed_only_when_jellyfin_has_one_regular_season(
-    catalog: FakeCatalog, regular_seasons: RegularSeasons | None
+    catalog: FakeCatalog, regular_seasons: JellyfinSeasons | None
 ) -> None:
     # Jellyfin's season 1 runs longer than TMDB's, but Jellyfin has a season 2 too (the seasons are split
     # differently), or its seasons are not known.

@@ -1,3 +1,4 @@
+import contextlib
 import datetime as dt
 import typing
 
@@ -97,6 +98,29 @@ class TMDBSeason(TMDBModel):
     episodes: list[TMDBEpisode] = []
 
 
+class TMDBEpisodeGroupSummary(TMDBModel):
+    id: str
+    type: int
+
+
+class TMDBEpisodeGroups(TMDBModel):
+    """A show's episode groups, without their episodes."""
+
+    results: list[TMDBEpisodeGroupSummary] = []
+
+    @pydantic.field_validator("results", mode="before")
+    @classmethod
+    def _well_formed(cls, value: object) -> object:
+        """Results in an unexpected shape are left out."""
+        if not isinstance(value, list):
+            return value
+        kept: list[TMDBEpisodeGroupSummary] = []
+        for result in value:
+            with contextlib.suppress(pydantic.ValidationError):
+                kept.append(TMDBEpisodeGroupSummary.model_validate(result))
+        return kept
+
+
 class TMDBGroupEpisode(TMDBModel):
     season_number: int
     episode_number: int
@@ -113,8 +137,18 @@ class TMDBEpisodeGroup(TMDBModel):
 
     groups: list[TMDBGroup] = []
 
-    def seasons(self) -> dict[int, tuple[tuple[int, int], ...]]:
-        """The (season, episode) TMDB numbers of each group's episodes, in order, by the group's order."""
+    def seasons(self) -> dict[int, tuple[tuple[int, int], ...]] | None:
+        """The (season, episode) TMDB numbers of each group's episodes, in order, by the group's order, which is a
+        season number; None when the orders are not seasons numbered from 1, with only specials in 0."""
+        orders = [group.order for group in self.groups]
+        specials = [episode for group in self.groups if group.order == 0 for episode in group.episodes]
+        if (
+            1 not in orders
+            or min(orders) < 0
+            or len(set(orders)) < len(orders)
+            or any(episode.season_number != 0 for episode in specials)
+        ):
+            return None
         return {
             group.order: tuple(
                 (episode.season_number, episode.episode_number)

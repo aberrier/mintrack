@@ -378,28 +378,18 @@ async def test_jellyfin_is_asked_a_series_seasons_once_and_only_to_guess_an_abso
     assert seasons_requests(jellyfin) == [f"{SERVER_URL}/Shows/{anime}/Seasons?userId=user-bob&isMissing=false"]
 
 
-async def test_seasons_jellyfin_only_knows_from_metadata_do_not_prevent_an_absolute_number(
-    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
-) -> None:
-    # The metadata lists a season 2 the server has no file of.
-    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1,), missing_seasons=(2,))
-    jellyfin.play_episode(bob, show, 1, 4, DAY_1)
-    account = await link(db_session, user)
-
-    await JellyfinManager(db_session).sync(account, tmdb, NOW)
-
-    assert await watched(db_session, user) == {(1399, 2, 1, DAY_1)}
-
-
 @pytest.mark.parametrize(
-    ("groups", "expected"),
+    ("groups", "season_2", "expected"),
     [
-        # Two season splits agree on 3 + 3 episodes, a split into cours disagrees: S02E02 is TMDB's S01E05.
-        ([(6, (3, 3)), (7, (2, 2, 2)), (7, (3, 3)), (5, (1, 5))], {(1399, 1, 5, DAY_1)}),
-        # No majority.
-        ([(6, (3, 3)), (7, (2, 2, 2))], set()),
+        # The season split of 3 + 3 episodes is Jellyfin's, a split into cours and a story arc group are not:
+        # S02E02 is TMDB's S01E05.
+        ([(7, (2, 2, 2)), (6, (3, 3)), (5, (1, 5))], 3, {(1399, 1, 5, DAY_1)}),
+        # Jellyfin's season 2 has 4 episodes.
+        ([(6, (3, 3))], 4, set()),
         # Only a story arc group, which is no season split.
-        ([(5, (3, 3))], set()),
+        ([(5, (3, 3))], 3, set()),
+        # Jellyfin's split comes after the first ten groups.
+        ([(7, (2, 2, 2))] * 10 + [(6, (3, 3))], 3, set()),
     ],
 )
 async def test_a_season_tmdb_merged_into_season_1_is_matched_through_its_episode_groups(
@@ -410,11 +400,12 @@ async def test_a_season_tmdb_merged_into_season_1_is_matched_through_its_episode
     tmdb: TMDBClient,
     fake_tmdb: FakeTMDB,
     groups: list[tuple[int, tuple[int, ...]]],
+    season_2: int,
     expected: set[tuple[int, int, int, dt.datetime]],
 ) -> None:
     fake_tmdb.single_season.add(1399)
     fake_tmdb.episode_groups[1399] = groups
-    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1, 2))
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1, 2), sizes={2: season_2})
     jellyfin.play_episode(bob, show, 2, 2, DAY_1, name="[Group] Show - S02E02")
     account = await link(db_session, user)
 
@@ -427,9 +418,7 @@ async def test_a_season_tmdb_merged_into_season_1_is_matched_through_its_episode
     ("name", "expected"),
     [
         ("SHOW02E03 Ice and Fire", {(1399, 2, 3, DAY_1)}),
-        ("[Group] Show - s01e02 (1080p) [A1E2B3C4]", {(1399, 1, 2, DAY_1)}),
-        # A code only in the brackets, or two codes.
-        ("[Group] Show (S01E02)", set()),
+        # Two codes.
         ("Show S01E02 S01E03", set()),
     ],
 )

@@ -207,7 +207,7 @@ class JellyfinManager:
             played = await self._played_since(client, account.jellyfin_user_id, since)
             series_ids = {item.series_id for item in played if item.type == "Episode" and item.series_id}
             series = {item.id: item for item in await client.items(account.jellyfin_user_id, series_ids)}
-            seasons = _RegularSeasons(self.session, client, account.jellyfin_user_id)
+            seasons = _JellyfinSeasons(self.session, client, account.jellyfin_user_id)
             previous_sync, synced_until = account.synced_until, account.synced_until
             imported = 0
             unmatched = _Unmatched()
@@ -305,30 +305,44 @@ class _Unmatched:
             self.items.setdefault(key, unmatched)
 
 
-class _RegularSeasons:
-    """The number of regular seasons (specials aside) Jellyfin has for each series, asked once per series in a sync;
-    None when Jellyfin could not tell for that series (deleted meanwhile, an answer not understood)."""
+class _JellyfinSeasons:
+    """The seasons Jellyfin has for each series, each asked once in a sync; None when Jellyfin could not tell for that
+    series (deleted meanwhile, an answer not understood)."""
 
     def __init__(self, session: AsyncSession, client: JellyfinClient, user_id: str) -> None:
         self.session = session
         self.client = client
         self.user_id = user_id
-        self.counts: dict[str, int | None] = {}
+        self.regular_counts: dict[str, int | None] = {}
+        self.episode_counts: dict[tuple[str, int], int | None] = {}
 
-    async def __call__(self, series_id: str) -> int | None:
-        if series_id not in self.counts:
-            # No database connection stays checked out while Jellyfin answers.
-            await self.session.commit()
-            try:
-                numbers = await self.client.season_numbers(self.user_id, series_id)
-            except JellyfinUnauthorizedError, JellyfinUnreachableError:
-                raise
-            except JellyfinError as error:
-                logger.warning("jellyfin seasons not read", series_id=series_id, error=type(error).__name__)
-                self.counts[series_id] = None
-            else:
-                self.counts[series_id] = len({number for number in numbers if number >= 1})
-        return self.counts[series_id]
+    async def regular_count(self, series_id: str) -> int | None:
+        if series_id not in self.regular_counts:
+            numbers = await self._ask(series_id, lambda: self.client.season_numbers(self.user_id, series_id))
+            self.regular_counts[series_id] = (
+                None if numbers is None else len({number for number in numbers if number >= 1})
+            )
+        return self.regular_counts[series_id]
+
+    async def episode_count(self, series_id: str, season: int) -> int | None:
+        key = (series_id, season)
+        if key not in self.episode_counts:
+            numbers = await self._ask(series_id, lambda: self.client.episode_numbers(self.user_id, series_id, season))
+            self.episode_counts[key] = None if numbers is None else len(numbers)
+        return self.episode_counts[key]
+
+    async def _ask[T](
+        self, series_id: str, request: collections.abc.Callable[[], collections.abc.Awaitable[T]]
+    ) -> T | None:
+        # No database connection stays checked out while Jellyfin answers.
+        await self.session.commit()
+        try:
+            return await request()
+        except JellyfinUnauthorizedError, JellyfinUnreachableError:
+            raise
+        except JellyfinError as error:
+            logger.warning("jellyfin seasons not read", series_id=series_id, error=type(error).__name__)
+            return None
 
 
 class _Library:
@@ -392,7 +406,9 @@ class _Library:
         if show_id not in self.groups:
             # As get_or_fetch does, no database connection stays checked out while TMDB answers.
             await self.session.commit()
-            self.groups[show_id] = [group.seasons() for group in await self.tmdb.season_groups(show_id)]
+            self.groups[show_id] = [
+                seasons for group in await self.tmdb.season_groups(show_id) if (seasons := group.seasons()) is not None
+            ]
         return self.groups[show_id]
 
     def watched(self, event: WatchEvent) -> tuple[Media, uuid.UUID | None]:

@@ -290,6 +290,19 @@ class JellyfinClient:
         page = await self._get_json(ItemsPage, "GET", path, params=params)
         return [season.index_number for season in page.items if season.index_number is not None]
 
+    async def episode_numbers(self, user_id: str, series_id: str, season: int) -> set[int]:
+        """The numbers of the episodes with files in a season of a series."""
+        path = f"/Shows/{urllib.parse.quote(series_id, safe='')}/Episodes"
+        # Episodes only known from the metadata are left out. Specials a library shows within the season are dropped
+        # below: their season is 0.
+        params: Params = {"userId": user_id, "season": season, "isMissing": "false", "enableImages": "false"}
+        page = await self._get_json(ItemsPage, "GET", path, params=params)
+        return {
+            episode.index_number
+            for episode in page.items
+            if episode.parent_index_number == season and episode.index_number is not None
+        }
+
     async def logout(self) -> None:
         await self._request("POST", "/Sessions/Logout")
 
