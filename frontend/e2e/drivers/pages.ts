@@ -274,6 +274,11 @@ export class ImportsSection {
     return this.page.getByTestId('import-report');
   }
 
+  /** The report's folded warnings: "Warnings (n)", opening on a tap. */
+  warnings() {
+    return this.page.getByTestId('import-warnings').locator('summary');
+  }
+
   /** A line of the card, such as a file name to upload or an unmatched title. */
   line(text: string) {
     return this.page.getByText(text);
