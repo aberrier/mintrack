@@ -5,6 +5,7 @@ import {
   activeTab,
   currentAddress,
   fitsTheScreen,
+  offCentreIcons,
   openAddress,
   openEveryScreen,
   openWhileServerUnreachable,
@@ -57,7 +58,7 @@ test.describe('when the server cannot be reached', () => {
 // In parts that run in parallel, each checking every fourth screen.
 const PARTS = 4;
 for (let part = 0; part < PARTS; part++) {
-  test(`every screen fits a 360px phone and the desktop, with 48px targets and no accessibility violation (${part + 1}/${PARTS})`, async ({
+  test(`every screen fits a 360px phone and the desktop, with 48px targets, centred icons and no accessibility violation (${part + 1}/${PARTS})`, async ({
     admin: { page },
   }, testInfo) => {
     if (testInfo.project.name === 'phone') await page.setViewportSize({ width: 360, height: 740 });
@@ -68,6 +69,7 @@ for (let part = 0; part < PARTS; part++) {
       await expect.poll(() => pageTitle(page), screen.name).toBe(screen.title);
       expect(await fitsTheScreen(page), screen.name).toBe(true);
       expect(await smallTargets(page), screen.name).toEqual([]);
+      expect(await offCentreIcons(page), screen.name).toEqual([]);
       expect(await accessibilityViolations(page), screen.name).toEqual([]);
     }
   });

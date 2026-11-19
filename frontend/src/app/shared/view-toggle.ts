@@ -50,7 +50,6 @@ export class ViewModes {
     <button
       matIconButton
       type="button"
-      class="size-12!"
       [attr.aria-label]="translate($mode() === 'list' ? 'app.view.grid' : 'app.view.list')"
       (click)="toggle()"
       data-testid="view-toggle">
