@@ -58,7 +58,7 @@ test('marking the episode of a watch list card from its sheet moves the card on'
   await expect.poll(() => nextEpisodeOf(viewer, title)).toMatch(/^S01\|E02/);
 });
 
-test('someone rates a show and a movie, changes their mind and removes a rating', async ({ viewer }) => {
+test('someone rates a show, then changes their mind', async ({ viewer }) => {
   // Given a show, whose About tab gives TMDB's score
   await openShow(viewer, uniqueTitle('Tidal Lines'));
   await viewer.app.openShowTab('About');
@@ -69,7 +69,9 @@ test('someone rates a show and a movie, changes their mind and removes a rating'
   await rate(viewer, 5, 'Grew on me.');
   await viewer.app.reload();
   expect(await ratingShown(viewer)).toEqual({ stars: 5, review: 'Grew on me.' });
+});
 
+test('someone rates a movie, then removes the rating', async ({ viewer }) => {
   // Given a movie nobody voted for on TMDB, rated and then unrated
   await openMovie(viewer, uniqueTitle('Glass Orchard'));
   expect(await tmdbScore(viewer)).toBe('');
