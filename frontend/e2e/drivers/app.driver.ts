@@ -1,4 +1,4 @@
-import { expect, Locator, Page, Request } from '@playwright/test';
+import { expect, Locator, Page } from '@playwright/test';
 
 export type Tab = 'Episodes' | 'Discover' | 'Profile' | 'Admin';
 
@@ -334,34 +334,12 @@ export class AppDriver {
   }
 
   /**
-   * Run `write`, which marks episodes, until the server answered it; returns whether confetti fell. The confetti
-   * library loads on the first throw: without a script asked for and without a canvas once the answer is handled,
-   * none is coming.
+   * Run `write`, which marks episodes and returns once the page handled the server's answer; returns whether confetti
+   * fell. The confetti canvas is on the page from the launch until the last confetti fell, seconds later.
    */
   async confettiAfter(write: () => Promise<unknown>): Promise<boolean> {
-    const scripts: string[] = [];
-    const onRequest = (request: Request) => {
-      // WebKit reports a module loaded by import() as another type of resource.
-      if (request.resourceType() === 'script' || new URL(request.url()).pathname.endsWith('.js'))
-        scripts.push(request.url());
-    };
-    this.page.on('request', onRequest);
-    try {
-      const answered = this.nextResponse('/watched');
-      await write();
-      await answered;
-      await this.rendered();
-      await this.rendered();
-    } finally {
-      this.page.off('request', onRequest);
-    }
-    if (scripts.length === 0 && (await this.confetti().count()) === 0) return false;
-    return expect(this.confetti())
-      .toBeAttached()
-      .then(
-        () => true,
-        () => false,
-      );
+    await write();
+    return (await this.confetti().count()) > 0;
   }
 
   episode(season: number, episode: number): Locator {
