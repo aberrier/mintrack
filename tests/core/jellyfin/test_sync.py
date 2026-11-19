@@ -358,6 +358,43 @@ async def test_an_episode_past_tmdb_season_1_is_matched_by_its_absolute_number_o
     )
 
 
+def seasons_requests(jellyfin: FakeJellyfin) -> list[str]:
+    return [str(request.url) for request in jellyfin.requests if request.url.path.endswith("/Seasons")]
+
+
+async def test_jellyfin_is_asked_a_series_seasons_once_and_only_to_guess_an_absolute_number(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
+) -> None:
+    anime = jellyfin.add_series({"Tmdb": "1399"}, seasons=(0, 1))
+    jellyfin.play_episode(bob, anime, 1, 4, DAY_1)
+    jellyfin.play_episode(bob, anime, 1, 5, DAY_2)
+    regular = jellyfin.add_series({"Tmdb": "1400"})
+    jellyfin.play_episode(bob, regular, 1, 2, DAY_3)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == {(1399, 2, 1, DAY_1), (1399, 2, 2, DAY_2), (1400, 1, 2, DAY_3)}
+    assert seasons_requests(jellyfin) == [f"{SERVER_URL}/Shows/{anime}/Seasons?userId=user-bob&isMissing=false"]
+
+
+async def test_a_series_whose_seasons_jellyfin_cannot_give_gets_no_guess_and_the_sync_goes_on(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
+) -> None:
+    # Deleted from Jellyfin between the history and the seasons: the seasons call answers 404.
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(0, 1))
+    del jellyfin.seasons[show]
+    jellyfin.play_episode(bob, show, 1, 4, DAY_1)
+    jellyfin.play_movie(bob, {"Tmdb": "603"}, DAY_2)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == {(603, None, None, DAY_2)}
+    assert account.last_sync_status == JellyfinSyncStatus.OK
+    assert [item["reason"] for item in account.last_sync_unmatched or []] == [JellyfinUnmatchedReason.EPISODE_NOT_FOUND]
+
+
 async def test_an_absolute_number_is_not_guessed_for_an_episode_tmdb_lists_but_the_cache_lacks(
     db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient, fake_tmdb: FakeTMDB
 ) -> None:

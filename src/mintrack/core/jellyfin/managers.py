@@ -306,20 +306,28 @@ class _Unmatched:
 
 
 class _RegularSeasons:
-    """The number of regular seasons (specials aside) Jellyfin has for each series, asked once per series in a sync."""
+    """The number of regular seasons (specials aside) Jellyfin has for each series, asked once per series in a sync;
+    None when Jellyfin could not tell for that series (deleted meanwhile, an answer not understood)."""
 
     def __init__(self, session: AsyncSession, client: JellyfinClient, user_id: str) -> None:
         self.session = session
         self.client = client
         self.user_id = user_id
-        self.counts: dict[str, int] = {}
+        self.counts: dict[str, int | None] = {}
 
-    async def __call__(self, series_id: str) -> int:
+    async def __call__(self, series_id: str) -> int | None:
         if series_id not in self.counts:
             # No database connection stays checked out while Jellyfin answers.
             await self.session.commit()
-            numbers = await self.client.season_numbers(self.user_id, series_id)
-            self.counts[series_id] = len({number for number in numbers if number >= 1})
+            try:
+                numbers = await self.client.season_numbers(self.user_id, series_id)
+            except JellyfinUnauthorizedError, JellyfinUnreachableError:
+                raise
+            except JellyfinError as error:
+                logger.warning("jellyfin seasons not read", series_id=series_id, error=type(error).__name__)
+                self.counts[series_id] = None
+            else:
+                self.counts[series_id] = len({number for number in numbers if number >= 1})
         return self.counts[series_id]
 
 
