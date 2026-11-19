@@ -1,6 +1,9 @@
 <header class="flex items-center gap-4 ps-4 pe-3 pt-8">
   <span class="avatar" aria-hidden="true">{{ $initial() }}</span>
   <h1 class="min-w-0 flex-1 truncate [font:var(--mat-sys-headline-small)] font-semibold!">{{ $user()?.username }}</h1>
+  <a matIconButton class="size-12!" [routerLink]="appRoutes.stats()" [attr.aria-label]="translate('app.stats.title')">
+    <mat-icon svgIcon="bar_chart" aria-hidden="true" />
+  </a>
   <a
     matIconButton
     class="size-12!"

@@ -47,7 +47,8 @@ src/mintrack/
   cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | worker | db | healthcheck | users | import
   config/          # Config(BaseSettings): MINTRACK__SECTION__FIELD variables, *_FILE variants, .env
   core/<domain>/   # business logic: accounts (users, sessions, password links, login limit), api_tokens, catalog (TMDB cache),
-                   # imports (Yamtrack, TV Time), jellyfin (sync), push, ratings (a user's stars and reviews), tracking (watched episodes, statuses), upcoming (watch list, air times)
+                   # imports (Yamtrack, TV Time), jellyfin (sync), push, ratings (a user's stars and reviews), stats (a user's figures),
+                   # tracking (watched episodes, statuses), upcoming (watch list, air times)
   db/              # DatabaseModel, models/, DatabaseManager, Alembic config built in code, migrations/
   integrations/    # clients of outside services: tmdb/, tvmaze/ (air times), jellyfin/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)

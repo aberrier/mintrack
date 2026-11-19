@@ -146,4 +146,7 @@ export class ApiService {
   };
 
   readonly about = () => this.http.get<Model.Http.About>('/api/about');
+
+  /** The user's own statistics. */
+  readonly stats = () => this.http.get<Model.Http.Stats>('/api/stats');
 }

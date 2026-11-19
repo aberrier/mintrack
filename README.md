@@ -52,6 +52,11 @@ Your Jellyfin servers fill in your history on their own.
   air date and TMDB score, to mark it or change when you watched it. Rate
   episodes, shows and movies with 1 to 5 stars and a short review, seen only
   by you.
+- **Statistics** in **Profile**, private to you: time spent watching (from TMDB
+  runtimes; an episode without one counts its show's average, and what has no
+  runtime at all is left out and counted apart), episodes and movies per month
+  over the last year, current and longest streaks of days, top genres and
+  networks, and totals.
 
 ## What it does not do
 

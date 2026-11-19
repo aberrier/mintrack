@@ -5,6 +5,7 @@ import add from '@material-symbols/svg-400/outlined/add.svg';
 import admin_panel_settings_fill from '@material-symbols/svg-400/outlined/admin_panel_settings-fill.svg';
 import admin_panel_settings from '@material-symbols/svg-400/outlined/admin_panel_settings.svg';
 import arrow_back from '@material-symbols/svg-400/outlined/arrow_back.svg';
+import bar_chart from '@material-symbols/svg-400/outlined/bar_chart.svg';
 import block from '@material-symbols/svg-400/outlined/block.svg';
 import calendar_month from '@material-symbols/svg-400/outlined/calendar_month.svg';
 import check from '@material-symbols/svg-400/outlined/check.svg';
@@ -41,6 +42,7 @@ const icons = {
   admin_panel_settings,
   admin_panel_settings_fill,
   arrow_back,
+  bar_chart,
   block,
   calendar_month,
   check,

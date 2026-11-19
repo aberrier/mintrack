@@ -71,6 +71,12 @@ const routesConfig: Routes = [
     loadComponent: () => withProfileTexts(import('./pages/profile/push-help/push-help')),
   },
   {
+    path: appRoutes.stats(''),
+    title: title('app.stats.title'),
+    canActivate: [signedInGuard],
+    loadComponent: () => withProfileTexts(import('./pages/profile/stats/stats')),
+  },
+  {
     path: appRoutes.admin(''),
     title: title('app.nav.admin'),
     canActivate: [signedInGuard, adminGuard],

@@ -11,6 +11,7 @@ export const appRoutes = {
   settings: (rp = '/') => `${rp}profile/settings`,
   mcpHelp: (rp = '/') => `${rp}profile/settings/mcp`,
   pushHelp: (rp = '/') => `${rp}profile/settings/notifications`,
+  stats: (rp = '/') => `${rp}profile/stats`,
   admin: (rp = '/') => `${rp}admin`,
   show: (tmdbId: number | string, rp = '/') => `${rp}shows/${tmdbId}`,
   movie: (tmdbId: number | string, rp = '/') => `${rp}movies/${tmdbId}`,

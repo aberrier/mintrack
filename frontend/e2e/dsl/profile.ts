@@ -77,6 +77,21 @@ export async function notificationsGuide(viewer: Viewer): Promise<string[]> {
   return viewer.app.pushHelpSections();
 }
 
+/** Watch two 45-minute episodes of a show and a 118-minute movie today. */
+export async function watchAShowAndAMovie(viewer: Viewer): Promise<void> {
+  await viewer.api.markWatched(uniqueTitle('Dune Road'), [
+    [1, 1],
+    [1, 2],
+  ]);
+  await viewer.api.addMovie(uniqueTitle('Harbor Lights'), { watched: true });
+}
+
+/** Open Statistics from the Profile tab; what it shows, or null while nothing was watched. */
+export async function statistics(viewer: Viewer) {
+  await viewer.app.openStats();
+  return viewer.app.stats();
+}
+
 export async function seeAllShows(viewer: Viewer): Promise<void> {
   await viewer.app.openLibrary('Shows');
 }

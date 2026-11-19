@@ -1,0 +1,138 @@
+<header class="flex items-center gap-1 ps-1 pe-4 pt-4">
+  <app-back-button [fallback]="routes.profile()" />
+  <h1 class="min-w-0 truncate [font:var(--mat-sys-headline-small)] font-semibold!">
+    {{ translate('app.stats.title') }}
+  </h1>
+</header>
+
+@if ($view(); as view) {
+  @if (view.empty) {
+    <app-empty-state
+      icon="bar_chart"
+      [title]="translate('app.stats.emptyTitle')"
+      [actionLink]="routes.discover()"
+      [actionLabel]="translate('app.common.findShows')">
+      {{ translate('app.stats.empty') }}
+    </app-empty-state>
+  } @else {
+    <div class="flex flex-col gap-6 pt-4 pb-6">
+      <section class="panel enter" aria-labelledby="stats-time" data-testid="stats-time">
+        <h2 id="stats-time" class="text-on-surface-variant [font:var(--mat-sys-title-medium)]">
+          {{ translate('app.stats.timeSpent') }}
+        </h2>
+        <p class="figure" data-testid="stats-total-time">{{ view.total }}</p>
+        <dl class="grid grid-cols-2 gap-3 [font:var(--mat-sys-body-medium)]">
+          <div class="flex flex-col">
+            <dt class="text-on-surface-variant">{{ translate('app.stats.episodes') }}</dt>
+            <dd class="tabular-nums">{{ view.episodeTime }}</dd>
+          </div>
+          <div class="flex flex-col">
+            <dt class="text-on-surface-variant">{{ translate('app.stats.movies') }}</dt>
+            <dd class="tabular-nums">{{ view.movieTime }}</dd>
+          </div>
+        </dl>
+        @if (view.notCounted) {
+          <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+            {{ translate('app.stats.notCounted', { count: '' + view.notCounted }) }}
+          </p>
+        }
+      </section>
+
+      <section class="panel enter" style="--i: 1" aria-labelledby="stats-totals">
+        <h2 id="stats-totals" class="text-on-surface-variant [font:var(--mat-sys-title-medium)]">
+          {{ translate('app.stats.totals') }}
+        </h2>
+        <dl class="grid grid-cols-2 gap-4">
+          @for (total of view.totals; track total.label) {
+            <div class="flex flex-col" data-testid="stats-figure">
+              <dt class="order-last text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ total.label }}</dt>
+              <dd class="figure">{{ total.value }}</dd>
+            </div>
+          }
+        </dl>
+      </section>
+
+      <section class="panel enter" style="--i: 2" aria-labelledby="stats-streaks">
+        <h2 id="stats-streaks" class="text-on-surface-variant [font:var(--mat-sys-title-medium)]">
+          {{ translate('app.stats.streaks') }}
+        </h2>
+        <dl class="grid grid-cols-2 gap-4">
+          <div class="flex flex-col" data-testid="stats-figure">
+            <dt class="order-last text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+              {{ translate('app.stats.currentStreak') }}
+            </dt>
+            <dd class="figure">{{ days(view.stats.current_streak) }}</dd>
+          </div>
+          <div class="flex flex-col" data-testid="stats-figure">
+            <dt class="order-last text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+              {{ translate('app.stats.longestStreak') }}
+            </dt>
+            <dd class="figure">{{ days(view.stats.longest_streak) }}</dd>
+          </div>
+        </dl>
+        <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+          {{ translate('app.stats.streaksHint') }}
+        </p>
+      </section>
+
+      <section class="panel enter" style="--i: 3" aria-labelledby="stats-months">
+        <h2 id="stats-months" class="text-on-surface-variant [font:var(--mat-sys-title-medium)]">
+          {{ translate('app.stats.months') }}
+        </h2>
+        <ol class="chart" data-testid="stats-months">
+          @for (month of view.months; track $index) {
+            <li class="flex flex-col items-center gap-1" [attr.aria-label]="month.label">
+              <span class="column w-full" aria-hidden="true">
+                @if (month.movies) {
+                  <span class="bar movies" [style.height.%]="month.movies"></span>
+                }
+                @if (month.episodes) {
+                  <span class="bar episodes" [style.height.%]="month.episodes"></span>
+                }
+              </span>
+              <span class="text-on-surface-variant [font:var(--mat-sys-label-medium)]" aria-hidden="true">
+                {{ month.initial }}
+              </span>
+            </li>
+          }
+        </ol>
+        <p class="flex items-center gap-4 text-on-surface-variant [font:var(--mat-sys-body-medium)]" aria-hidden="true">
+          <span class="flex items-center gap-2"
+            ><span class="dot episodes"></span>{{ translate('app.stats.episodes') }}</span
+          >
+          <span class="flex items-center gap-2"
+            ><span class="dot movies"></span>{{ translate('app.stats.movies') }}</span
+          >
+        </p>
+      </section>
+
+      @for (ranking of view.rankings; track ranking.id) {
+        <section class="panel enter" [style.--i]="4 + $index" [attr.aria-labelledby]="'stats-' + ranking.id">
+          <h2 [id]="'stats-' + ranking.id" class="text-on-surface-variant [font:var(--mat-sys-title-medium)]">
+            {{ ranking.title }}
+          </h2>
+          <ol class="flex flex-col gap-3" [attr.data-testid]="'stats-' + ranking.id">
+            @for (row of ranking.rows; track row.name) {
+              <li class="flex flex-col gap-1">
+                <span class="flex items-baseline justify-between gap-2 [font:var(--mat-sys-body-medium)]">
+                  <span class="min-w-0 truncate" data-testid="stats-ranked-name">{{ row.name }}</span>
+                  <span class="flex-none text-on-surface-variant tabular-nums">{{ row.count }}</span>
+                </span>
+                <span class="track" aria-hidden="true"><span [style.width.%]="row.width"></span></span>
+              </li>
+            }
+          </ol>
+        </section>
+      }
+    </div>
+  }
+} @else if (stats.error()) {
+  <app-load-error [message]="translate('app.common.loadFailed')" (retry)="stats.reload()" />
+} @else {
+  <div class="flex flex-col gap-6 pt-4" role="status" aria-busy="true">
+    <span class="sr-only">{{ translate('app.common.loading') }}</span>
+    @for (i of [0, 1, 2]; track i) {
+      <span class="skeleton mx-4 h-36 rounded-2xl" aria-hidden="true"></span>
+    }
+  </div>
+}

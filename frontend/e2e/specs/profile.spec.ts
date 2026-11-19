@@ -13,7 +13,9 @@ import {
   searchCollection,
   seeAllShows,
   settings,
+  statistics,
   titles,
+  watchAShowAndAMovie,
 } from '../dsl/profile';
 import { uniqueTitle } from '../dsl/tracking';
 
@@ -122,4 +124,30 @@ test('searching the collection by title narrows the grid, the search kept in the
   await reload(viewer);
   expect(await collectionSearch(viewer)).toBe('birch');
   await expect.poll(() => titles(viewer)).toEqual([library.notStarted]);
+});
+
+test('Statistics count the time spent, the totals, the streak and the top genres and networks', async ({ viewer }) => {
+  // Given nothing watched, Statistics says so
+  expect(await statistics(viewer)).toBeNull();
+
+  // Given two 45-minute episodes and a 118-minute movie watched today
+  await watchAShowAndAMovie(viewer);
+
+  // When they open Statistics
+  const shown = await statistics(viewer);
+
+  // Then it adds up the runtimes, counts the titles, starts a streak and ranks genres and networks
+  expect(shown?.time).toBe('3h 28m');
+  expect(shown?.figures).toMatchObject({
+    Shows: '1',
+    'Finished shows': '0',
+    Episodes: '2',
+    Movies: '1',
+    'Current streak': '1 day',
+    'Longest streak': '1 day',
+  });
+  expect(shown?.months).toHaveLength(12);
+  expect(shown?.months.at(-1)).toMatch(/, episodes: 2, movies: 1$/);
+  expect(shown?.genres).toEqual(['Drama', 'Action', 'Mystery']);
+  expect(shown?.networks).toEqual(['Channel Nine']);
 });
