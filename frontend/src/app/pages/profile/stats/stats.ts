@@ -50,9 +50,9 @@ import { durationText, monthBars } from './stats-format';
     .episodes {
       background: var(--mat-sys-primary);
     }
-    /* Apart from the episodes by lightness in both schemes. */
+    /* Apart from the episodes by hue, and at least 3:1 against the surface in both schemes. */
     .movies {
-      background: var(--mat-sys-inverse-primary);
+      background: var(--mat-sys-tertiary);
     }
     .dot {
       width: 8px;

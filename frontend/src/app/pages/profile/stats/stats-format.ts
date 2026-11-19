@@ -1,14 +1,12 @@
 import { LOCALE } from '../../../core/dates';
-import { TranslationPath } from '../../../core/i18n';
+import { AppTranslate } from '../../../core/i18n';
 
 export { durationText, monthBars, type MonthBar };
-
-type Translate = (path: TranslationPath<'app'>, params?: Record<string, string>) => string;
 
 const MINUTES_PER_DAY = 1440;
 
 /** Minutes as days and hours ("3d 4h"), hours and minutes ("5h 12m") or minutes ("45m"). */
-function durationText(total: number, translate: Translate): string {
+function durationText(total: number, translate: AppTranslate): string {
   const days = Math.floor(total / MINUTES_PER_DAY);
   const hours = Math.floor((total % MINUTES_PER_DAY) / 60);
   const minutes = String(total % 60);
@@ -28,7 +26,7 @@ interface MonthBar {
 }
 
 /** One bar per month, episodes stacked on movies, scaled to the busiest month. */
-function monthBars(months: Model.Http.StatsMonth[], translate: Translate): MonthBar[] {
+function monthBars(months: Model.Http.StatsMonth[], translate: AppTranslate): MonthBar[] {
   const busiest = Math.max(1, ...months.map((month) => month.episodes + month.movies));
   const name = (month: string, style: 'narrow' | 'long') =>
     new Intl.DateTimeFormat(LOCALE, {

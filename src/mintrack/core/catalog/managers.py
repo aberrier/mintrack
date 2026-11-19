@@ -46,8 +46,9 @@ def episode_code(season_number: int, episode_number: int) -> str:
 
 
 def is_stale(media: Media, now: dt.datetime, language: str) -> bool:
-    """Past its refresh period, or fetched in another language than the one configured now."""
-    if media.language != language:
+    """Past its refresh period, fetched in another language than the one configured now, or without genres: every
+    fetch stores a list, so None means it was last fetched by a version that did not store them."""
+    if media.language != language or media.genres is None:
         return True
     return now - media.refreshed_at > (AIRING_MAX_AGE if refreshes_daily(media, now) else MAX_AGE)
 
@@ -118,7 +119,8 @@ class CatalogManager:
         return await self._store_show(await self.tmdb.show(tmdb_id), now)
 
     async def stale_tracked(self, now: dt.datetime) -> list[uuid.UUID]:
-        """Media someone tracks whose metadata is older than its refresh period, or in another language.
+        """Media someone tracks whose metadata is older than its refresh period, in another language, or without
+        genres, as `is_stale` says.
 
         The daily period is `refreshes_daily`'s, plus the movies someone keeps to watch later without a digital
         release date yet, so a late date is still announced within the notification window.
@@ -140,6 +142,7 @@ class CatalogManager:
         )
         stale = sa.or_(
             Media.language.is_distinct_from(self.tmdb.language),
+            Media.genres.is_(None),
             Media.refreshed_at < now - MAX_AGE,
             sa.and_(daily, Media.refreshed_at < now - AIRING_MAX_AGE),
         )

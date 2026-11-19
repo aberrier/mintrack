@@ -390,6 +390,7 @@ declare namespace Model {
     interface Stats {
       episodes: number;
       movies: number;
+      /** Shows with a watched episode, as movies count those watched, and those of them finished. */
       shows: number;
       finished_shows: number;
       episode_minutes: number;
