@@ -34,3 +34,12 @@ test('Quick Connect shows a code to approve in Jellyfin, then links the account 
   expect(await jellyfin.code()).toBe('424242');
   await expect(jellyfin.accounts()).toContainText('bob', { timeout: 10_000 });
 });
+
+test('the items a sync did not recognize can be copied to report them', async ({ admin: { page } }) => {
+  const jellyfin = new JellyfinSection(page);
+  await jellyfin.serveAccountWithUnrecognized([{ name: 'Lost Film', year: 1990 }]);
+  await new Navigation(page).openSettings();
+
+  await expect(jellyfin.accounts()).toContainText('1 not recognized');
+  expect(await jellyfin.copyDetails()).toBe('Details of the items not recognized copied');
+});

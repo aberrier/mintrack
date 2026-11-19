@@ -264,6 +264,23 @@ declare namespace Model {
       last_sync_status: JellyfinSyncStatus | null;
       last_sync_imported: number;
       last_sync_skipped: number;
+      /** The first items the last full sync did not recognize, as Jellyfin describes them. */
+      last_sync_unmatched: JellyfinUnmatchedItem[];
+    }
+
+    type JellyfinUnmatchedReason = 'unsupported' | 'no_numbers' | 'not_found' | 'episode_not_found';
+
+    interface JellyfinUnmatchedItem {
+      name: string;
+      type: string;
+      year: number | null;
+      provider_ids: Record<string, string>;
+      series_name: string | null;
+      series_year: number | null;
+      series_provider_ids: Record<string, string> | null;
+      season: number | null;
+      episode: number | null;
+      reason: JellyfinUnmatchedReason;
     }
 
     interface JellyfinLinkRequest extends JellyfinServerRequest {

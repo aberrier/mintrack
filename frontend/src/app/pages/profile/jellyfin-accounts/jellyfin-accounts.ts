@@ -10,9 +10,11 @@ import { MatProgressBar } from '@angular/material/progress-bar';
 import { filter, finalize, first, Subscription, switchMap, timer } from 'rxjs';
 import { ApiService } from '../../../core/api/api.service';
 import { AuthStore } from '../../../core/auth/auth.store';
+import { injectCopy } from '../../../core/copy';
 import { formatDateTime } from '../../../core/dates';
 import { injectTranslator, TranslationPath } from '../../../core/i18n';
 import { JellyfinStore } from '../../../core/jellyfin/jellyfin.store';
+import { unmatchedDetails } from '../../../core/jellyfin/unmatched';
 import { injectNotify } from '../../../core/notify';
 
 /** Milliseconds between two questions to Jellyfin about whether the code was approved. */
@@ -69,6 +71,7 @@ export class JellyfinAccounts {
   private readonly api = inject(ApiService);
   private readonly timeZone = inject(AuthStore).$timeZone;
   private readonly notify = injectNotify();
+  private readonly copyText = injectCopy();
   private readonly destroyRef = inject(DestroyRef);
   protected readonly syncFailures = syncFailures;
 
@@ -93,6 +96,11 @@ export class JellyfinAccounts {
 
   protected date(value: string): string {
     return formatDateTime(value, this.timeZone());
+  }
+
+  /** Copy what Jellyfin says of the items not recognized, for a bug report. */
+  protected copyDetails(account: Model.Http.JellyfinAccount): void {
+    this.copyText(unmatchedDetails(account), 'app.profile.jellyfin.detailsCopied');
   }
 
   protected syncedLine(account: Model.Http.JellyfinAccount, lastSync: string): string {

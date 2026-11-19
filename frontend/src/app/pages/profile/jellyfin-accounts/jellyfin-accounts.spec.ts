@@ -1,3 +1,4 @@
+import { Clipboard } from '@angular/cdk/clipboard';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
@@ -19,6 +20,7 @@ function account(changes: Partial<Model.Http.JellyfinAccount> = {}): Model.Http.
     last_sync_status: 'ok',
     last_sync_imported: 12,
     last_sync_skipped: 0,
+    last_sync_unmatched: [],
     ...changes,
   };
 }
@@ -28,11 +30,18 @@ describe('JellyfinAccounts', () => {
   let fixture: ComponentFixture<JellyfinAccounts>;
   let http: HttpTestingController;
   let snackBar: { open: ReturnType<typeof vi.fn> };
+  let clipboard: { copy: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     snackBar = { open: vi.fn() };
+    clipboard = { copy: vi.fn(() => true) };
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), { provide: MatSnackBar, useValue: snackBar }],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: MatSnackBar, useValue: snackBar },
+        { provide: Clipboard, useValue: clipboard },
+      ],
     });
     http = TestBed.inject(HttpTestingController);
   });
@@ -85,6 +94,37 @@ describe('JellyfinAccounts', () => {
     expect(text(element, 'jellyfin-last-sync')).toMatch(/: 3 new plays$/);
     vi.advanceTimersByTime(SYNC_POLL_MS);
     http.expectNone(ACCOUNTS);
+  });
+
+  it('copies the details of the items not recognized, offered only when there are some', async () => {
+    const unmatched: Model.Http.JellyfinUnmatchedItem = {
+      name: 'Lost Film',
+      type: 'Movie',
+      year: 1990,
+      provider_ids: {},
+      series_name: null,
+      series_year: null,
+      series_provider_ids: null,
+      season: null,
+      episode: null,
+      reason: 'not_found',
+    };
+    const element = await render([
+      account({ id: 'a1', last_sync_skipped: 1, last_sync_unmatched: [unmatched] }),
+      account({ id: 'a2' }),
+    ]);
+
+    expect(element.querySelectorAll('[data-testid="jellyfin-account"]')[1]!.textContent).not.toContain('Copy details');
+    button(element, 'Copy details').click();
+
+    expect(clipboard.copy).toHaveBeenCalledWith(
+      'Jellyfin items not recognized: 1 (1 listed)\n- Movie · "Lost Film" (1990) · ids: none · not_found',
+    );
+    expect(snackBar.open).toHaveBeenCalledWith(
+      'Details of the items not recognized copied',
+      undefined,
+      expect.anything(),
+    );
   });
 
   it('says when no account is linked', async () => {

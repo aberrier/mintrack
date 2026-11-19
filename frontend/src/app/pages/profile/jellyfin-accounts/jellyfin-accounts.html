@@ -30,6 +30,11 @@
         <button matButton="outlined" type="button" class="min-h-12" (click)="store.sync(account)">
           {{ translate('app.profile.jellyfin.syncNow') }}
         </button>
+        @if (account.last_sync_unmatched.length) {
+          <button matButton type="button" class="min-h-12" (click)="copyDetails(account)">
+            {{ translate('app.profile.jellyfin.copyDetails') }}
+          </button>
+        }
         <button matButton type="button" class="min-h-12" (click)="store.unlink(account)">
           {{ translate('app.profile.jellyfin.unlink') }}
         </button>
