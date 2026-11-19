@@ -131,7 +131,7 @@ async def notify_digital_releases(timestamp: int) -> None:
     async with get_database().session() as session, push_client() as client:
         count = await PushManager(session, client, key).notify_digital_releases(now)
     if count:
-        logger.info("digital release notifications sent", movies=count)
+        logger.info("digital release notifications sent", notifications=count)
 
 
 @blueprint.task(name=TaskName.SYNC_JELLYFIN_ACCOUNT)

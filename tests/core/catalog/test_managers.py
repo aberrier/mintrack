@@ -6,12 +6,57 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintrack.core.catalog.managers import CatalogManager, is_stale
 from mintrack.core.ratings.managers import RatingManager
 from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
-from mintrack.db.models import Media, MediaType, Season, User
+from mintrack.db.models import Media, MediaType, Season, TrackingStatus, User, UserMedia
 from mintrack.integrations.tmdb.client import TMDBClient
 from tests.conftest import cached_media, episodes_of
-from tests.fakes.tmdb import DAILY_EPISODES, FakeTMDB, media_id
+from tests.fakes.tmdb import DAILY_EPISODES, MAX_ID, FakeTMDB, media_id
 
 NOW = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
+
+
+async def test_the_worker_refreshes_daily_what_a_page_would_and_movies_awaited_on_watch_later(
+    db_session: AsyncSession, tmdb: TMDBClient, user: User
+) -> None:
+    refreshed_at = NOW - dt.timedelta(days=2)
+    kinds: dict[str, tuple[MediaType, str | None, dt.date | None, dt.date | None, TrackingStatus]] = {
+        "airing show": (MediaType.TV, "Returning Series", None, None, TrackingStatus.WATCHING),
+        "ended show": (MediaType.TV, "Ended", None, None, TrackingStatus.WATCHING),
+        "recent movie": (MediaType.MOVIE, "Released", NOW.date() - dt.timedelta(days=30), None, TrackingStatus.WATCHED),
+        "old movie": (MediaType.MOVIE, "Released", dt.date(2001, 1, 1), None, TrackingStatus.WATCHED),
+        "undated movie": (MediaType.MOVIE, None, None, None, TrackingStatus.WATCHED),
+        "old movie awaited": (MediaType.MOVIE, "Released", dt.date(2001, 1, 1), None, TrackingStatus.WATCH_LATER),
+        "old movie out": (
+            MediaType.MOVIE,
+            "Released",
+            dt.date(2001, 1, 1),
+            dt.date(2001, 6, 1),
+            TrackingStatus.WATCH_LATER,
+        ),
+    }
+    media: dict[str, Media] = {}
+    for offset, (name, (media_type, status, released, digital, tracking)) in enumerate(kinds.items(), start=1):
+        media[name] = Media(
+            media_type=media_type,
+            tmdb_id=MAX_ID + 1000 + offset,
+            title=name,
+            tmdb_status=status,
+            release_date=released,
+            digital_release_date=digital,
+            refreshed_at=refreshed_at,
+            language=tmdb.language,
+        )
+        db_session.add(media[name])
+        await db_session.flush()
+        db_session.add(
+            UserMedia(user_id=user.id, media_id=media[name].id, status=tracking, added_at=NOW, updated_at=NOW)
+        )
+    await db_session.flush()
+
+    stale = set(await CatalogManager(db_session, tmdb).stale_tracked(NOW))
+
+    by_page = {name for name, item in media.items() if is_stale(item, NOW, tmdb.language)}
+    assert by_page == {"airing show", "recent movie", "undated movie"}
+    assert {name for name, item in media.items() if item.id in stale} == by_page | {"old movie awaited"}
 
 
 async def test_a_first_visit_stores_the_show_its_seasons_and_episodes(

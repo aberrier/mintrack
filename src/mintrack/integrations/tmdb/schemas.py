@@ -32,7 +32,8 @@ class TMDBSearchResult(TMDBModel):
 class TMDBReleaseDate(TMDBModel):
     # 1 premiere, 2 limited theatrical, 3 theatrical, 4 digital, 5 physical, 6 TV.
     type: int
-    release_date: dt.datetime
+    # Missing from some entries: such an entry is skipped rather than failing the whole movie.
+    release_date: typing.Annotated[dt.datetime | None, pydantic.BeforeValidator(_empty_as_none)] = None
 
 
 class TMDBCountryReleases(TMDBModel):
@@ -65,7 +66,7 @@ class TMDBMovie(TMDBModel):
             release.release_date.date()
             for country in self.release_dates.results
             for release in country.release_dates
-            if release.type == DIGITAL_RELEASE_TYPE
+            if release.type == DIGITAL_RELEASE_TYPE and release.release_date is not None
         ]
         return min(dates, default=None)
 

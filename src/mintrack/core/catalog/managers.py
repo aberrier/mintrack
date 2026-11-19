@@ -53,6 +53,8 @@ def is_stale(media: Media, now: dt.datetime, language: str) -> bool:
 
 
 def refreshes_daily(media: Media, now: dt.datetime) -> bool:
+    """An airing show, or a movie released recently or not yet; `CatalogManager.stale_tracked` says the same in SQL,
+    and a test checks they agree."""
     if media.media_type is MediaType.TV:
         return is_airing(media)
     return media.release_date is None or media.release_date > (now - RECENT_MOVIE).date()
@@ -116,8 +118,16 @@ class CatalogManager:
         return await self._store_show(await self.tmdb.show(tmdb_id), now)
 
     async def stale_tracked(self, now: dt.datetime) -> list[uuid.UUID]:
-        """Media someone tracks whose metadata is older than its refresh period, or in another language."""
+        """Media someone tracks whose metadata is older than its refresh period, or in another language.
+
+        The daily period is `refreshes_daily`'s, plus the movies someone keeps to watch later without a digital
+        release date yet, so a late date is still announced within the notification window.
+        """
         tracked = sa.exists().where(UserMedia.media_id == Media.id)
+        awaited = sa.and_(
+            Media.digital_release_date.is_(None),
+            sa.exists().where(UserMedia.media_id == Media.id, UserMedia.status == TrackingStatus.WATCH_LATER),
+        )
         daily = sa.or_(
             sa.and_(
                 Media.media_type == MediaType.TV,
@@ -125,7 +135,7 @@ class CatalogManager:
             ),
             sa.and_(
                 Media.media_type == MediaType.MOVIE,
-                sa.or_(Media.release_date.is_(None), Media.release_date > (now - RECENT_MOVIE).date()),
+                sa.or_(Media.release_date.is_(None), Media.release_date > (now - RECENT_MOVIE).date(), awaited),
             ),
         )
         stale = sa.or_(

@@ -181,8 +181,8 @@ class PushManager:
         """Notify each user once about the movies they put on watch later whose first digital release, in any
         country, is within the window: a movie added long after its release is not announced.
 
-        Days are UTC days. The pairs are committed before sending, as for episodes. Returns the number of movies
-        notified.
+        Days are UTC days. The (user, movie) pairs are committed before sending, as for episodes. Returns the number
+        of notifications, one per pair, whatever the user's number of devices.
         """
         today = now.date()
         due = (
