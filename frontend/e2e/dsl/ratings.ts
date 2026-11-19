@@ -51,6 +51,20 @@ export async function changeWatchDate(viewer: Viewer, local: string): Promise<st
   return viewer.app.textOf('sheet-watched');
 }
 
+/** Pick a watch date the app refuses; returns what it says and whether the field shows the saved date again. */
+export async function refusedWatchDate(viewer: Viewer, local: string): Promise<{ message: string; kept: boolean }> {
+  const saved = await viewer.app.watchDateShown();
+  await viewer.app.setWatchDate(local);
+  const message = (await viewer.app.snackBar().innerText()).trim();
+  return { message, kept: (await viewer.app.watchDateShown()) === saved };
+}
+
+/** Today at `time` in the user's time zone, as a date-time field takes it: "2026-11-19T00:00". */
+export async function todayAt(viewer: Viewer, time: string): Promise<string> {
+  const timeZone = await viewer.api.timeZone();
+  return `${new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date())}T${time}`;
+}
+
 /** Rate what the page or the sheet shows, with stars and a review, and wait until it is saved. */
 export async function rate(viewer: Viewer, stars: number, review = ''): Promise<void> {
   await viewer.app.rate(stars, review);
@@ -58,6 +72,13 @@ export async function rate(viewer: Viewer, stars: number, review = ''): Promise<
 
 export async function removeRating(viewer: Viewer): Promise<void> {
   await viewer.app.removeRating();
+}
+
+/** Use the Undo of the rating just removed, and wait until it is saved again. */
+export async function undoRemoval(viewer: Viewer): Promise<void> {
+  const saved = viewer.app.nextResponse('/rating');
+  await viewer.app.snackBarAction('Undo');
+  await saved;
 }
 
 export async function ratingShown(viewer: Viewer): Promise<{ stars: number; review: string }> {

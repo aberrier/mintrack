@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  DestroyRef,
   inject,
   input,
   linkedSignal,
@@ -12,15 +13,16 @@ import { MatButton } from '@angular/material/button';
 import { MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
+import { MatSnackBarRef, TextOnlySnackBar } from '@angular/material/snack-bar';
 import { Observable } from 'rxjs';
-import { ApiService, RatingPath } from '../core/api/api.service';
+import { ApiService, RatingTarget } from '../core/api/api.service';
 import { LOCALE } from '../core/dates';
-import { injectTranslator } from '../core/i18n';
-import { injectNotify } from '../core/notify';
+import { AppTranslate, injectTranslator } from '../core/i18n';
+import { injectNotify, injectNotifyUndo } from '../core/notify';
 
 /** TMDB's score of a show, a movie or an episode in words, or null when nobody voted. */
 export function tmdbScore(
-  translate: ReturnType<typeof injectTranslator<['app']>>,
+  translate: AppTranslate,
   media: Pick<Model.Http.Media, 'vote_average' | 'vote_count'> | undefined,
 ): string | null {
   if (!media?.vote_count || media.vote_average === null) return null;
@@ -31,7 +33,7 @@ export function tmdbScore(
 }
 
 /** The API's limit of a review's length. */
-export const MAX_REVIEW_LENGTH = 500;
+const MAX_REVIEW_LENGTH = 500;
 const STARS = [1, 2, 3, 4, 5] as const;
 
 /**
@@ -124,12 +126,19 @@ const STARS = [1, 2, 3, 4, 5] as const;
 export class RatingForm {
   private readonly api = inject(ApiService);
   private readonly notify = injectNotify();
+  private readonly notifyUndo = injectNotifyUndo();
   protected readonly translate = injectTranslator('app');
   protected readonly stars = STARS;
   protected readonly maxLength = MAX_REVIEW_LENGTH;
+  /** The Undo of a removal, which goes with the form: once it is gone, nothing would show the rating put back. */
+  private undoRemoval?: MatSnackBarRef<TextOnlySnackBar>;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => this.undoRemoval?.dismiss());
+  }
 
   /** What is rated. */
-  readonly path = input.required<RatingPath>();
+  readonly target = input.required<RatingTarget>();
   /** The rating saved so far. */
   readonly rating = input.required<Model.Http.Rating | null>();
   /** The server saved a rating, or removed it (null). */
@@ -144,19 +153,30 @@ export class RatingForm {
   });
 
   protected save(): void {
-    this.send(this.api.ratings.save(this.path(), { stars: this.$stars(), review: this.$review().trim() }), 'saved');
+    this.send(this.api.ratings.save(this.target(), { stars: this.$stars(), review: this.$review().trim() }), () =>
+      this.notify(this.translate('app.rating.saved')),
+    );
   }
 
+  /** Remove the rating, with an Undo that saves it again. */
   protected remove(): void {
-    this.send(this.api.ratings.remove(this.path()), 'removed');
+    const removed = this.rating();
+    if (!removed) return;
+    this.send(this.api.ratings.remove(this.target()), () => {
+      this.undoRemoval = this.notifyUndo(this.translate('app.rating.removed'), () =>
+        this.send(this.api.ratings.save(this.target(), { stars: removed.stars, review: removed.review }), () =>
+          this.notify(this.translate('app.rating.saved')),
+        ),
+      );
+    });
   }
 
-  private send(request: Observable<Model.Http.Rating | void>, done: 'saved' | 'removed'): void {
+  private send(request: Observable<Model.Http.Rating | void>, done: () => void): void {
     this.$saving.set(true);
     request.subscribe({
       next: (rating) => {
         this.$saving.set(false);
-        this.notify(this.translate(done === 'saved' ? 'app.rating.saved' : 'app.rating.removed'));
+        done();
         this.saved.emit(rating ?? null);
       },
       error: () => {

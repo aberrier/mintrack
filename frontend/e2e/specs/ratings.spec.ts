@@ -7,9 +7,12 @@ import {
   openWatchListEpisode,
   rate,
   ratingShown,
+  refusedWatchDate,
   removeRating,
   tapSheetCheck,
   tmdbScore,
+  todayAt,
+  undoRemoval,
 } from '../dsl/ratings';
 import { openMovie, openShow, seedShows, today, uniqueTitle } from '../dsl/tracking';
 import { nextEpisodeOf, openWatchList } from '../dsl/watch-list';
@@ -25,21 +28,28 @@ test('someone opens an episode from its show, marks it, dates the watch and rate
   expect(sheet.title).toBe('S01E02 Episode 2');
   expect(sheet.facts).toMatch(/^Aired .+ · Channel Nine$/);
   expect(sheet.overview).toBe('What happens in episode 2.');
-  expect(sheet.score).toBe('7.5 · TMDB (24)');
+  expect(sheet.score).toBe('7.5/10 from 24 votes on TMDB');
   expect(sheet.watched).toBe('Not watched');
 
   // When they mark it there, it is watched today
   expect(await tapSheetCheck(viewer)).toMatch(new RegExp(`^Watched ${await today(viewer)}, \\d\\d:\\d\\d$`));
 
-  // When they say they watched it on another day, the sheet says so
-  expect(await changeWatchDate(viewer, '2025-03-14T20:30')).toBe('Watched 14 Mar 2025, 20:30');
+  // When they pick a time before the episode aired, the sheet refuses it and keeps the date saved
+  expect(await refusedWatchDate(viewer, '2000-01-01T20:30')).toEqual({
+    message: 'Pick a time after the episode aired.',
+    kept: true,
+  });
+
+  // When they say they watched it earlier today, the sheet says so
+  const watched = `Watched ${await today(viewer)}, 0:00`;
+  expect(await changeWatchDate(viewer, await todayAt(viewer, '00:00'))).toBe(watched);
 
   // When they rate it with a review, the sheet shows it again the next time
   await rate(viewer, 4, 'The twist works.');
   await closeEpisode(viewer);
   await openEpisode(viewer, 1, 2);
   expect(await ratingShown(viewer)).toEqual({ stars: 4, review: 'The twist works.' });
-  expect((await episodeSheet(viewer)).watched).toBe('Watched 14 Mar 2025, 20:30');
+  expect((await episodeSheet(viewer)).watched).toBe(watched);
 });
 
 test('marking the episode of a watch list card from its sheet moves the card on', async ({ viewer }) => {
@@ -72,10 +82,17 @@ test('someone rates a show, then changes their mind', async ({ viewer }) => {
 });
 
 test('someone rates a movie, then removes the rating', async ({ viewer }) => {
-  // Given a movie nobody voted for on TMDB, rated and then unrated
+  // Given a movie nobody voted for on TMDB, rated
   await openMovie(viewer, uniqueTitle('Glass Orchard'));
   expect(await tmdbScore(viewer)).toBe('');
-  await rate(viewer, 3);
+  await rate(viewer, 3, 'Pretty.');
+
+  // When they remove the rating, Undo brings it back
+  await removeRating(viewer);
+  await undoRemoval(viewer);
+  expect(await ratingShown(viewer)).toEqual({ stars: 3, review: 'Pretty.' });
+
+  // When they remove it again, it stays removed
   await removeRating(viewer);
   await viewer.app.reload();
   expect(await ratingShown(viewer)).toEqual({ stars: 0, review: '' });

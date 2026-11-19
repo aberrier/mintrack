@@ -11,17 +11,20 @@ import { AuthStore } from '../core/auth/auth.store';
 import { formatDate, formatDateTime, localDateTime, zonedInstant } from '../core/dates';
 import { injectTranslator } from '../core/i18n';
 import { injectNotify } from '../core/notify';
-import { isAired, isUpcoming } from '../core/tracking/episodes';
+import { episodeCode, isAired, isUpcoming } from '../core/tracking/episodes';
 import { TrackingStore } from '../core/tracking/tracking.store';
 import { WatchListStore } from '../core/tracking/watch-list.store';
 import { CheckButton } from './check-button';
 import { imageUrl } from './images';
 import { LoadError } from './load-error';
-import { RatingForm } from './rating-form';
+import { RatingForm, tmdbScore } from './rating-form';
 
 interface EpisodeSheetData {
   episodeId: string;
 }
+
+/** The earliest watch date of an episode without an air date, as the API takes it. */
+const MIN_WATCH_DATE = '1900-01-01T00:00';
 
 /**
  * An episode in a bottom sheet: its still, number and title, a link to its show, its synopsis, air date, network and
@@ -33,7 +36,7 @@ interface EpisodeSheetData {
   template: `
     @if (episode.hasValue()) {
       @let ep = episode.value();
-      <article class="flex flex-col gap-6 pb-4" data-testid="episode-sheet">
+      <article class="flex flex-col gap-6" data-testid="episode-sheet">
         @if ($still(); as still) {
           <img class="still" [src]="still" alt="" decoding="async" />
         }
@@ -53,18 +56,10 @@ interface EpisodeSheetData {
               {{ facts }}
             </p>
           }
-          @if (ep.vote_count && ep.vote_average !== null) {
-            <p
-              class="score"
-              data-testid="sheet-tmdb-score"
-              [attr.aria-label]="
-                translate('app.rating.tmdbScore', { score: ep.vote_average.toFixed(1), votes: '' + ep.vote_count })
-              ">
+          @if ($tmdbScore(); as score) {
+            <p class="score" data-testid="sheet-tmdb-score">
               <mat-icon svgIcon="star_fill" aria-hidden="true" />
-              <span aria-hidden="true"
-                >{{ ep.vote_average.toFixed(1) }}
-                <span class="text-on-surface-variant">· TMDB ({{ ep.vote_count }})</span></span
-              >
+              <span>{{ score }}</span>
             </p>
           }
         </header>
@@ -73,7 +68,7 @@ interface EpisodeSheetData {
           <p class="max-w-[65ch] [font:var(--mat-sys-body-large)]" data-testid="sheet-overview">{{ ep.overview }}</p>
         }
 
-        <section class="flex flex-col gap-2">
+        <section class="flex flex-col gap-4">
           <div class="watched">
             <p class="flex-1 [font:var(--mat-sys-title-medium)]" data-testid="sheet-watched">
               {{
@@ -92,19 +87,20 @@ interface EpisodeSheetData {
               (click)="toggle(ep)"></button>
           </div>
           @if ($watchedAt(); as watchedAt) {
-            <mat-form-field subscriptSizing="dynamic">
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
               <mat-label>{{ translate('app.episodeSheet.watchedAt') }}</mat-label>
               <input
                 matInput
                 type="datetime-local"
                 [value]="local(watchedAt)"
+                [min]="$earliest()"
                 [max]="local(now)"
-                (change)="changeDate(ep, $any($event.target).value)" />
+                (change)="changeDate(ep, $any($event.target))" />
             </mat-form-field>
           }
         </section>
 
-        <app-rating-form [path]="'episodes/' + ep.id" [rating]="$rating()" (saved)="rated(ep, $event)" />
+        <app-rating-form [target]="{ episodeId: ep.id }" [rating]="$rating()" (saved)="rated(ep, $event)" />
       </article>
     } @else if (episode.error()) {
       <app-load-error [message]="translate('app.episodeSheet.loadFailed')" (retry)="episode.reload()" />
@@ -126,7 +122,6 @@ interface EpisodeSheetData {
       display: inline-flex;
       align-items: center;
       min-height: 48px;
-      margin-block: -12px;
       color: var(--mat-sys-primary);
       font: var(--mat-sys-label-large);
       text-decoration: none;
@@ -139,6 +134,7 @@ interface EpisodeSheetData {
       display: flex;
       align-items: center;
       gap: 4px;
+      color: var(--mat-sys-on-surface-variant);
       font: var(--mat-sys-label-large);
       font-variant-numeric: tabular-nums;
     }
@@ -183,12 +179,17 @@ export class EpisodeSheet {
   protected readonly $still = computed(() => imageUrl(this.$episode()?.still_path ?? null, 'w300'));
   protected readonly $code = computed(() => {
     const ep = this.$episode();
-    const pad = (value: number) => String(value).padStart(2, '0');
-    return ep ? `S${pad(ep.season_number)}E${pad(ep.episode_number)}` : '';
+    return ep ? episodeCode(ep.season_number, ep.episode_number, true) : '';
   });
+  protected readonly $tmdbScore = computed(() => tmdbScore(this.translate, this.$episode()));
   protected readonly $upcoming = computed(() => {
     const ep = this.$episode();
     return !!ep && isUpcoming(ep, this.now, this.timeZone());
+  });
+  /** The earliest watch date the date field takes: the start of the air date, as a date-time input value. */
+  protected readonly $earliest = computed(() => {
+    const airDate = this.$episode()?.air_date;
+    return airDate ? `${airDate}T00:00` : MIN_WATCH_DATE;
   });
   /** "Aired 13 Nov 2025 · Network". */
   protected readonly $facts = computed(() => {
@@ -221,31 +222,45 @@ export class EpisodeSheet {
       this.$watchedAt.set(before);
       return;
     }
-    this.watchList.episodeChanged(ep.id, { watched_at: after });
+    this.watchList.episodeChanged(ep, { watched_at: after, stars: this.$rating()?.stars ?? null });
   }
 
-  /** A date picked for the watch: saved unless it is after now. */
-  protected async changeDate(ep: Model.Http.EpisodeDetail, local: string): Promise<void> {
+  /** A date picked for the watch: saved unless it is after now or before the episode aired; the field shows the
+   * saved date again when the date is refused. */
+  protected async changeDate(ep: Model.Http.EpisodeDetail, field: HTMLInputElement): Promise<void> {
     const before = this.$watchedAt();
-    if (!local || !before) return;
-    const at = zonedInstant(local, this.timeZone());
-    if (at > new Date()) {
-      this.notify(this.translate('app.episodeSheet.future'));
+    if (!before) return;
+    const restore = () => (field.value = this.local(before));
+    if (!field.value) {
+      restore();
+      return;
+    }
+    const at = zonedInstant(field.value, this.timeZone());
+    const refusal =
+      at > new Date()
+        ? 'app.episodeSheet.future'
+        : field.value < this.$earliest()
+          ? 'app.episodeSheet.beforeAired'
+          : null;
+    if (refusal) {
+      this.notify(this.translate(refusal));
+      restore();
       return;
     }
     const watchedAt = at.toISOString();
     this.$watchedAt.set(watchedAt);
     if (!(await this.tracking.setWatchedAt(ep.tmdb_id, ep.id, watchedAt))) {
       this.$watchedAt.set(before);
+      restore();
       return;
     }
     this.notify(this.translate('app.episodeSheet.dateSaved'));
-    this.watchList.episodeChanged(ep.id, { watched_at: watchedAt });
+    this.watchList.episodeChanged(ep, { watched_at: watchedAt });
   }
 
   protected rated(ep: Model.Http.EpisodeDetail, rating: Model.Http.Rating | null): void {
     this.$rating.set(rating);
-    this.watchList.episodeChanged(ep.id, { rating: rating?.stars ?? null });
+    this.watchList.episodeChanged(ep, { stars: rating?.stars ?? null });
   }
 }
 
@@ -257,6 +272,8 @@ export function injectEpisodeSheet(): (episodeId: string) => void {
     sheet.open<EpisodeSheet, EpisodeSheetData>(EpisodeSheet, {
       data: { episodeId },
       ariaLabel: translate('app.episodeSheet.label'),
+      // Rounded top corners, room above the content and the home indicator's inset: see styles.css.
+      panelClass: 'episode-sheet-panel',
     });
   };
 }

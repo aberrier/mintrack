@@ -1,7 +1,10 @@
 import app from './translations/app.en';
 import type profileTexts from './translations/profile.en';
 
-export { injectTranslator, loadProfileTexts, withProfileTexts, type TranslationPath };
+export { injectTranslator, loadProfileTexts, withProfileTexts, type AppTranslate, type TranslationPath };
+
+/** The translator of the app's texts, for helpers that take it from their component. */
+type AppTranslate = ReturnType<typeof injectTranslator<['app']>>;
 
 /**
  * Inject a translator for the given kinds of translations.

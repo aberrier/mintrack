@@ -62,7 +62,7 @@
         <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="tmdb-score">{{ score }}</p>
       }
       <app-rating-form
-        [path]="'shows/' + show.tmdb_id"
+        [target]="{ mediaType: 'tv', tmdbId: show.tmdb_id }"
         [rating]="show.rating"
         (saved)="store.rated('tv', show.tmdb_id, $event)" />
     </section>

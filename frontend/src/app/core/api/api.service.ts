@@ -1,8 +1,13 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 
-/** What a rating is about, as its API path: `shows/{tmdbId}`, `movies/{tmdbId}` or `episodes/{id}`. */
-export type RatingPath = string;
+/** What a rating is about: a show or a movie by its TMDB id, or an episode by its id. */
+export type RatingTarget = { mediaType: Model.Http.MediaType; tmdbId: number } | { episodeId: string };
+
+function ratingUrl(target: RatingTarget): string {
+  if ('episodeId' in target) return `/api/episodes/${target.episodeId}/rating`;
+  return `/api/${target.mediaType === 'tv' ? 'shows' : 'movies'}/${target.tmdbId}/rating`;
+}
 
 /**
  * The MinTrack API, one group of endpoints per domain.
@@ -90,11 +95,11 @@ export class ApiService {
       this.http.put<Model.Http.ShowTracking>(`/api/episodes/${id}/watched`, { watched_at: watchedAt }),
   };
 
-  /** The user's ratings, by path: `shows/{tmdbId}`, `movies/{tmdbId}` or `episodes/{id}`. */
+  /** The user's ratings of shows, movies and episodes. */
   readonly ratings = {
-    save: (path: RatingPath, rating: Model.Http.RatingRequest) =>
-      this.http.put<Model.Http.Rating>(`/api/${path}/rating`, rating),
-    remove: (path: RatingPath) => this.http.delete<void>(`/api/${path}/rating`),
+    save: (target: RatingTarget, rating: Model.Http.RatingRequest) =>
+      this.http.put<Model.Http.Rating>(ratingUrl(target), rating),
+    remove: (target: RatingTarget) => this.http.delete<void>(ratingUrl(target)),
   };
 
   readonly upcoming = {

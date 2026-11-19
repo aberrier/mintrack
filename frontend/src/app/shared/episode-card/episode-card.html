@@ -33,9 +33,9 @@
         @if (ep.remaining) {
           <span class="ms-1 text-on-surface-variant [font:var(--mat-sys-label-large)]">+{{ ep.remaining }}</span>
         }
-        @if (ep.rating) {
+        @if (ep.stars) {
           <span class="stars" data-testid="episode-rating" [attr.aria-label]="ratingLabel()">
-            <mat-icon svgIcon="star_fill" aria-hidden="true" /><span aria-hidden="true">{{ ep.rating }}</span>
+            <mat-icon svgIcon="star_fill" aria-hidden="true" /><span aria-hidden="true">{{ ep.stars }}</span>
           </span>
         }
       </span>

@@ -91,7 +91,7 @@ export interface CardEpisode {
   /** The episode's id: tapping the episode opens its sheet. Absent for movies, which link to their page. */
   episode_id?: string;
   /** The user's stars, shown in a list. */
-  rating?: number | null;
+  stars?: number | null;
 }
 
 export interface CardAction<T extends string> {
@@ -111,7 +111,7 @@ export function historyCard(entry: Model.Http.HistoryEntry): CardEpisode {
     episode_number: entry.episode_number,
     title: entry.episode_title,
     episode_id: entry.media_type === 'tv' ? entry.id : undefined,
-    rating: entry.rating,
+    stars: entry.stars,
   };
 }
 
@@ -220,6 +220,6 @@ export class EpisodeCard<T extends string = string> {
   protected readonly openSheet = injectEpisodeSheet();
 
   protected readonly ratingLabel = computed(() =>
-    this.translate('app.rating.yours', { count: String(this.episode().rating ?? 0) }),
+    this.translate('app.rating.yours', { count: String(this.episode().stars ?? 0) }),
   );
 }

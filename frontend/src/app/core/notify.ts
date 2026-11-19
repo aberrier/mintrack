@@ -32,8 +32,12 @@ export function injectNotify(): (message: string, action?: string) => MatSnackBa
 }
 
 /** Say what a tap just did, with an Undo action that runs `undo`. */
-export function injectNotifyUndo(): (message: string, undo: () => void) => void {
+export function injectNotifyUndo(): (message: string, undo: () => void) => MatSnackBarRef<TextOnlySnackBar> {
   const notify = injectNotify();
   const translate = injectTranslator('app');
-  return (message, undo) => notify(message, translate('app.common.undo')).onAction().subscribe(undo);
+  return (message, undo) => {
+    const ref = notify(message, translate('app.common.undo'));
+    ref.onAction().subscribe(undo);
+    return ref;
+  };
 }

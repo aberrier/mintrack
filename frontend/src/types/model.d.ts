@@ -237,7 +237,7 @@ declare namespace Model {
       /** The user finished the show; always false for movies. */
       finished: boolean;
       /** The user's stars for the episode or the movie, if rated. */
-      rating: number | null;
+      stars: number | null;
     }
 
     interface HistoryResponse {
