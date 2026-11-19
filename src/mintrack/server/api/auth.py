@@ -1,9 +1,11 @@
+import datetime as dt
 import typing
 import uuid
 
 import fastapi
 import pydantic
 
+from mintrack.core.accounts.devices import device_label
 from mintrack.core.accounts.managers import (
     AccountManager,
     InvalidCredentialsError,
@@ -78,6 +80,14 @@ class UpdateMeRequest(pydantic.BaseModel):
     timezone: Timezone
 
 
+class SessionResponse(pydantic.BaseModel):
+    id: uuid.UUID
+    # Such as "Chrome on Android"; null when the browser did not say.
+    device: str | None
+    last_used_at: dt.datetime
+    current: bool
+
+
 class ChangePasswordRequest(pydantic.BaseModel):
     current_password: AnyPassword
     new_password: NewPassword
@@ -99,7 +109,11 @@ async def login(
 ) -> UserResponse:
     try:
         user, token = await AccountManager(db).login(
-            body.username, body.password, address=_client_address(request), now=utc_now()
+            body.username,
+            body.password,
+            address=_client_address(request),
+            now=utc_now(),
+            user_agent=request.headers.get("user-agent"),
         )
     except LoginRateLimitedError:
         raise fastapi.HTTPException(
@@ -125,7 +139,9 @@ async def describe_password_link(body: PasswordLinkRequest, db: DbSessionDepType
 @public_router.post(
     "/password-link/use", responses={fastapi.status.HTTP_400_BAD_REQUEST: {"description": INVALID_LINK}}
 )
-async def use_password_link(body: UseLinkRequest, response: fastapi.Response, db: DbSessionDepType) -> UserResponse:
+async def use_password_link(
+    body: UseLinkRequest, request: fastapi.Request, response: fastapi.Response, db: DbSessionDepType
+) -> UserResponse:
     manager = AccountManager(db)
     now = utc_now()
     # A browser's zone PostgreSQL does not know is ignored: the user's default stays.
@@ -133,7 +149,7 @@ async def use_password_link(body: UseLinkRequest, response: fastapi.Response, db
     user = await manager.use_link(body.token, body.password, timezone=timezone, now=now)
     if user is None:
         raise fastapi.HTTPException(fastapi.status.HTTP_400_BAD_REQUEST, INVALID_LINK)
-    token = await manager.create_session(user, now=now)
+    token = await manager.create_session(user, now=now, user_agent=request.headers.get("user-agent"))
     await db.commit()
     set_session_cookies(response, token)
     return UserResponse.model_validate(user)
@@ -161,6 +177,37 @@ async def logout(current: CurrentSessionDepType, response: fastapi.Response, db:
     await AccountManager(db).delete_session(current.session_id)
     await db.commit()
     clear_session_cookie(response)
+
+
+@router.get("/sessions")
+async def sessions(current: CurrentSessionDepType, db: DbSessionDepType) -> list[SessionResponse]:
+    """The devices signed in to the user's account, the most recently active first."""
+    found = await AccountManager(db).list_sessions(current.user.id, now=utc_now())
+    return [
+        SessionResponse(
+            id=user_session.id,
+            device=device_label(user_session.user_agent),
+            last_used_at=user_session.last_used_at,
+            current=user_session.id == current.session_id,
+        )
+        for user_session in found
+    ]
+
+
+@router.delete(
+    "/sessions/{session_id}",
+    status_code=fastapi.status.HTTP_204_NO_CONTENT,
+    responses={fastapi.status.HTTP_404_NOT_FOUND: {"description": "No such session"}},
+)
+async def delete_session(
+    session_id: uuid.UUID, current: CurrentSessionDepType, response: fastapi.Response, db: DbSessionDepType
+) -> None:
+    """Sign out one device, with its notifications."""
+    if not await AccountManager(db).delete_user_session(current.user.id, session_id):
+        raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, "No such session")
+    await db.commit()
+    if session_id == current.session_id:
+        clear_session_cookie(response)
 
 
 @router.post("/logout-all", status_code=fastapi.status.HTTP_204_NO_CONTENT)
