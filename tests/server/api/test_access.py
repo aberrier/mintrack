@@ -9,6 +9,8 @@ from tests.server.api.conftest import CreateUser, log_in, xsrf
 PUBLIC = {
     ("GET", "/api/health"),
     ("POST", "/api/auth/login"),
+    ("GET", "/api/auth/setup"),
+    ("POST", "/api/auth/setup"),
     ("POST", "/api/auth/password-link"),
     ("POST", "/api/auth/password-link/use"),
 }

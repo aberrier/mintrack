@@ -8,6 +8,11 @@ declare namespace Model {
       timezone: string;
     }
 
+    interface SetupState {
+      /** No user exists yet and the first admin can be created from the browser. */
+      open: boolean;
+    }
+
     interface PasswordLink {
       username: string;
     }

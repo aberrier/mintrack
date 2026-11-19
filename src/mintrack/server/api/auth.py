@@ -5,11 +5,14 @@ import uuid
 import fastapi
 import pydantic
 
+from mintrack.config import get_config
 from mintrack.core.accounts.devices import device_label
 from mintrack.core.accounts.managers import (
+    USERNAME_PATTERN,
     AccountManager,
     InvalidCredentialsError,
     LoginRateLimitedError,
+    SetupClosedError,
     available_timezones,
     database_timezone,
 )
@@ -27,8 +30,11 @@ from mintrack.server.api.dependencies import (
 )
 
 INVALID_LINK = "This link is invalid or has expired."
+SETUP_CLOSED = "The admin account already exists."
+RATE_LIMITED = "Too many failed logins, try again in a few minutes"
 
-# Login and the password-link endpoints need no session; the other routes are mounted behind it.
+# Login, the first admin's setup and the password-link endpoints need no session; the other routes are mounted
+# behind it.
 public_router = fastapi.APIRouter(prefix="/auth", tags=["auth"])
 router = fastapi.APIRouter(prefix="/auth", tags=["auth"])
 
@@ -60,6 +66,16 @@ class UserResponse(pydantic.BaseModel):
 class LoginRequest(pydantic.BaseModel):
     username: typing.Annotated[str, pydantic.Field(max_length=150, pattern=WITHOUT_NUL)]
     password: AnyPassword
+
+
+class SetupResponse(pydantic.BaseModel):
+    open: bool
+
+
+class SetupRequest(pydantic.BaseModel):
+    username: typing.Annotated[str, pydantic.Field(pattern=USERNAME_PATTERN)]
+    password: NewPassword
+    timezone: Timezone | None = None
 
 
 class PasswordLinkRequest(pydantic.BaseModel):
@@ -116,13 +132,54 @@ async def login(
             user_agent=request.headers.get("user-agent"),
         )
     except LoginRateLimitedError:
-        raise fastapi.HTTPException(
-            fastapi.status.HTTP_429_TOO_MANY_REQUESTS, "Too many failed logins, try again in a few minutes"
-        ) from None
+        raise fastapi.HTTPException(fastapi.status.HTTP_429_TOO_MANY_REQUESTS, RATE_LIMITED) from None
     except InvalidCredentialsError:
         # The failure is recorded for the rate limit.
         await db.commit()
         raise fastapi.HTTPException(fastapi.status.HTTP_401_UNAUTHORIZED, "Wrong username or password") from None
+    await db.commit()
+    set_session_cookies(response, token)
+    return UserResponse.model_validate(user)
+
+
+@public_router.get("/setup")
+async def setup_state(db: DbSessionDepType) -> SetupResponse:
+    """Whether the first admin can still be created from the browser."""
+    return SetupResponse(open=get_config().accounts.setup and await AccountManager(db).setup_is_open())
+
+
+@public_router.post(
+    "/setup",
+    status_code=fastapi.status.HTTP_201_CREATED,
+    responses={
+        fastapi.status.HTTP_409_CONFLICT: {"description": SETUP_CLOSED},
+        fastapi.status.HTTP_429_TOO_MANY_REQUESTS: {"description": "Too many failed attempts"},
+    },
+)
+async def set_up(
+    body: SetupRequest, request: fastapi.Request, response: fastapi.Response, db: DbSessionDepType
+) -> UserResponse:
+    """Create the first admin, signed in at once; refused as soon as any user exists."""
+    if not get_config().accounts.setup:
+        raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, SETUP_CLOSED)
+    # A browser's zone PostgreSQL does not know is ignored: the default stays.
+    timezone = await database_timezone(db, body.timezone) if body.timezone else None
+    try:
+        user, token = await AccountManager(db).create_first_admin(
+            body.username,
+            body.password,
+            address=_client_address(request),
+            now=utc_now(),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except LoginRateLimitedError:
+        raise fastapi.HTTPException(fastapi.status.HTTP_429_TOO_MANY_REQUESTS, RATE_LIMITED) from None
+    except SetupClosedError:
+        # The failure is recorded for the rate limit.
+        await db.commit()
+        raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, SETUP_CLOSED) from None
+    if timezone is not None:
+        user.timezone = timezone
     await db.commit()
     set_session_cookies(response, token)
     return UserResponse.model_validate(user)
