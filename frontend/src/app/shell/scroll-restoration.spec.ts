@@ -9,6 +9,9 @@ import { ScrollRestoration } from './scroll-restoration';
 @Component({ template: '<div style="height: 5000px"></div>' })
 class Tall {}
 
+@Component({ template: '<div style="height: 5000px"></div><h2 id="imports">Imports</h2>' })
+class Sections {}
+
 @Component({
   imports: [RouterOutlet, ScrollRestoration],
   template: '<main appScrollRestoration style="height: 100px; overflow-y: auto"><router-outlet /></main>',
@@ -46,5 +49,31 @@ describe('ScrollRestoration', () => {
     await restored;
     await fixture.whenStable();
     expect(main.scrollTop).toBe(1200);
+  });
+
+  it('opens a new page at the element its fragment names, and at the top when none has that id', async () => {
+    TestBed.configureTestingModule({
+      providers: [provideLocationMocks(), provideRouter([{ path: 'settings', component: Sections }])],
+    });
+    const fixture = TestBed.createComponent(Host);
+    const main = (fixture.nativeElement as HTMLElement).querySelector('main')!;
+    const router = TestBed.inject(Router);
+    // jsdom has no layout, nor scrollIntoView.
+    const scrolledTo: string[] = [];
+    const scrollIntoView = Element.prototype.scrollIntoView;
+    onTestFinished(() => void (Element.prototype.scrollIntoView = scrollIntoView));
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolledTo.push(this.id);
+    };
+    main.scrollTop = 300;
+
+    await router.navigateByUrl('/settings#imports');
+    await fixture.whenStable();
+    expect(scrolledTo).toEqual(['imports']);
+
+    await router.navigateByUrl('/settings#unknown');
+    await fixture.whenStable();
+    expect(scrolledTo).toEqual(['imports']);
+    expect(main.scrollTop).toBe(0);
   });
 });
