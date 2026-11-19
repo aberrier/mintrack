@@ -206,6 +206,10 @@ class JellyfinManager:
             played = await self._played_since(client, account.jellyfin_user_id, since)
             series_ids = {item.series_id for item in played if item.type == "Episode" and item.series_id}
             series = {item.id: item for item in await client.items(account.jellyfin_user_id, series_ids)}
+        seasons: dict[str, set[int]] = {}
+        for item in played:
+            if item.type == "Episode" and item.series_id and item.parent_index_number is not None:
+                seasons.setdefault(item.series_id, set()).add(item.parent_index_number)
         previous_sync, synced_until = account.synced_until, account.synced_until
         imported = 0
         unmatched = _Unmatched()
@@ -214,7 +218,7 @@ class JellyfinManager:
         for batch in itertools.batched(played, BATCH_SIZE, strict=False):
             shows: dict[Media, dict[uuid.UUID, dt.datetime]] = {}
             for item in batch:
-                event = await match(item, _played_at(item), series, library)
+                event = await match(item, _played_at(item), series, library, seasons)
                 if isinstance(event, JellyfinUnmatchedReason):
                     unmatched.add(unmatched_item(item, series, event), item)
                     logger.info(
@@ -315,6 +319,7 @@ class _Library:
         self.searched: dict[tuple[MediaType, str], list[TMDBSearchResult]] = {}
         self.media: dict[tuple[MediaType, int], Media | None] = {}
         self.episodes: dict[uuid.UUID, dict[tuple[int, int], uuid.UUID]] = {}
+        self.listed: dict[int, frozenset[tuple[int, int]]] = {}
 
     async def find(self, source: ExternalSource, external_id: str) -> Found:
         key = (source, external_id)
@@ -347,6 +352,16 @@ class _Library:
 
     async def episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
         return (await self._episodes(self._media(MediaType.TV, show_id))).keys()
+
+    async def listed_episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
+        if show_id not in self.listed:
+            # As get_or_fetch does, no database connection stays checked out while TMDB answers.
+            await self.session.commit()
+            show = await self.tmdb.show(show_id)
+            self.listed[show_id] = frozenset(
+                (season.season_number, episode.episode_number) for season in show.seasons for episode in season.episodes
+            )
+        return self.listed[show_id]
 
     def watched(self, event: WatchEvent) -> tuple[Media, uuid.UUID | None]:
         """The media and, for an episode, its id, of a watch `match` found."""

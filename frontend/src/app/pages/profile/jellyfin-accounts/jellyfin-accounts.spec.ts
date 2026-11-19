@@ -120,11 +120,7 @@ describe('JellyfinAccounts', () => {
     expect(clipboard.copy).toHaveBeenCalledWith(
       'Jellyfin items not recognized: 1 (1 listed)\n- Movie · "Lost Film" (1990) · ids: none · not_found',
     );
-    expect(snackBar.open).toHaveBeenCalledWith(
-      'Details of the items not recognized copied',
-      undefined,
-      expect.anything(),
-    );
+    expect(snackBar.open).toHaveBeenCalledWith('Details copied', undefined, expect.anything());
   });
 
   it('says when no account is linked', async () => {

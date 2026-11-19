@@ -1,6 +1,7 @@
 import collections.abc
 import dataclasses
 import datetime as dt
+import types
 import typing
 import unicodedata
 
@@ -39,7 +40,12 @@ class Catalog(typing.Protocol):
     async def exists(self, media_type: MediaType, tmdb_id: int) -> bool: ...
 
     async def episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
-        """(season, episode) of every episode TMDB lists for a show `exists` found."""
+        """(season, episode) of every episode stored for a show `exists` found, those TMDB no longer lists but
+        someone watched or rated included."""
+        ...
+
+    async def listed_episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
+        """(season, episode) of the episodes TMDB lists now for a show `exists` found."""
         ...
 
 
@@ -47,12 +53,19 @@ class Catalog(typing.Protocol):
 EXTERNAL_PROVIDERS = (("Imdb", ExternalSource.IMDB), ("Tvdb", ExternalSource.TVDB))
 # Years a title search accepts between Jellyfin's production year and TMDB's release, after the exact year.
 YEAR_TOLERANCE = 1
+# No season known for any series.
+NO_SEASONS: collections.abc.Mapping[str, collections.abc.Set[int]] = types.MappingProxyType({})
 
 
 async def match(
-    item: Item, played_at: dt.datetime, series: collections.abc.Mapping[str, Item], catalog: Catalog
+    item: Item,
+    played_at: dt.datetime,
+    series: collections.abc.Mapping[str, Item],
+    catalog: Catalog,
+    seasons: collections.abc.Mapping[str, collections.abc.Set[int]] = NO_SEASONS,
 ) -> WatchEvent | JellyfinUnmatchedReason:
-    """The watch a played movie or episode stands for, or why none was found."""
+    """The watch a played movie or episode stands for, or why none was found. `seasons` holds the season numbers
+    Jellyfin gives each series' played episodes."""
     if item.type == "Movie":
         tmdb_id = await _media_id(item, MediaType.MOVIE, catalog)
         return JellyfinUnmatchedReason.NOT_FOUND if tmdb_id is None else WatchEvent(MediaType.MOVIE, tmdb_id, played_at)
@@ -61,7 +74,9 @@ async def match(
     season, number = item.parent_index_number, item.index_number
     if season is None or number is None or season < 0 or number < 1:
         return JellyfinUnmatchedReason.NO_NUMBERS
-    found = await _episode(item, series.get(item.series_id or ""), season, number, catalog)
+    # Another season in Jellyfin means its season 1 is not the whole series: TVDB and TMDB just split it differently.
+    one_season = all(other <= 1 for other in seasons.get(item.series_id or "", {season}))
+    found = await _episode(item, series.get(item.series_id or ""), (season, number), catalog, one_season=one_season)
     if isinstance(found, JellyfinUnmatchedReason):
         return found
     show_id, season, number = found
@@ -112,10 +127,12 @@ async def _media_id(item: Item, media_type: MediaType, catalog: Catalog) -> int 
 
 
 async def _episode(
-    item: Item, show: Item | None, season: int, number: int, catalog: Catalog
+    item: Item, show: Item | None, numbering: tuple[int, int], catalog: Catalog, *, one_season: bool
 ) -> tuple[int, int, int] | JellyfinUnmatchedReason:
     """The TMDB show, season and number of an episode: Jellyfin's numbering in the series TMDB knows, else what TMDB
-    finds under the episode's own ids, else its absolute number in that series."""
+    finds under the episode's own ids, else its absolute number in that series when Jellyfin keeps the whole series
+    in season 1 (`one_season`)."""
+    season, number = numbering
     show_id = None if show is None else await _media_id(show, MediaType.TV, catalog)
     numbers = frozenset() if show_id is None else await catalog.episode_numbers(show_id)
     if show_id is not None and (season, number) in numbers:
@@ -129,18 +146,21 @@ async def _episode(
                     return found_show, found_season, found_number
     if show_id is None:
         return JellyfinUnmatchedReason.NOT_FOUND
-    if absolute := _absolute(numbers, season, number):
-        return show_id, *absolute
+    if season == 1 and one_season:
+        absolute = _absolute(await catalog.listed_episode_numbers(show_id), number)
+        # The cache may not have an episode TMDB added since it was refreshed.
+        if absolute is not None and absolute in numbers:
+            return show_id, *absolute
     return JellyfinUnmatchedReason.EPISODE_NOT_FOUND
 
 
-def _absolute(numbers: collections.abc.Set[tuple[int, int]], season: int, number: int) -> tuple[int, int] | None:
-    """The episode at this absolute number, for a series Jellyfin keeps in one season and TMDB splits (anime, mostly):
-    only past the last episode TMDB lists in season 1."""
-    first_season = [episode for season_number, episode in numbers if season_number == 1]
-    if season != 1 or not first_season or number <= max(first_season):
+def _absolute(listed: collections.abc.Set[tuple[int, int]], number: int) -> tuple[int, int] | None:
+    """The episode at this absolute number among those TMDB lists, for a series Jellyfin keeps in one season and TMDB
+    splits (anime, mostly): only past the last episode TMDB lists in season 1."""
+    first_season = [episode for season_number, episode in listed if season_number == 1]
+    if not first_season or number <= max(first_season):
         return None
-    regular = sorted(episode for episode in numbers if episode[0] >= 1)
+    regular = sorted(episode for episode in listed if episode[0] >= 1)
     return regular[number - 1] if number <= len(regular) else None
 
 
@@ -157,18 +177,14 @@ async def _search(item: Item, media_type: MediaType, catalog: Catalog) -> int | 
     titles = {_normalized(title) for title in (item.name, item.original_title or "")} - {""}
     if not titles or item.production_year is None:
         return None
-    results = [
-        result
+    released = [
+        (result.id, result.release_date.year)
         for result in await catalog.search(media_type, item.name or item.original_title or "")
         if result.release_date is not None
         and titles & {_normalized(result.title), _normalized(result.original_title or "")}
     ]
     for tolerance in range(YEAR_TOLERANCE + 1):
-        ids = {
-            result.id
-            for result in results
-            if result.release_date is not None and abs(result.release_date.year - item.production_year) <= tolerance
-        }
+        ids = {tmdb_id for tmdb_id, year in released if abs(year - item.production_year) <= tolerance}
         if ids:
             return ids.pop() if len(ids) == 1 else None
     return None
