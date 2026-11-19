@@ -152,7 +152,9 @@ export class RatingForm {
     return this.$stars() > 0 && (this.$stars() !== rating?.stars || this.$review().trim() !== rating?.review);
   });
 
+  /** Save the stars and review; a removal's Undo goes, since it would overwrite this rating. */
   protected save(): void {
+    this.undoRemoval?.dismiss();
     this.send(this.api.ratings.save(this.target(), { stars: this.$stars(), review: this.$review().trim() }), () =>
       this.notify(this.translate('app.rating.saved')),
     );

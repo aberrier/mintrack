@@ -1,4 +1,5 @@
 import {
+  earliestWatch,
   episodeCode,
   followingEpisode,
   guessNext,
@@ -17,6 +18,13 @@ describe('episodeCode', () => {
     expect(episodeCode(1, 5)).toBe('S01 | E05');
     expect(episodeCode(12, 104)).toBe('S12 | E104');
     expect(episodeCode(1, 5, true)).toBe('S01E05');
+  });
+});
+
+describe('earliestWatch', () => {
+  it('starts the day before the air date in UTC, or in 1900 without one', () => {
+    expect(earliestWatch('2026-03-01').toISOString()).toBe('2026-02-28T00:00:00.000Z');
+    expect(earliestWatch(null).toISOString()).toBe('1900-01-01T00:00:00.000Z');
   });
 });
 

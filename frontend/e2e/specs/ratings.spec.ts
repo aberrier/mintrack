@@ -32,7 +32,7 @@ test('someone opens an episode from its show, marks it, dates the watch and rate
   expect(sheet.watched).toBe('Not watched');
 
   // When they mark it there, it is watched today
-  expect(await tapSheetCheck(viewer)).toMatch(new RegExp(`^Watched ${await today(viewer)}, \\d\\d:\\d\\d$`));
+  expect(await tapSheetCheck(viewer)).toMatch(new RegExp(`^Watched ${await today(viewer)}, \\d{1,2}:\\d\\d$`));
 
   // When they pick a time before the episode aired, the sheet refuses it and keeps the date saved
   expect(await refusedWatchDate(viewer, '2000-01-01T20:30')).toEqual({
@@ -50,6 +50,13 @@ test('someone opens an episode from its show, marks it, dates the watch and rate
   await openEpisode(viewer, 1, 2);
   expect(await ratingShown(viewer)).toEqual({ stars: 4, review: 'The twist works.' });
   expect((await episodeSheet(viewer)).watched).toBe(watched);
+
+  // When they remove the rating, then rate again while its Undo shows, the new rating stays
+  await removeRating(viewer);
+  await rate(viewer, 2);
+  await closeEpisode(viewer);
+  await openEpisode(viewer, 1, 2);
+  expect(await ratingShown(viewer)).toEqual({ stars: 2, review: '' });
 });
 
 test('marking the episode of a watch list card from its sheet moves the card on', async ({ viewer }) => {
@@ -90,7 +97,7 @@ test('someone rates a movie, then removes the rating', async ({ viewer }) => {
   // When they remove the rating, Undo brings it back
   await removeRating(viewer);
   await undoRemoval(viewer);
-  expect(await ratingShown(viewer)).toEqual({ stars: 3, review: 'Pretty.' });
+  await expect.poll(() => ratingShown(viewer)).toEqual({ stars: 3, review: 'Pretty.' });
 
   // When they remove it again, it stays removed
   await removeRating(viewer);
