@@ -32,6 +32,13 @@ updates:
         patterns: ["@angular/*", "@angular-devkit/*"]
       npm-minor-and-patch:
         update-types: [minor, patch]
+    ignore:
+      # The types follow the Node major the app runs on (CI and the Dockerfile).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      # The TypeScript version is bounded by @angular/compiler-cli's peer dependency.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: docker
     directory: /
@@ -39,3 +46,7 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    ignore:
+      # Only LTS Node majors (even numbers); moved by hand, with CI's node-version and @types/node.
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
