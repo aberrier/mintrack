@@ -172,11 +172,6 @@ export default class Settings {
     this.notify(this.translate('app.profile.password.changed'));
   }
 
-  /** Vibrate right away, inside the tap, even while the switch is off; say so when the browser refuses. */
-  protected testVibration(): void {
-    if (!this.haptics.test()) this.notify(this.translate('app.haptics.refused'));
-  }
-
   /** The app starts again on the login page, so nothing of this user stays in memory for the next one. */
   protected async logout(everywhere: boolean): Promise<void> {
     // A signed-out device stops receiving the user's notifications.

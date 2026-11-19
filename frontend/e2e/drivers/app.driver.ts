@@ -421,15 +421,11 @@ export class AppDriver {
     await this.reload();
   }
 
-  /** The vibrations since the app loaded or since last asked, oldest first. */
-  vibrations(): Promise<RecordedVibration[]> {
+  /** The vibrations since the app loaded or since last taken, oldest first; the record starts empty again. */
+  takeVibrations(): Promise<RecordedVibration[]> {
     return this.page.evaluate(
       () => (window as unknown as { recordedVibrations?: RecordedVibration[] }).recordedVibrations?.splice(0) ?? [],
     );
-  }
-
-  testVibrationButton(): Locator {
-    return this.page.getByRole('button', { name: 'Test vibration' });
   }
 
   vibrationSwitch(): Locator {
