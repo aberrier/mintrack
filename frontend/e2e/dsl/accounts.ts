@@ -64,6 +64,11 @@ export async function disable(admin: Page, username: string): Promise<void> {
 }
 
 /** Whether the Admin tab offers to disable the user. */
+/** Type in the Admin tab's user search; returns the names still listed. */
+export async function searchUsers(admin: Page, text: string): Promise<string[]> {
+  return new AdminUsersPage(admin).search(text);
+}
+
 export async function canDisable(admin: Page, username: string): Promise<boolean> {
   return new AdminUsersPage(admin).offersDisable(username);
 }

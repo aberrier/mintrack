@@ -14,6 +14,7 @@ import {
   newLink,
   openSignedOut,
   profileShows,
+  searchUsers,
   signOutOtherDevice,
   tabNames,
   tryLogIn,
@@ -50,6 +51,19 @@ test.describe('Accounts', () => {
 
     // And the admin is never offered to disable their own account, which would lock them out
     expect(await canDisable(admin.page, admin.account.username)).toBe(false);
+  });
+
+  test('admin finds a user by typing part of their name', async ({ admin }) => {
+    // Given two invited users
+    const harriet = await invite(admin.page, 'harriet');
+    await invite(admin.page, 'oscar');
+
+    // When the admin searches for part of one name, in another case, only that user is listed
+    const part = harriet.username.slice(2).toUpperCase();
+    await expect.poll(() => searchUsers(admin.page, part)).toEqual([harriet.username]);
+
+    // And a name nobody has lists no one
+    await expect.poll(() => searchUsers(admin.page, 'nobody-has-this-name')).toEqual([]);
   });
 
   test('user logs out everywhere', async ({ admin, otherPage }) => {
