@@ -140,6 +140,10 @@ export async function smallTargets(page: Page): Promise<string[]> {
   return new ScreenDriver(page).smallTargets();
 }
 
+export async function offCentreIcons(page: Page): Promise<string[]> {
+  return new ScreenDriver(page).offCentreIcons();
+}
+
 export async function accessibilityViolations(page: Page): Promise<string[]> {
   return new ScreenDriver(page).accessibilityViolations();
 }

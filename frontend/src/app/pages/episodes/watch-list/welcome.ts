@@ -51,12 +51,7 @@ interface Step {
         <h2 class="[font:var(--mat-sys-headline-small)]">{{ translate('app.welcome.title') }}</h2>
         <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ translate('app.welcome.intro') }}</p>
       </div>
-      <button
-        matIconButton
-        type="button"
-        class="size-12! shrink-0"
-        [attr.aria-label]="translate('app.welcome.dismiss')"
-        (click)="choice.hide()">
+      <button matIconButton type="button" [attr.aria-label]="translate('app.welcome.dismiss')" (click)="choice.hide()">
         <mat-icon svgIcon="close" aria-hidden="true" />
       </button>
     </header>

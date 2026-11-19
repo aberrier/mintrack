@@ -16,7 +16,6 @@ import { injectTranslator } from '../core/i18n';
     <button
       matIconButton
       type="button"
-      class="size-12!"
       [attr.aria-label]="translate('app.common.back')"
       (click)="back()"
       data-testid="back">

@@ -29,6 +29,20 @@ html {
       ),
     )
   );
+
+  // Icon buttons draw their state layer over the whole 48px tap target; Material derives the padding that centres
+  // the icon from this size.
+  @include mat.icon-button-overrides(
+    (
+      state-layer-size: 48px,
+    )
+  );
+}
+
+// An icon button's content box is exactly the icon's size: as a block, the icon fills it instead of sitting on a text
+// baseline whose line box depends on the font.
+.mat-mdc-icon-button > .mat-icon {
+  display: block;
 }
 
 // A visible ring around every focused Material control, for keyboard users.
