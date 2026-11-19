@@ -2,13 +2,16 @@ import { DOCUMENT, inject, Injectable, signal } from '@angular/core';
 import { readStored, writeStored } from './stored';
 
 const STORAGE_KEY = 'mintrack.haptics';
-/** Long enough to be felt on most Android phones, short enough to read as a tick. */
-const TAP_MS = 15;
+/** Long enough for the slow vibration motors of many Android phones to be felt, short enough to read as a tick. */
+export const TAP_MS = 30;
+/** The tap's tick, then a long buzz no phone can miss: feeling only the buzz means the tick is too weak there. */
+export const TEST_PATTERN = [TAP_MS, 400, 300];
 
 /**
  * A short vibration confirming a tap that changed the library: a check, a season, an added title. Only on a touch
  * screen whose browser has the Vibration API (Android, not iOS; desktop browsers have the API but nothing to vibrate),
- * never when the user prefers reduced motion, and only while the switch in Settings is on, remembered on this device.
+ * and only while the switch in Settings is on, remembered on this device. Reduced motion does not silence it: a
+ * vibration moves nothing on screen.
  */
 @Injectable({ providedIn: 'root' })
 export class Haptics {
@@ -25,10 +28,20 @@ export class Haptics {
     writeStored(STORAGE_KEY, enabled ? 'on' : 'off');
   }
 
-  /** Vibrate once, briefly, when allowed. Must run while handling the tap: browsers ignore it otherwise. */
+  /** Vibrate once, briefly, when allowed. Must run while handling the tap: browsers may ignore it otherwise. */
   tap(): void {
-    if (!this.supported || !this.$enabled()) return;
-    if (this.window?.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
-    this.window?.navigator.vibrate(TAP_MS);
+    if (this.$enabled()) this.vibrate(TAP_MS);
+  }
+
+  /**
+   * Vibrate the test pattern even while the switch is off, to tell whether this device vibrates at all. Returns false
+   * when the browser refused; true means only that it accepted, as the phone's own settings may still silence it.
+   */
+  test(): boolean {
+    return this.vibrate(TEST_PATTERN);
+  }
+
+  private vibrate(pattern: VibratePattern): boolean {
+    return this.supported && !!this.window?.navigator.vibrate(pattern);
   }
 }

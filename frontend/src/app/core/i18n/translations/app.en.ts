@@ -253,7 +253,9 @@ export default {
   haptics: {
     title: 'Vibration',
     toggle: 'Vibrate on taps',
-    hint: 'On this device, a short vibration when you check an episode or a season, or add a title. Never while the system reduces motion.',
+    hint: 'On this device, a short vibration when you check an episode or a season, or add a title.',
+    test: 'Test vibration',
+    refused: 'This browser refused to vibrate',
   },
   rating: {
     title: 'Your rating',

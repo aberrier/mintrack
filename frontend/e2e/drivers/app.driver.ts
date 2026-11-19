@@ -2,6 +2,12 @@ import { expect, Locator, Page } from '@playwright/test';
 
 export type Tab = 'Episodes' | 'Discover' | 'Profile' | 'Admin';
 
+/** A vibration the app asked for, and whether the tap that caused it was still being handled. */
+export interface RecordedVibration {
+  pattern: VibratePattern;
+  duringTap: boolean;
+}
+
 /** MinTrack's pages as a user reaches them: bottom navigation, links, buttons. Locators live only here. */
 export class AppDriver {
   constructor(private readonly page: Page) {}
@@ -400,22 +406,30 @@ export class AppDriver {
     return this.page.evaluate(() => typeof navigator.vibrate === 'function' && matchMedia('(pointer: coarse)').matches);
   }
 
-  /** Load the app again, its vibrations recorded instead of felt. */
+  /**
+   * Load the app again, its vibrations recorded instead of felt, each with whether the tap that asked for it was
+   * still being handled (the page's transient user activation).
+   */
   async recordVibrations(): Promise<void> {
     await this.page.addInitScript(() => {
       if (typeof navigator.vibrate !== 'function') return;
-      const recorded: VibratePattern[] = [];
+      const recorded: RecordedVibration[] = [];
       Object.assign(window, { recordedVibrations: recorded });
-      navigator.vibrate = (pattern) => recorded.push(pattern as VibratePattern) > 0;
+      navigator.vibrate = (pattern) =>
+        recorded.push({ pattern: pattern as VibratePattern, duringTap: navigator.userActivation.isActive }) > 0;
     });
     await this.reload();
   }
 
-  /** The vibrations since the app loaded, oldest first. */
-  vibrations(): Promise<VibratePattern[]> {
+  /** The vibrations since the app loaded or since last asked, oldest first. */
+  vibrations(): Promise<RecordedVibration[]> {
     return this.page.evaluate(
-      () => (window as unknown as { recordedVibrations?: VibratePattern[] }).recordedVibrations ?? [],
+      () => (window as unknown as { recordedVibrations?: RecordedVibration[] }).recordedVibrations?.splice(0) ?? [],
     );
+  }
+
+  testVibrationButton(): Locator {
+    return this.page.getByRole('button', { name: 'Test vibration' });
   }
 
   vibrationSwitch(): Locator {

@@ -77,6 +77,9 @@
             [checked]="haptics.enabled()"
             (change)="haptics.setEnabled($event.checked)" />
         </div>
+        <button matButton="outlined" type="button" class="min-h-12 self-start" (click)="testVibration()">
+          {{ translate('app.haptics.test') }}
+        </button>
       </div>
     </section>
   }
