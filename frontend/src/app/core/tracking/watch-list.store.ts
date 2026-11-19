@@ -4,8 +4,9 @@ import { catchError, EMPTY, filter, Observable, switchMap, tap } from 'rxjs';
 import { ApiService } from '../api/api.service';
 import { AuthStore } from '../auth/auth.store';
 import { injectTranslator } from '../i18n';
-import { injectNotifyChecked, injectNotifyUndo } from '../notify';
+import { injectNotifyUndo } from '../notify';
 import { followingEpisode, isUpcoming } from './episodes';
+import { injectNotifyChecked } from './notify-checked';
 import { TrackingStore } from './tracking.store';
 
 export type HistoryState = 'idle' | 'loading' | 'failed' | 'done';

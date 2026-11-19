@@ -6,7 +6,7 @@ import { appRoutes } from '../../app.paths';
 import { AuthStore } from '../../core/auth/auth.store';
 import { formatDate } from '../../core/dates';
 import { injectTranslator } from '../../core/i18n';
-import { injectNotify, injectNotifyChecked } from '../../core/notify';
+import { injectNotify } from '../../core/notify';
 import {
   isAired,
   isWatched,
@@ -16,6 +16,7 @@ import {
   seasonProgress,
   SPECIALS,
 } from '../../core/tracking/episodes';
+import { injectNotifyChecked } from '../../core/tracking/notify-checked';
 import { TrackingStore } from '../../core/tracking/tracking.store';
 import { CHECKED_PAUSE_MS } from '../../core/tracking/watch-list.store';
 import { BackButton } from '../../shared/back-button';
