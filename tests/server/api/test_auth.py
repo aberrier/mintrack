@@ -185,10 +185,11 @@ async def test_sessions_lists_the_signed_in_devices_and_signs_one_out(
             )
         )
 
-        listed = (await laptop.get("/api/auth/sessions")).json()
+        listed = (await phone.get("/api/auth/sessions")).json()
         signed_out = await phone.delete(f"/api/auth/sessions/{laptop_session}", headers=xsrf(phone))
 
-        assert [(item["device"], item["current"]) for item in listed] == [(None, True), ("Chrome on Android", False)]
+        # This device first, though the other one signed in later.
+        assert [(item["device"], item["current"]) for item in listed] == [("Chrome on Android", True), (None, False)]
         assert signed_out.status_code == fastapi.status.HTTP_204_NO_CONTENT
         assert (await laptop.get("/api/auth/me")).status_code == 401
         assert (await phone.get("/api/auth/me")).status_code == 200
