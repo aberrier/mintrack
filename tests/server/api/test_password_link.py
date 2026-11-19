@@ -143,6 +143,10 @@ async def test_each_refused_link_says_why(
     bob = await create_user("bob", password=None)
     disabled = await manager.issue_link(bob, now=now())
     await manager.set_active(bob, active=False)
+    # Disabling a user did not clear their link before 0.3.
+    carol = await create_user("carol", password=None)
+    disabled_with_link = await manager.issue_link(carol, now=now())
+    carol.is_active = False
     assert (await use(api, used)).status_code == fastapi.status.HTTP_200_OK
 
     response = await api.post("/api/auth/password-link", json={"token": replaced})
@@ -152,7 +156,7 @@ async def test_each_refused_link_says_why(
     }
     assert await describe(api, used) == refused(LinkProblem.USED)
     assert await use_answer(api, used) == refused(LinkProblem.USED)
-    for token in (disabled, "unknown", ""):
+    for token in (disabled, disabled_with_link, "unknown", ""):
         assert await describe(api, token) == refused(LinkProblem.INVALID)
         assert await use_answer(api, token) == refused(LinkProblem.INVALID)
 
@@ -207,6 +211,35 @@ async def test_concurrent_uses_of_a_link_set_the_password_once(database: Databas
 
     try:
         assert sorted(await asyncio.gather(use_once(), use_once())) == ["set", LinkProblem.USED]
+    finally:
+        async with AsyncSession(database.engine) as cleanup:
+            await cleanup.execute(sa.delete(User).where(User.id == user.id))
+            await cleanup.commit()
+
+
+async def test_a_link_issued_while_an_invitation_is_used_lasts_24_hours(database: DatabaseManager) -> None:
+    async with AsyncSession(database.engine, expire_on_commit=False) as setup:
+        user, token = await AccountManager(setup).create_user("race-lifetime", is_admin=False, now=now())
+        await setup.commit()
+
+    async with AsyncSession(database.engine) as using, AsyncSession(database.engine) as issuing:
+        # Loaded before the invitation is used, so it still has no password.
+        fetched = await issuing.get(User, user.id)
+        assert fetched is not None
+        assert fetched.password_hash is None
+        assert isinstance(await AccountManager(using).use_link(token, NEW_PASSWORD, timezone=None, now=now()), User)
+
+        async def commit_use() -> None:
+            await asyncio.sleep(0.05)
+            await using.commit()
+
+        issued_at = now()
+        await asyncio.gather(commit_use(), AccountManager(issuing).issue_link(fetched, now=issued_at))
+        expires_at = fetched.link_expires_at
+        await issuing.commit()
+
+    try:
+        assert expires_at == issued_at + dt.timedelta(hours=24)
     finally:
         async with AsyncSession(database.engine) as cleanup:
             await cleanup.execute(sa.delete(User).where(User.id == user.id))

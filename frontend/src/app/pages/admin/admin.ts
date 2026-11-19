@@ -70,7 +70,8 @@ interface ShownLink extends Model.Http.Link {
 export default class Admin {
   protected readonly translate = injectTranslator('app');
   private readonly api = inject(ApiService);
-  private readonly timeZone = inject(AuthStore).$timeZone;
+  protected readonly timeZone = inject(AuthStore).$timeZone;
+  protected readonly formatDateTime = formatDateTime;
   /** The admin using the page, who cannot disable themselves and be locked out. */
   protected readonly $me = inject(AuthStore).$user;
   private readonly notify = injectNotify();
@@ -108,9 +109,9 @@ export default class Admin {
   protected activity(user: Model.Http.AdminUser): string {
     const until = user.link_expires_at;
     if (until && user.status === 'invited')
-      return this.translate('app.admin.invitedUntil', { date: this.formatDate(until) });
+      return this.translate('app.admin.invitedUntil', { date: formatDateTime(until, this.timeZone()) });
     if (until && user.status === 'invitation_expired')
-      return this.translate('app.admin.invitationExpiredOn', { date: this.formatDate(until) });
+      return this.translate('app.admin.invitationExpiredOn', { date: formatDateTime(until, this.timeZone()) });
     return user.last_seen_at
       ? this.translate('app.admin.lastSeen', { date: formatDateTime(user.last_seen_at, this.timeZone()) })
       : this.translate('app.admin.neverSeen');
@@ -155,10 +156,6 @@ export default class Admin {
       this.notify(this.translate(lastAdmin ? 'app.admin.lastAdmin' : 'app.errors.unknown'));
     }
     this.users.reload();
-  }
-
-  protected formatDate(iso: string): string {
-    return formatDateTime(iso, this.timeZone());
   }
 
   protected copy(link: string): void {
