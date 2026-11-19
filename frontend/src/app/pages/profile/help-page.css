@@ -1,0 +1,30 @@
+/* The text of the help pages under Settings: section titles, reading text, steps and code samples. */
+h2 {
+  font: var(--mat-sys-title-medium);
+}
+p,
+ol {
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-large);
+}
+ol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-inline-start: 24px;
+  list-style: decimal;
+}
+/* Code wraps rather than scrolls, so a phone shows all of it. */
+pre {
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border-radius: var(--mat-sys-corner-small);
+  background: var(--mat-sys-surface-container-high);
+  font:
+    400 14px / 20px ui-monospace,
+    monospace;
+}
+code {
+  font-family: ui-monospace, monospace;
+}

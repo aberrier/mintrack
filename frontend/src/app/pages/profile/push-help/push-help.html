@@ -1,0 +1,33 @@
+<header class="flex items-center gap-1 ps-1 pe-4 pt-4">
+  <app-back-button [fallback]="appRoutes.settings()" />
+  <h1 class="min-w-0 truncate [font:var(--mat-sys-headline-small)] font-semibold!">
+    {{ translate('app.pushHelp.title') }}
+  </h1>
+</header>
+
+<div class="flex max-w-[65ch] flex-col gap-8 px-4 pt-4 pb-8">
+  @for (guide of guides; track guide.platform) {
+    <section class="flex flex-col gap-2" [attr.aria-labelledby]="'push-help-' + guide.platform">
+      <h2 [id]="'push-help-' + guide.platform">{{ translate(guide.title) }}</h2>
+      <ol>
+        @for (step of guide.steps; track step) {
+          <li>{{ translate(step) }}</li>
+        }
+      </ol>
+      <p>{{ translate(guide.troubleshoot) }}</p>
+    </section>
+  }
+
+  <section class="flex flex-col gap-2" aria-labelledby="push-help-check">
+    <h2 id="push-help-check">{{ translate('app.pushHelp.check') }}</h2>
+    <p>{{ translate('app.pushHelp.checkText') }}</p>
+    <a matButton class="-ms-3 min-h-12 self-start" [routerLink]="appRoutes.settings()">
+      {{ translate('app.mcpHelp.token.open') }}
+    </a>
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="push-help-requirements">
+    <h2 id="push-help-requirements">{{ translate('app.pushHelp.requirements') }}</h2>
+    <p>{{ translate('app.push.status.unconfigured') }}</p>
+  </section>
+</div>

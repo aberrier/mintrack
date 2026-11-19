@@ -391,15 +391,16 @@ export default {
   },
   push: {
     title: 'Notifications',
-    toggle: 'Notify me on this device when an episode airs',
-    hints: {
-      install:
-        'On iPhone and iPad, add MinTrack to the Home Screen (Share, then Add to Home Screen) and open it from there.',
-      unsupported:
-        'This browser cannot receive notifications from MinTrack. They need a recent browser and an https address.',
-      unconfigured: 'Notifications are not set up on this server.',
-      blocked: 'Notifications are blocked for MinTrack in the browser settings.',
+    toggle: 'Notify me on this device',
+    status: {
+      off: 'Get notified when an episode airs.',
+      on: 'On for this device.',
+      install: 'Add MinTrack to the Home Screen first.',
+      unsupported: 'This browser cannot receive notifications.',
+      unconfigured: 'This server needs an https address.',
+      blocked: 'Blocked in the browser settings.',
     },
+    howTo: 'How to get notifications',
     test: {
       button: 'Send a test notification',
       sent: 'Test notification sent',
@@ -410,6 +411,26 @@ export default {
       enable: 'Notifications could not be turned on',
       disable: 'Notifications could not be turned off',
     },
+  },
+  pushHelp: {
+    title: 'Get notifications',
+    turnOn: 'Profile › Settings › Notifications: turn it on, then tap Allow.',
+    android: {
+      title: 'Android (Chrome)',
+      open: 'Open MinTrack in Chrome.',
+      install: 'Menu ⋮ › Install app (or Add to Home screen), then open it from the Home screen.',
+      troubleshoot:
+        'Nothing arrives? Android Settings › Apps › MinTrack (or Chrome) › Notifications: on. Battery saver and Pause app activity if unused: off.',
+    },
+    ios: {
+      title: 'iPhone (iOS 16.4 or later)',
+      open: 'Open MinTrack in Safari.',
+      install: 'Share › Add to Home Screen, then open it from the Home Screen, not from a Safari tab.',
+      troubleshoot: 'Nothing arrives? iOS Settings › Notifications › MinTrack: on. A Focus mode can hold them.',
+    },
+    check: 'Check it',
+    checkText: 'Tap Send a test notification under the switch.',
+    requirements: 'Requirements',
   },
   update: {
     ready: 'A new version of MinTrack is available',

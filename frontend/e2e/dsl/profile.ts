@@ -71,6 +71,12 @@ export async function mcpHelp(viewer: Viewer): Promise<{ url: string; json: stri
   };
 }
 
+/** Open the notifications guide from the Notifications settings; returns its section titles, in order. */
+export async function notificationsGuide(viewer: Viewer): Promise<string[]> {
+  await viewer.app.openPushHelp();
+  return viewer.app.pushHelpSections();
+}
+
 export async function seeAllShows(viewer: Viewer): Promise<void> {
   await viewer.app.openLibrary('Shows');
 }

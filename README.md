@@ -244,11 +244,19 @@ Notifications need an `https://` `MINTRACK__PROJECT__PUBLIC_URL`; their keys com
 when an episode of a show you are watching or up to date with airs: at its air time when known, otherwise at 9:00 in
 your time zone.
 
-- **Android:** open MinTrack in Chrome, then use **Install app** (or **Add to Home screen**) in Chrome's menu.
-  Notifications also work in the browser tab without installing.
-- **iPhone and iPad (iOS 16.4 or later):** notifications only work in the installed app. Open MinTrack in Safari, tap
-  **Share**, then **Add to Home Screen**, and open MinTrack from the Home Screen before turning notifications on.
+- **Android (Chrome):** open MinTrack's address in Chrome › menu **⋮** › **Install app** (or **Add to Home screen**)
+  › open MinTrack from the Home screen › **Profile › Settings › Notifications** › turn it on › **Allow**.
+  Notifications also work in the browser tab without installing. If nothing arrives: turn notifications on in
+  Android **Settings › Apps › MinTrack** (or Chrome) **› Notifications**, and turn off battery saver and **Pause app
+  activity if unused**.
+- **iPhone and iPad (iOS 16.4 or later):** open the address in Safari › **Share** › **Add to Home Screen** › open
+  MinTrack from the Home Screen (notifications do not work in a Safari tab) › **Profile › Settings › Notifications**
+  › turn it on › **Allow**. If nothing arrives: allow them in iOS **Settings › Notifications › MinTrack**; a Focus
+  mode can hold them back.
 - **Desktop:** Chrome, Edge, Firefox and Safari can receive notifications in the browser tab.
+
+**Send a test notification** in the same settings checks the whole chain. The app shows these steps too, under **How
+to get notifications** in the Notifications settings.
 
 Changing the secret key changes the notification keys: each device registers again the next time MinTrack is opened
 on it.
