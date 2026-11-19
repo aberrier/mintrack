@@ -6,6 +6,18 @@
 </header>
 
 <div class="flex flex-col gap-1 pt-4 pb-4">
+  <mat-form-field class="px-4 pb-2" appearance="outline" subscriptSizing="dynamic">
+    <mat-icon matPrefix svgIcon="search" aria-hidden="true" />
+    <mat-label>{{ translate('app.collection.search') }}</mat-label>
+    <input
+      #searchField
+      matInput
+      type="search"
+      autocomplete="off"
+      [value]="$search()"
+      (input)="search(searchField.value)" />
+  </mat-form-field>
+
   <h2 id="sort-by" class="px-4 text-on-surface-variant [font:var(--mat-sys-label-large)]">
     {{ translate('app.collection.sortBy') }}
   </h2>
@@ -49,9 +61,13 @@
 
 @if (!$items() && library.error()) {
   <app-load-error [message]="translate('app.common.loadFailed')" (retry)="library.reload()" />
-} @else if ($items(); as items) {
+} @else if ($shownItems(); as items) {
   @if (items.length === 0) {
-    @if ($status() === null) {
+    @if ($search().trim()) {
+      <app-empty-state icon="search">{{
+        translate('app.collection.noneMatching', { search: $search().trim() })
+      }}</app-empty-state>
+    } @else if ($status() === null) {
       <app-empty-state
         icon="explore"
         [title]="translate('app.collection.emptyTitle')"

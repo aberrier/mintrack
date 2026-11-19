@@ -81,6 +81,18 @@ export async function choose(viewer: Viewer, group: 'Sort by' | 'Progress', choi
   return new URL(viewer.app.url()).search;
 }
 
+/** Type in the collection's search field; returns the address's query once it follows. */
+export async function searchCollection(viewer: Viewer, text: string): Promise<string> {
+  await viewer.app.searchLibrary(text);
+  await expect.poll(() => new URL(viewer.app.url()).searchParams.get('q')).toBe(text);
+  return new URL(viewer.app.url()).search;
+}
+
+/** What the collection's search field holds. */
+export async function collectionSearch(viewer: Viewer): Promise<string> {
+  return viewer.app.librarySearch().inputValue();
+}
+
 /** The collection grid's titles, in order. */
 export async function titles(viewer: Viewer): Promise<string[]> {
   return viewer.app.libraryTitles();

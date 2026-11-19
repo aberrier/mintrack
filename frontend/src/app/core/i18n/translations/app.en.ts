@@ -324,6 +324,8 @@ export default {
     emptyTitle: 'Your collection is empty',
     empty: 'Nothing here yet. Find shows and movies to add in Discover.',
     noneWithStatus: 'Nothing in this filter.',
+    search: 'Search by title',
+    noneMatching: 'No title contains “{search}”.',
   },
   discover: {
     types: 'Shows or movies',
