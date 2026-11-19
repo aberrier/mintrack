@@ -38,7 +38,7 @@ async def _create_admin(manager: AccountManager, username: str) -> str:
 
 async def _reset_link(manager: AccountManager, username: str) -> str | None:
     user = await manager.get_user(username)
-    return None if user is None else manager.issue_link(user, now=dt.datetime.now(dt.UTC))
+    return None if user is None else await manager.issue_link(user, now=dt.datetime.now(dt.UTC))
 
 
 def _fail(message: str) -> typing.NoReturn:

@@ -1,10 +1,13 @@
 import datetime as dt
+import enum
 import uuid
 
 import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mintrack.db.base import DatabaseModel
+
+from .media import text_enum
 
 
 class User(DatabaseModel):
@@ -26,6 +29,22 @@ class User(DatabaseModel):
 
 
 sa.Index("unique_users_lower_username", sa.func.lower(User.username), unique=True)
+
+
+class SpentLinkReason(enum.StrEnum):
+    USED = enum.auto()
+    REPLACED = enum.auto()
+
+
+class SpentPasswordLink(DatabaseModel):
+    """A password link that no longer works, kept to tell its holder why rather than "invalid"."""
+
+    __tablename__ = "spent_password_links"
+
+    token_hash: Mapped[bytes] = mapped_column(sa.LargeBinary, primary_key=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(sa.ForeignKey(User.id, ondelete="CASCADE"), index=True)
+    reason: Mapped[SpentLinkReason] = mapped_column(text_enum(SpentLinkReason))
+    spent_at: Mapped[dt.datetime]
 
 
 class UserSession(DatabaseModel):

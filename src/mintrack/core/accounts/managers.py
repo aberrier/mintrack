@@ -13,7 +13,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import get_config
-from mintrack.db.models import LoginFailure, PushSubscription, User, UserSession
+from mintrack.db.models import (
+    LoginFailure,
+    PushSubscription,
+    SpentLinkReason,
+    SpentPasswordLink,
+    User,
+    UserSession,
+)
 
 from .devices import USER_AGENT_MAX_LENGTH
 from .passwords import hash_password, needs_rehash, verify_password
@@ -64,6 +71,15 @@ class UserStatus(enum.StrEnum):
     INVITATION_EXPIRED = enum.auto()
     ACTIVE = enum.auto()
     DISABLED = enum.auto()
+
+
+class LinkProblem(enum.StrEnum):
+    """Why a password link does not work."""
+
+    INVALID = enum.auto()
+    EXPIRED = enum.auto()
+    USED = enum.auto()
+    REPLACED = enum.auto()
 
 
 def user_status(user: User, now: dt.datetime) -> UserStatus:
@@ -300,20 +316,38 @@ class AccountManager:
         await self.session.execute(sa.delete(LoginFailure).where(LoginFailure.failed_at <= now - LOGIN_FAILURE_WINDOW))
         return len(deleted.all())
 
-    @staticmethod
-    def issue_link(user: User, *, now: dt.datetime) -> str:
+    async def issue_link(self, user: User, *, now: dt.datetime) -> str:
         """A new invitation (no password yet) or reset link; it replaces the user's previous one."""
         if not user.is_active:
             raise UserDisabledError
+        if user.link_token_hash is not None:
+            self._spend_link(user.link_token_hash, user.id, SpentLinkReason.REPLACED, now)
         token, token_hash = new_token()
         user.link_token_hash = token_hash
         user.link_expires_at = now + (INVITATION_LIFETIME if user.password_hash is None else RESET_LIFETIME)
         return token
 
-    async def find_link_user(self, token: str, *, now: dt.datetime) -> User | None:
-        return await self.session.scalar(sa.select(User).where(*_live_link(token, now)))
+    def _spend_link(self, token_hash: bytes, user_id: uuid.UUID, reason: SpentLinkReason, now: dt.datetime) -> None:
+        self.session.add(SpentPasswordLink(token_hash=token_hash, user_id=user_id, reason=reason, spent_at=now))
 
-    async def use_link(self, token: str, password: str, *, timezone: str | None, now: dt.datetime) -> User | None:
+    async def check_link(self, token: str, *, now: dt.datetime) -> User | LinkProblem:
+        """The user a live link belongs to, or why the link does not work. Reading it never consumes it."""
+        token_hash = hash_token(token)
+        user = await self.session.scalar(sa.select(User).where(User.link_token_hash == token_hash))
+        if user is not None:
+            if not user.is_active:
+                return LinkProblem.INVALID
+            if user.link_expires_at is None or user.link_expires_at <= now:
+                return LinkProblem.EXPIRED
+            return user
+        spent = await self.session.scalar(
+            sa.select(SpentPasswordLink.reason).where(SpentPasswordLink.token_hash == token_hash)
+        )
+        return LinkProblem(spent) if spent is not None else LinkProblem.INVALID
+
+    async def use_link(
+        self, token: str, password: str, *, timezone: str | None, now: dt.datetime
+    ) -> User | LinkProblem:
         """Set the password and consume the link in one statement, so a link works once; revoke the sessions."""
         values: dict[str, object] = {
             "password_hash": await asyncio.to_thread(hash_password, password),
@@ -327,8 +361,12 @@ class AccountManager:
             sa.update(User).where(*_live_link(token, now)).values(values).returning(User),
             execution_options={"synchronize_session": False, "populate_existing": True},
         )
-        if user is not None:
-            await self.delete_sessions(user.id)
+        if user is None:
+            problem = await self.check_link(token, now=now)
+            # A link valid a moment ago but used by a concurrent request is reported as used.
+            return LinkProblem.USED if isinstance(problem, User) else problem
+        self._spend_link(hash_token(token), user.id, SpentLinkReason.USED, now)
+        await self.delete_sessions(user.id)
         return user
 
     async def change_password(
@@ -344,7 +382,7 @@ class AccountManager:
         if not is_valid_username(username):
             raise InvalidUsernameError
         user = User(username=username, is_admin=is_admin, is_active=True)
-        token = self.issue_link(user, now=now)
+        token = await self.issue_link(user, now=now)
         try:
             async with self.session.begin_nested():
                 self.session.add(user)

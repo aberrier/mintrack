@@ -3,6 +3,7 @@ import typing
 import uuid
 
 import fastapi
+import fastapi.responses
 import pydantic
 
 from mintrack.core.accounts.devices import device_label
@@ -10,6 +11,7 @@ from mintrack.core.accounts.managers import (
     USERNAME_PATTERN,
     AccountManager,
     InvalidCredentialsError,
+    LinkProblem,
     LoginRateLimitedError,
     SetupClosedError,
     available_timezones,
@@ -29,7 +31,12 @@ from mintrack.server.api.dependencies import (
     utc_now,
 )
 
-INVALID_LINK = "This link is invalid or has expired."
+LINK_PROBLEMS = {
+    LinkProblem.INVALID: "This link is not valid. Ask your admin for a new one.",
+    LinkProblem.EXPIRED: "This link has expired. Ask your admin for a new one.",
+    LinkProblem.USED: "This link was already used. Log in with your password, or ask your admin for a new link.",
+    LinkProblem.REPLACED: "A newer link replaced this one. Open the latest link, or ask your admin for a new one.",
+}
 SETUP_CLOSED = "The admin account already exists."
 RATE_LIMITED = "Too many failed logins, try again in a few minutes"
 
@@ -86,6 +93,11 @@ class PasswordLinkRequest(pydantic.BaseModel):
 
 class PasswordLinkResponse(pydantic.BaseModel):
     username: str
+
+
+class LinkRefusedResponse(pydantic.BaseModel):
+    detail: str
+    reason: LinkProblem
 
 
 class UseLinkRequest(pydantic.BaseModel):
@@ -185,27 +197,41 @@ async def set_up(
     return UserResponse.model_validate(user)
 
 
-@public_router.post("/password-link", responses={fastapi.status.HTTP_400_BAD_REQUEST: {"description": INVALID_LINK}})
-async def describe_password_link(body: PasswordLinkRequest, db: DbSessionDepType) -> PasswordLinkResponse:
-    user = await AccountManager(db).find_link_user(body.token, now=utc_now())
-    if user is None:
-        raise fastapi.HTTPException(fastapi.status.HTTP_400_BAD_REQUEST, INVALID_LINK)
-    return PasswordLinkResponse(username=user.username)
+def _link_refused(problem: LinkProblem) -> fastapi.responses.JSONResponse:
+    content = LinkRefusedResponse(detail=LINK_PROBLEMS[problem], reason=problem).model_dump(mode="json")
+    return fastapi.responses.JSONResponse(content, status_code=fastapi.status.HTTP_400_BAD_REQUEST)
 
 
 @public_router.post(
-    "/password-link/use", responses={fastapi.status.HTTP_400_BAD_REQUEST: {"description": INVALID_LINK}}
+    "/password-link",
+    response_model=PasswordLinkResponse,
+    responses={fastapi.status.HTTP_400_BAD_REQUEST: {"model": LinkRefusedResponse}},
+)
+async def describe_password_link(
+    body: PasswordLinkRequest, db: DbSessionDepType
+) -> PasswordLinkResponse | fastapi.responses.JSONResponse:
+    """The account a link sets the password of; only setting the password consumes the link."""
+    found = await AccountManager(db).check_link(body.token, now=utc_now())
+    if isinstance(found, LinkProblem):
+        return _link_refused(found)
+    return PasswordLinkResponse(username=found.username)
+
+
+@public_router.post(
+    "/password-link/use",
+    response_model=UserResponse,
+    responses={fastapi.status.HTTP_400_BAD_REQUEST: {"model": LinkRefusedResponse}},
 )
 async def use_password_link(
     body: UseLinkRequest, request: fastapi.Request, response: fastapi.Response, db: DbSessionDepType
-) -> UserResponse:
+) -> UserResponse | fastapi.responses.JSONResponse:
     manager = AccountManager(db)
     now = utc_now()
     # A browser's zone PostgreSQL does not know is ignored: the user's default stays.
     timezone = await database_timezone(db, body.timezone) if body.timezone else None
     user = await manager.use_link(body.token, body.password, timezone=timezone, now=now)
-    if user is None:
-        raise fastapi.HTTPException(fastapi.status.HTTP_400_BAD_REQUEST, INVALID_LINK)
+    if isinstance(user, LinkProblem):
+        return _link_refused(user)
     token = await manager.create_session(user, now=now, user_agent=request.headers.get("user-agent"))
     await db.commit()
     set_session_cookies(response, token)
