@@ -797,6 +797,11 @@ export class AppDriver {
     await this.episodeSheet().getByLabel('Watched on').fill(local);
   }
 
+  /** The watch date and time the sheet's field shows, as "2025-03-14T20:30". */
+  watchDateShown(): Promise<string> {
+    return this.episodeSheet().getByLabel('Watched on').inputValue();
+  }
+
   /** The rating form of the sheet, or else of the page. */
   private ratingForm(): Locator {
     return this.page.locator('app-rating-form').last();

@@ -41,7 +41,7 @@ describe('EpisodeCard', () => {
 
   it('with its id, opens the episode’s sheet from its text and the show from its poster, with the user’s stars', async () => {
     const open = vi.spyOn(TestBed.inject(MatBottomSheet), 'open').mockReturnValue({} as never);
-    const card = await render({ episode: { ...EPISODE, episode_id: 'e5', rating: 4 } });
+    const card = await render({ episode: { ...EPISODE, episode_id: 'e5', stars: 4 } });
 
     expect(card.querySelector('a')?.getAttribute('href')).toBe('/shows/7');
     expect(card.querySelector('[data-testid="episode-rating"]')?.getAttribute('aria-label')).toBe('Rated 4 out of 5');

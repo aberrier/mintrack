@@ -76,6 +76,27 @@ function entry(id: string, watchedAt: string): Model.Http.HistoryEntry {
     episode_title: 'Pilot',
     watched_at: watchedAt,
     finished: false,
+    stars: null,
+  };
+}
+
+function detail(id: string): Model.Http.EpisodeDetail {
+  return {
+    id,
+    season_number: 1,
+    episode_number: 2,
+    title: 'Episode',
+    air_date: '2026-05-01',
+    airstamp: null,
+    tmdb_id: 7,
+    show_title: 'Andor',
+    network: null,
+    poster_path: null,
+    overview: '',
+    still_path: null,
+    vote_average: null,
+    vote_count: null,
+    watched_at: null,
     rating: null,
   };
 }
@@ -330,7 +351,7 @@ describe('WatchListStore', () => {
     expect(store.history().map((e) => e.id)).toEqual(['b', 'a']);
   });
 
-  it('follows an episode changed from its sheet: its rating, its new date in order, its unmark', () => {
+  it('follows an episode changed from its sheet: its stars, its new date in order, its mark, its unmark', () => {
     loadList([card()]);
     store.loadOlderHistory();
     http.expectOne('/api/history').flush({
@@ -342,14 +363,19 @@ describe('WatchListStore', () => {
       has_more: false,
     });
 
-    store.episodeChanged('b', { rating: 4 });
+    store.episodeChanged(detail('b'), { stars: 4 });
     http.expectNone('/api/watch-list');
-    store.episodeChanged('c', { watched_at: '2026-05-01T00:00:00Z' });
+    store.episodeChanged(detail('c'), { watched_at: '2026-05-01T00:00:00Z' });
     http.expectOne('/api/watch-list').flush({ episodes: [card()], library_empty: false });
-    store.episodeChanged('a', { watched_at: null });
+    store.episodeChanged(detail('a'), { watched_at: null });
+    http.expectOne('/api/watch-list').flush({ episodes: [card()], library_empty: false });
+    store.episodeChanged(detail('d'), { watched_at: '2026-06-04T00:00:00Z', stars: 5 });
+    http.expectOne('/api/watch-list').flush({ episodes: [card()], library_empty: false });
+    store.episodeChanged(detail('e'), { watched_at: '2026-01-01T00:00:00Z', stars: null });
     http.expectOne('/api/watch-list').flush({ episodes: [card()], library_empty: false });
 
-    expect(store.history().map((e) => [e.id, e.rating])).toEqual([
+    expect(store.history().map((e) => [e.id, e.stars])).toEqual([
+      ['d', 5],
       ['b', 4],
       ['c', null],
     ]);

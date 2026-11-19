@@ -194,18 +194,27 @@ export class WatchListStore {
   }
 
   /**
-   * An episode changed from its sheet: its history entry takes its new date or rating, or leaves once unwatched
-   * (`watched_at` null), and a watch list on screen is loaded again when the episode was marked or unmarked.
+   * An episode changed from its sheet: its history entry takes its new date or stars, or leaves once unwatched
+   * (`watched_at` null); an episode just marked joins a history already opened, unless older than all it shows. A
+   * watch list on screen is loaded again when the episode was marked, unmarked or dated differently.
    */
-  episodeChanged(id: string, change: { watched_at?: string | null; rating?: number | null }): void {
+  episodeChanged(
+    episode: Model.Http.EpisodeDetail,
+    change: { watched_at?: string | null; stars?: number | null },
+  ): void {
     const { watched_at, ...rest } = change;
-    this.$history.update((history) =>
-      watched_at === null
-        ? history.filter((entry) => entry.id !== id)
-        : history
-            .map((entry) => (entry.id === id ? { ...entry, ...rest, ...(watched_at ? { watched_at } : {}) } : entry))
-            .sort((a, b) => Date.parse(b.watched_at) - Date.parse(a.watched_at)),
-    );
+    this.$history.update((history) => {
+      if (watched_at === null) return history.filter((entry) => entry.id !== episode.id);
+      const shown = history.some((entry) => entry.id === episode.id);
+      const oldest = history.at(-1);
+      const joins = !shown && !!watched_at && !!oldest && Date.parse(watched_at) >= Date.parse(oldest.watched_at);
+      const changed = joins
+        ? [...history, sheetEntry(episode, watched_at, rest.stars ?? null)]
+        : history.map((entry) =>
+            entry.id === episode.id ? { ...entry, ...rest, ...(watched_at ? { watched_at } : {}) } : entry,
+          );
+      return changed.sort((a, b) => Date.parse(b.watched_at) - Date.parse(a.watched_at));
+    });
     if ('watched_at' in change && this.$episodes() !== undefined && this.writes === 0)
       this.load().subscribe({ error: () => undefined });
   }
@@ -288,6 +297,27 @@ function historyEntry(episode: Model.Http.WatchListEpisode, watchedAt: Date): Mo
     watched_at: watchedAt.toISOString(),
     // The server says whether the show is finished when the history loads again.
     finished: false,
-    rating: null,
+    stars: null,
+  };
+}
+
+/** An episode marked from its sheet as the history lists it. */
+function sheetEntry(
+  episode: Model.Http.EpisodeDetail,
+  watchedAt: string,
+  stars: number | null,
+): Model.Http.HistoryEntry {
+  return {
+    id: episode.id,
+    media_type: 'tv',
+    tmdb_id: episode.tmdb_id,
+    title: episode.show_title,
+    poster_path: episode.poster_path,
+    season_number: episode.season_number,
+    episode_number: episode.episode_number,
+    episode_title: episode.title,
+    watched_at: watchedAt,
+    finished: false,
+    stars,
   };
 }

@@ -6,6 +6,7 @@ import { episodeCode } from './episodes';
 export function injectNotifyChecked(): (season: number, episode: number, undo: () => void) => void {
   const notifyUndo = injectNotifyUndo();
   const translate = injectTranslator('app');
-  return (season, episode, undo) =>
+  return (season, episode, undo) => {
     notifyUndo(translate('app.common.checked', { episode: episodeCode(season, episode, true) }), undo);
+  };
 }

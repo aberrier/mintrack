@@ -342,11 +342,21 @@ body {
 }
 
 /* Snackbars sit above the gesture bar, and above the bottom navigation, so its tabs stay reachable while one waits for
-   its action. The overlay positions its pane with an inline margin, hence the priority. */
+   its action; a bottom sheet covers the navigation, so over one they stay low and leave its fields visible. The
+   overlay positions its pane with an inline margin, hence the priority. */
 .cdk-overlay-pane:has(> .mat-mdc-snack-bar-container) {
   margin-bottom: env(safe-area-inset-bottom) !important;
 }
 
-body:has(.bottom-nav) .cdk-overlay-pane:has(> .mat-mdc-snack-bar-container) {
+body:has(.bottom-nav):not(:has(.mat-bottom-sheet-container)) .cdk-overlay-pane:has(> .mat-mdc-snack-bar-container) {
   margin-bottom: calc(80px + env(safe-area-inset-bottom)) !important;
+}
+
+/* The episode sheet, on phones too: the large top corners Material keeps for wider screens, room above its content,
+   and its last buttons clear of the home indicator. */
+.episode-sheet-panel .mat-bottom-sheet-container {
+  max-height: 80dvh;
+  padding: 24px 16px calc(16px + env(safe-area-inset-bottom));
+  border-top-left-radius: var(--mat-sys-corner-extra-large);
+  border-top-right-radius: var(--mat-sys-corner-extra-large);
 }

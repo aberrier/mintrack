@@ -276,6 +276,7 @@ export default {
     watchedAt: 'Watched on',
     dateSaved: 'Watch date changed',
     future: 'Pick a time that has passed.',
+    beforeAired: 'Pick a time after the episode aired.',
     aired: 'Aired {date}',
     airs: 'Airs {date}',
     openShow: 'Open {show}',
