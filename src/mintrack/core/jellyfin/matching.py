@@ -244,17 +244,25 @@ def _grouped(
 ) -> tuple[int, int] | None:
     """The TMDB numbers that more than half of the groups splitting the show as Jellyfin does give episode `number`
     (within Jellyfin's season size) of a season. Only a group whose seasons 1 to `season` have Jellyfin's `sizes`
-    votes: one splitting the show into cours or broadcast seasons is left out, a season Jellyfin has only part of
-    (downloading, still airing) matches no group's size, and no majority means no match."""
+    votes, or whose seasons before it do while it airs that season (`_airing`): one splitting the show into cours or
+    broadcast seasons is left out, an earlier season Jellyfin has only part of matches no group's size, and no
+    majority means no match."""
     voting = [
         group[season]
         for group in groups
-        if all(len(group.get(earlier, ())) == sizes.get(earlier) for earlier in range(1, season + 1))
+        if all(len(group.get(earlier, ())) == sizes.get(earlier) for earlier in range(1, season))
+        and (len(group.get(season, ())) == sizes.get(season) or _airing(group, season, sizes))
     ]
     if not voting:
         return None
     [(episode, count)] = collections.Counter(episodes[number - 1] for episodes in voting).most_common(1)
     return episode if count * 2 > len(voting) else None
+
+
+def _airing(group: SeasonGroup, season: int, sizes: collections.abc.Mapping[int, int]) -> bool:
+    """Whether a season Jellyfin has only the first episodes of may still be airing in a group: it is Jellyfin's last
+    regular season with a size and the group's last season, and the group lists at least as many episodes."""
+    return season == max(sizes, default=0) == max(group) and len(group[season]) >= sizes[season]
 
 
 def _absolute(listed: collections.abc.Set[tuple[int, int]], number: int) -> tuple[int, int] | None:
