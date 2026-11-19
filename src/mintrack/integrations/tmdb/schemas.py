@@ -97,6 +97,33 @@ class TMDBSeason(TMDBModel):
     episodes: list[TMDBEpisode] = []
 
 
+class TMDBGroupEpisode(TMDBModel):
+    season_number: int
+    episode_number: int
+    order: int
+
+
+class TMDBGroup(TMDBModel):
+    order: int
+    episodes: list[TMDBGroupEpisode] = []
+
+
+class TMDBEpisodeGroup(TMDBModel):
+    """Another ordering of a show's episodes, such as its seasons as TVDB splits them."""
+
+    groups: list[TMDBGroup] = []
+
+    def seasons(self) -> dict[int, tuple[tuple[int, int], ...]]:
+        """The (season, episode) TMDB numbers of each group's episodes, in order, by the group's order."""
+        return {
+            group.order: tuple(
+                (episode.season_number, episode.episode_number)
+                for episode in sorted(group.episodes, key=lambda episode: episode.order)
+            )
+            for group in self.groups
+        }
+
+
 class TMDBExternalIds(TMDBModel):
     tvdb_id: int | None = None
 

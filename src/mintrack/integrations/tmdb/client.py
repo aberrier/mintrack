@@ -14,7 +14,7 @@ from mintrack.db.models import MediaType
 from mintrack.observability.logging import logger
 
 from .config import TMDBConfig
-from .schemas import TMDBMovie, TMDBSearchResult, TMDBSeason, TMDBShow
+from .schemas import TMDBEpisodeGroup, TMDBMovie, TMDBSearchResult, TMDBSeason, TMDBShow
 
 TIMEOUT_SECONDS = 10
 CONNECT_RETRIES = 3
@@ -22,6 +22,10 @@ CONNECT_RETRIES = 3
 MAX_APPENDS = 20
 TRENDING_MAX_AGE = dt.timedelta(hours=1)
 SEARCHED_TYPES = frozenset(MediaType)
+# TMDB's episode group types 6 (production) and 7 (TV), where editors split a show into seasons.
+SEASON_GROUP_TYPES = frozenset({6, 7})
+# Episode groups read for one show, each a request.
+MAX_SEASON_GROUPS = 10
 
 
 class ExternalSource(enum.StrEnum):
@@ -116,6 +120,16 @@ class TMDBClient:
                 if f"season/{number}" in appended
             ]
         return TMDBShow.model_validate({**data, "seasons": seasons})
+
+    async def season_groups(self, tmdb_id: int) -> list[TMDBEpisodeGroup]:
+        """The show's episode groups that split it into seasons (TMDB's production and TV types), with their
+        episodes; at most `MAX_SEASON_GROUPS`."""
+        data = await self._get(f"tv/{tmdb_id}/episode_groups")
+        ids = [group["id"] for group in data.get("results") or [] if group.get("type") in SEASON_GROUP_TYPES]
+        return [
+            TMDBEpisodeGroup.model_validate(await self._get(f"tv/episode_group/{urllib.parse.quote(id_, safe='')}"))
+            for id_ in ids[:MAX_SEASON_GROUPS]
+        ]
 
     async def find(self, external_id: str, source: ExternalSource) -> dict[str, typing.Any]:
         """TMDB ids of what has this external id: `movie_results`, `tv_results` and `tv_episode_results`."""

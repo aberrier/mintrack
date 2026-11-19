@@ -26,6 +26,7 @@ class FakeJellyfin:
         self.played: dict[str, list[dict]] = {}
         self.series: dict[str, dict] = {}
         self.seasons: dict[str, tuple[int, ...]] = {}
+        self.missing_seasons: dict[str, tuple[int, ...]] = {}
         self.requests: list[httpx.Request] = []
         self._ids = itertools.count(1)
         router.get(f"{url}/System/Info/Public").mock(side_effect=self._public_info)
@@ -50,9 +51,15 @@ class FakeJellyfin:
         self.played[name] = []
 
     def add_series(
-        self, provider_ids: dict[str, str], name: str = "", year: int | None = None, seasons: tuple[int, ...] = (1, 2)
+        self,
+        provider_ids: dict[str, str],
+        name: str = "",
+        year: int | None = None,
+        seasons: tuple[int, ...] = (1, 2),
+        missing_seasons: tuple[int, ...] = (),
     ) -> str:
-        """A series with these season numbers, 0 for its specials."""
+        """A series with these season numbers, 0 for its specials, and seasons only known from its metadata, without
+        any episode on the server."""
         series_id = f"series{next(self._ids)}"
         self.series[series_id] = {
             "Id": series_id,
@@ -62,6 +69,7 @@ class FakeJellyfin:
             "ProviderIds": provider_ids,
         }
         self.seasons[series_id] = seasons
+        self.missing_seasons[series_id] = missing_seasons
         return series_id
 
     def play_movie(
@@ -73,15 +81,17 @@ class FakeJellyfin:
         self,
         user: str,
         series_id: str,
-        season: int,
-        episode: int,
+        season: int | None,
+        episode: int | None,
         at: dt.datetime | None,
         provider_ids: dict[str, str] | None = None,
+        name: str | None = None,
     ) -> None:
+        """An episode played; Jellyfin names one it found no metadata for after its file."""
         series_name = self.series.get(series_id, {}).get("Name")
         item = {
             "Type": "Episode",
-            "Name": f"Episode {episode}",
+            "Name": f"Episode {episode}" if name is None else name,
             "SeriesId": series_id,
             "SeriesName": series_name,
             "ParentIndexNumber": season,
@@ -176,9 +186,13 @@ class FakeJellyfin:
         series_id = request.url.path.split("/")[-2]
         if series_id not in self.seasons:
             return httpx.Response(404)
+        numbers = self.seasons[series_id]
+        # Jellyfin's isMissing filter (GET /Shows/{seriesId}/Seasons): "false" leaves out the seasons without files.
+        if request.url.params.get("isMissing") != "false":
+            numbers += self.missing_seasons[series_id]
         items = [
             {"Id": f"{series_id}-season{number}", "Type": "Season", "IndexNumber": number, "SeriesId": series_id}
-            for number in self.seasons[series_id]
+            for number in numbers
         ]
         return httpx.Response(200, json={"Items": items, "TotalRecordCount": len(items)})
 

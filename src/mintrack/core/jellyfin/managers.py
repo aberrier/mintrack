@@ -35,7 +35,7 @@ from mintrack.integrations.tmdb.schemas import TMDBSearchResult
 from mintrack.observability.logging import logger
 from mintrack.worker.defer import defer_jellyfin_sync
 
-from .matching import Found, WatchEvent, match, unmatched_item
+from .matching import Found, SeasonGroup, WatchEvent, match, unmatched_item
 
 # Watches committed together with the cursor, so a failure keeps the batches before it.
 BATCH_SIZE = 100
@@ -344,6 +344,7 @@ class _Library:
         self.media: dict[tuple[MediaType, int], Media | None] = {}
         self.episodes: dict[uuid.UUID, dict[tuple[int, int], uuid.UUID]] = {}
         self.listed: dict[int, frozenset[tuple[int, int]]] = {}
+        self.groups: dict[int, list[SeasonGroup]] = {}
 
     async def find(self, source: ExternalSource, external_id: str) -> Found:
         key = (source, external_id)
@@ -386,6 +387,13 @@ class _Library:
                 (season.season_number, episode.episode_number) for season in show.seasons for episode in season.episodes
             )
         return self.listed[show_id]
+
+    async def season_groups(self, show_id: int) -> list[SeasonGroup]:
+        if show_id not in self.groups:
+            # As get_or_fetch does, no database connection stays checked out while TMDB answers.
+            await self.session.commit()
+            self.groups[show_id] = [group.seasons() for group in await self.tmdb.season_groups(show_id)]
+        return self.groups[show_id]
 
     def watched(self, event: WatchEvent) -> tuple[Media, uuid.UUID | None]:
         """The media and, for an episode, its id, of a watch `match` found."""
