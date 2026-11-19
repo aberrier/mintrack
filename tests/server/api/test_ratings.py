@@ -35,7 +35,7 @@ async def test_a_movie_rating_shows_on_its_page_and_in_the_history(signed_in: ht
     movie = (await signed_in.get(f"/api/movies/{tmdb_id}")).json()
     history = (await signed_in.get("/api/history")).json()["entries"]
     assert (movie["rating"]["stars"], movie["rating"]["review"]) == (2, "Too long.")
-    assert [(entry["tmdb_id"], entry["rating"]) for entry in history] == [(tmdb_id, 2)]
+    assert [(entry["tmdb_id"], entry["stars"]) for entry in history] == [(tmdb_id, 2)]
     await signed_in.delete(f"/api/movies/{tmdb_id}/rating")
     assert (await signed_in.get(f"/api/movies/{tmdb_id}")).json()["rating"] is None
 
@@ -50,12 +50,18 @@ async def test_episode_ratings_show_in_the_history(signed_in: httpx.AsyncClient)
     await signed_in.delete(f"/api/episodes/{second}/rating")
 
     history = (await signed_in.get("/api/history")).json()["entries"]
-    assert {entry["id"]: entry["rating"] for entry in history} == {first: 1, second: None}
+    assert {entry["id"]: entry["stars"] for entry in history} == {first: 1, second: None}
 
 
 @pytest.mark.parametrize(
     "body",
-    [{"stars": 0}, {"stars": 6}, {"stars": 3, "review": "x" * (MAX_REVIEW_LENGTH + 1)}, {"stars": 3, "score": 9}],
+    [
+        {"stars": 0},
+        {"stars": 6},
+        {"stars": 3, "review": "x" * (MAX_REVIEW_LENGTH + 1)},
+        {"stars": 3, "review": "a\x00b"},
+        {"stars": 3, "score": 9},
+    ],
 )
 async def test_ratings_out_of_bounds_are_refused(signed_in: httpx.AsyncClient, body: dict) -> None:
     tmdb_id, _ = await show_page(signed_in, "Bounded Show")
@@ -76,6 +82,28 @@ async def test_ratings_are_private_to_each_user(signed_in: httpx.AsyncClient, cr
 
     assert (await signed_in.get(f"/api/shows/{tmdb_id}")).json()["rating"] is None
     assert (await signed_in.get(f"/api/episodes/{first}")).json()["rating"] is None
+
+
+async def test_removing_a_rating_leaves_the_other_users_ones(
+    signed_in: httpx.AsyncClient, create_user: CreateUser
+) -> None:
+    tmdb_id, show = await show_page(signed_in, "Shared Rated Show")
+    first = episode_id(show, 1, 1)
+    await signed_in.put(f"/api/shows/{tmdb_id}/rating", json={"stars": 4})
+    await signed_in.put(f"/api/episodes/{first}/rating", json={"stars": 3})
+    await create_user("bob")
+    await log_in(signed_in, "bob")
+    signed_in.headers.update(xsrf(signed_in))
+    await signed_in.put(f"/api/shows/{tmdb_id}/rating", json={"stars": 1})
+    await signed_in.put(f"/api/episodes/{first}/rating", json={"stars": 1})
+
+    await signed_in.delete(f"/api/shows/{tmdb_id}/rating")
+    await signed_in.delete(f"/api/episodes/{first}/rating")
+
+    await log_in(signed_in)
+    signed_in.headers.update(xsrf(signed_in))
+    assert (await signed_in.get(f"/api/shows/{tmdb_id}")).json()["rating"]["stars"] == 4
+    assert (await signed_in.get(f"/api/episodes/{first}")).json()["rating"]["stars"] == 3
 
 
 async def test_media_never_loaded_cannot_be_rated(signed_in: httpx.AsyncClient) -> None:

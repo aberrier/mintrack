@@ -1,4 +1,3 @@
-import dataclasses
 import datetime as dt
 import uuid
 
@@ -7,12 +6,6 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.db.models import EpisodeRating, MediaRating, User
-
-
-@dataclasses.dataclass(frozen=True)
-class Rating:
-    stars: int
-    review: str
 
 
 class RatingManager:
@@ -27,11 +20,17 @@ class RatingManager:
     async def episode_rating(self, user: User, episode_id: uuid.UUID) -> EpisodeRating | None:
         return await self.session.get(EpisodeRating, (user.id, episode_id))
 
-    async def rate_media(self, user: User, media_id: uuid.UUID, rating: Rating, now: dt.datetime) -> MediaRating:
-        return await self._upsert(MediaRating, {"user_id": user.id, "media_id": media_id}, rating, now)
+    async def rate_media(
+        self, user: User, media_id: uuid.UUID, *, stars: int, review: str, now: dt.datetime
+    ) -> MediaRating:
+        keys = {"user_id": user.id, "media_id": media_id}
+        return await self._upsert(MediaRating, keys, stars=stars, review=review, now=now)
 
-    async def rate_episode(self, user: User, episode_id: uuid.UUID, rating: Rating, now: dt.datetime) -> EpisodeRating:
-        return await self._upsert(EpisodeRating, {"user_id": user.id, "episode_id": episode_id}, rating, now)
+    async def rate_episode(
+        self, user: User, episode_id: uuid.UUID, *, stars: int, review: str, now: dt.datetime
+    ) -> EpisodeRating:
+        keys = {"user_id": user.id, "episode_id": episode_id}
+        return await self._upsert(EpisodeRating, keys, stars=stars, review=review, now=now)
 
     async def unrate_media(self, user: User, media_id: uuid.UUID) -> None:
         await self.session.execute(
@@ -44,9 +43,9 @@ class RatingManager:
         )
 
     async def _upsert[R: (MediaRating, EpisodeRating)](
-        self, model: type[R], keys: dict[str, uuid.UUID], rating: Rating, now: dt.datetime
+        self, model: type[R], keys: dict[str, uuid.UUID], *, stars: int, review: str, now: dt.datetime
     ) -> R:
-        values = {"stars": rating.stars, "review": rating.review, "updated_at": now}
+        values = {"stars": stars, "review": review, "updated_at": now}
         statement = (
             insert(model)
             .values(**keys, **values)

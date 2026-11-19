@@ -5,12 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager
 from mintrack.core.tracking.managers import (
+    MIN_WATCH_DATE,
     FutureWatchError,
     SeasonSummary,
     ShowTrackingChoice,
     TrackingManager,
     UnairedEpisodesError,
     UnknownEpisodesError,
+    earliest_watch,
 )
 from mintrack.db.models import Episode, MediaType, TrackingStatus, User
 from mintrack.integrations.tmdb.client import TMDBClient
@@ -20,6 +22,14 @@ from tests.core.upcoming.factories import add_show, add_user
 
 def now() -> dt.datetime:
     return dt.datetime.now(dt.UTC)
+
+
+def test_a_watch_is_dated_at_the_earliest_the_day_before_the_air_date_or_in_1900() -> None:
+    aired = Episode(air_date=dt.date(2026, 3, 10))
+    undated = Episode(air_date=None)
+
+    assert earliest_watch(aired) == dt.datetime(2026, 3, 9, tzinfo=dt.UTC)
+    assert earliest_watch(undated) == MIN_WATCH_DATE == dt.datetime(1900, 1, 1, tzinfo=dt.UTC)
 
 
 def aired_regular(episodes: dict[tuple[int, int], Episode]) -> list[Episode]:

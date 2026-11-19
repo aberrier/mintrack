@@ -4,7 +4,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager, is_stale
-from mintrack.core.ratings.managers import Rating, RatingManager
+from mintrack.core.ratings.managers import RatingManager
 from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
 from mintrack.db.models import Media, MediaType, Season, User
 from mintrack.integrations.tmdb.client import TMDBClient
@@ -50,7 +50,7 @@ async def test_a_refresh_deletes_dropped_episodes_unless_someone_watched_or_rate
     episodes = await episodes_of(db_session, show)
     today = dt.datetime.now(dt.UTC)
     await TrackingManager(db_session).mark_episodes(user, show, [episodes[1, 3].id], today, now=today)
-    await RatingManager(db_session).rate_episode(user, episodes[2, 1].id, Rating(stars=4, review=""), today)
+    await RatingManager(db_session).rate_episode(user, episodes[2, 1].id, stars=4, review="", now=today)
     fake_tmdb.dropped |= {(show.tmdb_id, 1, 2), (show.tmdb_id, 1, 3), (show.tmdb_id, 2, 1)}
 
     await CatalogManager(db_session, tmdb).fetch(MediaType.TV, show.tmdb_id, NOW)

@@ -4,9 +4,7 @@ import uuid
 
 import fastapi
 import pydantic
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.core.catalog.managers import find_media
 from mintrack.core.tracking.managers import (
     LibrarySort,
     ShowTrackingChoice,
@@ -15,8 +13,9 @@ from mintrack.core.tracking.managers import (
     UnknownEpisodesError,
 )
 from mintrack.db.dependencies import DbSessionDepType
-from mintrack.db.models import Media, MediaType, TrackingStatus
+from mintrack.db.models import MediaType, TrackingStatus
 from mintrack.server.api.catalog import MovieTrackingResponse, ShowTrackingResponse, TMDBId
+from mintrack.server.api.common import cached
 from mintrack.server.api.dependencies import CurrentUserDepType
 
 router = fastapi.APIRouter(tags=["tracking"])
@@ -71,20 +70,12 @@ class HistoryEntryResponse(pydantic.BaseModel):
     # The user finished the show; always false for movies.
     finished: bool
     # The user's stars for the episode or the movie, if rated.
-    rating: int | None
+    stars: int | None
 
 
 class HistoryResponse(pydantic.BaseModel):
     entries: list[HistoryEntryResponse]
     has_more: bool
-
-
-async def cached(session: AsyncSession, media_type: MediaType, tmdb_id: int) -> Media:
-    """Media are written only after their page loaded it into the cache."""
-    media = await find_media(session, media_type, tmdb_id)
-    if media is None:
-        raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, "Not in the catalog")
-    return media
 
 
 @router.put("/shows/{tmdb_id}/tracking")
