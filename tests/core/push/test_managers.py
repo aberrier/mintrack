@@ -249,6 +249,7 @@ async def test_the_test_notification_reaches_only_the_user_device(
 
     [message] = push_service.received_by(device)
     assert message["notification"]["body"] == "Notifications work on this device."
+    assert message["notification"]["badge"] == "/icons/badge-96.png"
 
 
 async def test_a_user_keeps_only_the_most_recently_registered_devices(world: World, db_session: AsyncSession) -> None:
