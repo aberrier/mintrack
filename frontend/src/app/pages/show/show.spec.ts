@@ -43,6 +43,9 @@ function show(
     backdrop_path: null,
     network: 'Channel',
     runtime: null,
+    vote_average: null,
+    vote_count: null,
+    rating: null,
     seasons: [1, 2, 0].map((number) => ({
       season_number: number,
       title: number ? `Season ${number}` : 'Specials',

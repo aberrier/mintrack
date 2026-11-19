@@ -19,6 +19,7 @@ import { injectTranslator } from '../../core/i18n';
 import { IconName } from '../../core/icons/icons';
 import { episodeCode } from '../../core/tracking/episodes';
 import { CheckButton } from '../check-button';
+import { injectEpisodeSheet } from '../episode-sheet';
 import { Poster } from '../poster';
 import { SwipeActions } from '../swipe-actions';
 import { ViewMode } from '../view-toggle';
@@ -87,6 +88,10 @@ export interface CardEpisode {
   title: string | null;
   /** Aired and unwatched episodes after this one, shown as +N. */
   remaining?: number;
+  /** The episode's id: tapping the episode opens its sheet. Absent for movies, which link to their page. */
+  episode_id?: string;
+  /** The user's stars, shown in a list. */
+  rating?: number | null;
 }
 
 export interface CardAction<T extends string> {
@@ -105,6 +110,8 @@ export function historyCard(entry: Model.Http.HistoryEntry): CardEpisode {
     season_number: entry.season_number,
     episode_number: entry.episode_number,
     title: entry.episode_title,
+    episode_id: entry.media_type === 'tv' ? entry.id : undefined,
+    rating: entry.rating,
   };
 }
 
@@ -118,6 +125,7 @@ export function showEpisodeCard(show: Model.Http.Show, episode: Model.Http.Episo
     episode_number: episode.episode_number,
     title: episode.title,
     remaining,
+    episode_id: episode.id,
   };
 }
 
@@ -207,5 +215,11 @@ export class EpisodeCard<T extends string = string> {
 
   protected readonly menuLabel = computed(() =>
     this.translate('app.episodeCard.actions', { show: this.episode().show_title }),
+  );
+
+  protected readonly openSheet = injectEpisodeSheet();
+
+  protected readonly ratingLabel = computed(() =>
+    this.translate('app.rating.yours', { count: String(this.episode().rating ?? 0) }),
   );
 }

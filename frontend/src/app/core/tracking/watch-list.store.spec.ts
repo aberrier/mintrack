@@ -30,6 +30,9 @@ const SHOW: Model.Http.Show = {
   backdrop_path: null,
   network: null,
   runtime: null,
+  vote_average: null,
+  vote_count: null,
+  rating: null,
   seasons: [
     { season_number: 1, title: '', episode_count: 3, watched_count: 1, aired_count: 3 },
     { season_number: 2, title: '', episode_count: 1, watched_count: 0, aired_count: 0 },
@@ -73,6 +76,7 @@ function entry(id: string, watchedAt: string): Model.Http.HistoryEntry {
     episode_title: 'Pilot',
     watched_at: watchedAt,
     finished: false,
+    rating: null,
   };
 }
 
@@ -324,5 +328,30 @@ describe('WatchListStore', () => {
       .flush({ entries: [entry('b', NOW.toISOString())], has_more: false });
 
     expect(store.history().map((e) => e.id)).toEqual(['b', 'a']);
+  });
+
+  it('follows an episode changed from its sheet: its rating, its new date in order, its unmark', () => {
+    loadList([card()]);
+    store.loadOlderHistory();
+    http.expectOne('/api/history').flush({
+      entries: [
+        entry('c', '2026-06-03T00:00:00Z'),
+        entry('b', '2026-06-02T00:00:00Z'),
+        entry('a', '2026-06-01T00:00:00Z'),
+      ],
+      has_more: false,
+    });
+
+    store.episodeChanged('b', { rating: 4 });
+    http.expectNone('/api/watch-list');
+    store.episodeChanged('c', { watched_at: '2026-05-01T00:00:00Z' });
+    http.expectOne('/api/watch-list').flush({ episodes: [card()], library_empty: false });
+    store.episodeChanged('a', { watched_at: null });
+    http.expectOne('/api/watch-list').flush({ episodes: [card()], library_empty: false });
+
+    expect(store.history().map((e) => [e.id, e.rating])).toEqual([
+      ['b', 4],
+      ['c', null],
+    ]);
   });
 });

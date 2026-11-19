@@ -35,6 +35,14 @@
     @if (movie.overview) {
       <p class="max-w-[65ch] [font:var(--mat-sys-body-large)]">{{ movie.overview }}</p>
     }
+
+    @if ($tmdbScore(); as score) {
+      <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="tmdb-score">{{ score }}</p>
+    }
+    <app-rating-form
+      [path]="'movies/' + movie.tmdb_id"
+      [rating]="movie.rating"
+      (saved)="store.rated('movie', movie.tmdb_id, $event)" />
   </div>
 } @else if (page.$error(); as error) {
   <app-load-error [message]="translate(error)" [retryable]="error !== 'app.common.notFound'" (retry)="page.retry()" />

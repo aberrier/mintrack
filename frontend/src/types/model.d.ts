@@ -137,6 +137,9 @@ declare namespace Model {
       network: string | null;
       /** The movie's length in minutes, or null. */
       runtime: number | null;
+      /** TMDB users' average score out of 10 and their number of votes, when known. */
+      vote_average: number | null;
+      vote_count: number | null;
     }
 
     interface NextEpisode extends Episode {
@@ -149,10 +152,12 @@ declare namespace Model {
       tracking: ShowTracking | null;
       /** The episode to watch next, in the user's time zone; null when the show is not in progress or caught up. */
       next_episode: NextEpisode | null;
+      rating: Rating | null;
     }
 
     interface Movie extends Media {
       tracking: MovieTracking | null;
+      rating: Rating | null;
     }
 
     type LibrarySort = 'last_watched' | 'last_added' | 'title';
@@ -231,6 +236,8 @@ declare namespace Model {
       watched_at: string;
       /** The user finished the show; always false for movies. */
       finished: boolean;
+      /** The user's stars for the episode or the movie, if rated. */
+      rating: number | null;
     }
 
     interface HistoryResponse {
@@ -317,6 +324,35 @@ declare namespace Model {
 
     interface CreatedApiToken extends ApiToken {
       token: string;
+    }
+
+    /** The user's own rating of a show, a movie or an episode, seen only by them. */
+    interface Rating {
+      /** 1 to 5. */
+      stars: number;
+      /** Up to 500 characters; empty without a review. */
+      review: string;
+      updated_at: string;
+    }
+
+    interface RatingRequest {
+      stars: number;
+      review: string;
+    }
+
+    /** An episode as its sheet shows it, with its show and what the user did with it. */
+    interface EpisodeDetail extends Episode {
+      tmdb_id: number;
+      show_title: string;
+      network: string | null;
+      poster_path: string | null;
+      overview: string;
+      /** A frame of the episode, as a TMDB image path. */
+      still_path: string | null;
+      vote_average: number | null;
+      vote_count: number | null;
+      watched_at: string | null;
+      rating: Rating | null;
     }
   }
 }

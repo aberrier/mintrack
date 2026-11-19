@@ -47,11 +47,15 @@ Your Jellyfin servers fill in your history on their own.
     later as watch later. Only these two files are kept until the import ends;
     the others, `seen_episode_source.csv` (where each episode was watched)
     included, are not read: MinTrack does not record where you watched.
+- **Episode details and your own ratings.** Tap an episode for its synopsis,
+  air date and TMDB score, to mark it or change when you watched it. Rate
+  episodes, shows and movies with 1 to 5 stars and a short review, seen only
+  by you.
 
 ## What it does not do
 
-No social network, no recommendations, no ratings or reviews, no other media
-types (books, games, music) and no integrations other than Jellyfin.
+No social network, no recommendations, no shared ratings or reviews, no other
+media types (books, games, music) and no integrations other than Jellyfin.
 
 ## Install
 

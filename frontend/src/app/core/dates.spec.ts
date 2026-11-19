@@ -1,4 +1,13 @@
-import { dayIn, formatDate, formatDay, formatMonth, formatTime, zoneWithOffset } from './dates';
+import {
+  dayIn,
+  formatDate,
+  formatDay,
+  formatMonth,
+  formatTime,
+  localDateTime,
+  zonedInstant,
+  zoneWithOffset,
+} from './dates';
 
 // A Wednesday.
 const NOW = new Date('2026-11-18T12:00:00Z');
@@ -35,5 +44,13 @@ describe('dates', () => {
     expect(formatMonth('2026-12-01', TODAY)).toBe('December');
     expect(formatMonth('2027-01-01', TODAY)).toBe('January 2027');
     expect(formatTime('2026-11-18T20:00:00Z', 'UTC')).toBe('20:00');
+  });
+
+  it('turns an instant into a date-time input value in a time zone and back', () => {
+    expect(localDateTime(new Date('2025-12-31T23:30:00Z'), 'Europe/Paris')).toBe('2026-01-01T00:30');
+    expect(zonedInstant('2026-01-01T00:30', 'Europe/Paris').toISOString()).toBe('2025-12-31T23:30:00.000Z');
+    // Summer time in Paris, and the other side of the date line.
+    expect(zonedInstant('2026-07-01T20:00', 'Europe/Paris').toISOString()).toBe('2026-07-01T18:00:00.000Z');
+    expect(zonedInstant('2026-11-19T09:00', 'Pacific/Auckland').toISOString()).toBe('2026-11-18T20:00:00.000Z');
   });
 });

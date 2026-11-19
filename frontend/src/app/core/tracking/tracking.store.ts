@@ -191,6 +191,29 @@ export class TrackingStore {
     );
   }
 
+  /** Date the watch of an episode differently: `watchedAt` is an ISO date-time in the past. */
+  setWatchedAt(tmdbId: number, episodeId: string, watchedAt: string): Promise<boolean> {
+    return this.updateShow(
+      tmdbId,
+      (state) =>
+        state.tracking
+          ? {
+              ...state,
+              tracking: { ...state.tracking, watched: { ...state.tracking.watched, [episodeId]: watchedAt } },
+            }
+          : state,
+      () => this.api.episodes.setWatchedAt(episodeId, watchedAt),
+    );
+  }
+
+  /** The rating the server saved for a loaded show or movie, or null once removed. */
+  rated(mediaType: Model.Http.MediaType, tmdbId: number, rating: Model.Http.Rating | null): void {
+    const withRating = <T extends { rating: Model.Http.Rating | null }>(all: Record<number, T>) =>
+      all[tmdbId] ? { ...all, [tmdbId]: { ...all[tmdbId], rating } } : all;
+    if (mediaType === 'tv') this.$shows.update(withRating);
+    else this.$movies.update(withRating);
+  }
+
   /** Add the show to the library or resume it (watching), put it aside (watch_later) or stop it. */
   trackShow(tmdbId: number, status: Model.Http.ShowTrackingChoice): Promise<boolean> {
     if (!this.$shows()[tmdbId]?.tracking) this.haptics.tap();

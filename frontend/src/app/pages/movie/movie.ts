@@ -11,13 +11,14 @@ import { injectConfirm } from '../../shared/confirm-dialog';
 import { LoadError } from '../../shared/load-error';
 import { MediaHeader } from '../../shared/media-header';
 import { loadMediaPage } from '../../shared/media-page';
+import { RatingForm, tmdbScore } from '../../shared/rating-form';
 import { Skeleton } from '../../shared/skeleton';
 import { injectStatusLabel } from '../../shared/status';
 
 /** A movie: its header, when it was watched, and one check to mark or unmark it. */
 @Component({
   selector: 'app-movie',
-  imports: [MatButton, CheckButton, MediaHeader, Skeleton, LoadError, BackButton],
+  imports: [MatButton, CheckButton, MediaHeader, Skeleton, LoadError, BackButton, RatingForm],
   templateUrl: './movie.html',
   styles: `
     /* Whether the movie is watched, on a tinted card with its check. */
@@ -41,7 +42,7 @@ import { injectStatusLabel } from '../../shared/status';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export default class Movie {
-  private readonly store = inject(TrackingStore);
+  protected readonly store = inject(TrackingStore);
   private readonly confirm = injectConfirm();
   private readonly timeZone = inject(AuthStore).$timeZone;
   protected readonly translate = injectTranslator('app');
@@ -63,6 +64,8 @@ export default class Movie {
       movie.release_date && formatDate(movie.release_date, this.timeZone()),
     ].filter((fact): fact is string => !!fact);
   });
+
+  protected readonly $tmdbScore = computed(() => tmdbScore(this.translate, this.$movie()));
 
   protected readonly $watchedOn = computed(() => {
     const watchedAt = this.$movie()?.tracking?.watched_at;

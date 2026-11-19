@@ -16,8 +16,63 @@
   transition: transform var(--duration-short) var(--ease-standard);
 }
 
-.row:has(.main:active) {
+.row:has(a.main:active, .main > :active) {
   transform: scale(0.98);
+}
+
+/* The episode's text as a button opening its sheet, the rest of the row's width. */
+.open {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  align-self: stretch;
+  justify-content: center;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.main > :focus-visible,
+.open-tile:focus-visible {
+  outline: 2px solid var(--mat-sys-primary);
+  outline-offset: 2px;
+  border-radius: var(--mat-sys-corner-small);
+}
+
+/* The user's stars after the episode number. */
+.stars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-start: 8px;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-label-large);
+  vertical-align: top;
+}
+
+.stars mat-icon {
+  width: 16px;
+  height: 16px;
+  color: var(--mat-sys-primary);
+}
+
+.open-tile {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
 }
 
 .main {
@@ -72,7 +127,7 @@
   transition: transform var(--duration-short) var(--ease-standard);
 }
 
-.tile:has(> a:active) {
+.tile:has(> a:active, > .open-tile:active) {
   transform: scale(0.97);
 }
 

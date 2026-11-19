@@ -1,4 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { MatBottomSheet } from '@angular/material/bottom-sheet';
 import { provideRouter } from '@angular/router';
 import { CardEpisode, EpisodeCard } from './episode-card';
 
@@ -32,10 +33,22 @@ describe('EpisodeCard', () => {
   it('shows the show, the episode number with how many follow, and the title, linking to the show', async () => {
     const card = await render();
 
-    expect(text(card.querySelector('h3'))).toBe('Andor');
+    expect(text(card.querySelector('.show-chip'))).toBe('Andor');
     expect(text(card.querySelector('[data-testid="episode-code"]'))).toBe('S01 | E05+3');
     expect(text(card.querySelector('[data-testid="episode-title"]'))).toBe('The Axe Forgets');
     expect(card.querySelector('a')?.getAttribute('href')).toBe('/shows/7');
+  });
+
+  it('with its id, opens the episode’s sheet from its text and the show from its poster, with the user’s stars', async () => {
+    const open = vi.spyOn(TestBed.inject(MatBottomSheet), 'open').mockReturnValue({} as never);
+    const card = await render({ episode: { ...EPISODE, episode_id: 'e5', rating: 4 } });
+
+    expect(card.querySelector('a')?.getAttribute('href')).toBe('/shows/7');
+    expect(card.querySelector('[data-testid="episode-rating"]')?.getAttribute('aria-label')).toBe('Rated 4 out of 5');
+    card.querySelector<HTMLButtonElement>('button.open')!.click();
+
+    expect(open).toHaveBeenCalledOnce();
+    expect(open.mock.calls[0][1]?.data).toEqual({ episodeId: 'e5' });
   });
 
   it('marks the episode in one tap on a check named after it', async () => {
@@ -75,7 +88,7 @@ describe('EpisodeCard', () => {
   it('hides the show’s name where the page is the show’s', async () => {
     const card = await render({ showTitle: false });
 
-    expect(card.querySelector('h3')).toBeNull();
+    expect(card.querySelector('.show-chip')).toBeNull();
   });
 
   it('carries the Finished badge on the poster of a finished show, in a list and in a grid', async () => {
