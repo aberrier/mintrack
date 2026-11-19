@@ -5,6 +5,7 @@ import ipaddress
 import socket
 import types
 import typing
+import urllib.parse
 import uuid
 
 import httpx
@@ -280,6 +281,12 @@ class JellyfinClient:
             page = await self._get_json(ItemsPage, "GET", "/Items", params=params)
             found.extend(_at_most(page, IDS_PER_REQUEST).items)
         return found
+
+    async def season_numbers(self, user_id: str, series_id: str) -> list[int]:
+        """The numbers of a series' seasons, 0 for its specials."""
+        path = f"/Shows/{urllib.parse.quote(series_id, safe='')}/Seasons"
+        page = await self._get_json(ItemsPage, "GET", path, params={"userId": user_id})
+        return [season.index_number for season in page.items if season.index_number is not None]
 
     async def logout(self) -> None:
         await self._request("POST", "/Sessions/Logout")

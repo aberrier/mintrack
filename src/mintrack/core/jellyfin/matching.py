@@ -1,7 +1,6 @@
 import collections.abc
 import dataclasses
 import datetime as dt
-import types
 import typing
 import unicodedata
 
@@ -53,8 +52,8 @@ class Catalog(typing.Protocol):
 EXTERNAL_PROVIDERS = (("Imdb", ExternalSource.IMDB), ("Tvdb", ExternalSource.TVDB))
 # Years a title search accepts between Jellyfin's production year and TMDB's release, after the exact year.
 YEAR_TOLERANCE = 1
-# No season known for any series.
-NO_SEASONS: collections.abc.Mapping[str, collections.abc.Set[int]] = types.MappingProxyType({})
+# The number of regular seasons (specials aside) Jellyfin has for a series, by its Jellyfin id.
+type RegularSeasons = collections.abc.Callable[[str], collections.abc.Awaitable[int]]
 
 
 async def match(
@@ -62,10 +61,10 @@ async def match(
     played_at: dt.datetime,
     series: collections.abc.Mapping[str, Item],
     catalog: Catalog,
-    seasons: collections.abc.Mapping[str, collections.abc.Set[int]] = NO_SEASONS,
+    regular_seasons: RegularSeasons | None = None,
 ) -> WatchEvent | JellyfinUnmatchedReason:
-    """The watch a played movie or episode stands for, or why none was found. `seasons` holds the season numbers
-    Jellyfin gives each series' played episodes."""
+    """The watch a played movie or episode stands for, or why none was found. Without `regular_seasons`, an episode
+    is never matched by its absolute number."""
     if item.type == "Movie":
         tmdb_id = await _media_id(item, MediaType.MOVIE, catalog)
         return JellyfinUnmatchedReason.NOT_FOUND if tmdb_id is None else WatchEvent(MediaType.MOVIE, tmdb_id, played_at)
@@ -74,9 +73,7 @@ async def match(
     season, number = item.parent_index_number, item.index_number
     if season is None or number is None or season < 0 or number < 1:
         return JellyfinUnmatchedReason.NO_NUMBERS
-    # Another season in Jellyfin means its season 1 is not the whole series: TVDB and TMDB just split it differently.
-    one_season = all(other <= 1 for other in seasons.get(item.series_id or "", {season}))
-    found = await _episode(item, series.get(item.series_id or ""), (season, number), catalog, one_season=one_season)
+    found = await _episode(item, series.get(item.series_id or ""), (season, number), catalog, regular_seasons)
     if isinstance(found, JellyfinUnmatchedReason):
         return found
     show_id, season, number = found
@@ -127,11 +124,15 @@ async def _media_id(item: Item, media_type: MediaType, catalog: Catalog) -> int 
 
 
 async def _episode(
-    item: Item, show: Item | None, numbering: tuple[int, int], catalog: Catalog, *, one_season: bool
+    item: Item,
+    show: Item | None,
+    numbering: tuple[int, int],
+    catalog: Catalog,
+    regular_seasons: RegularSeasons | None,
 ) -> tuple[int, int, int] | JellyfinUnmatchedReason:
     """The TMDB show, season and number of an episode: Jellyfin's numbering in the series TMDB knows, else what TMDB
     finds under the episode's own ids, else its absolute number in that series when Jellyfin keeps the whole series
-    in season 1 (`one_season`)."""
+    in one regular season."""
     season, number = numbering
     show_id = None if show is None else await _media_id(show, MediaType.TV, catalog)
     numbers = frozenset() if show_id is None else await catalog.episode_numbers(show_id)
@@ -146,10 +147,11 @@ async def _episode(
                     return found_show, found_season, found_number
     if show_id is None:
         return JellyfinUnmatchedReason.NOT_FOUND
-    if season == 1 and one_season:
+    if season == 1 and item.series_id and regular_seasons is not None:
         absolute = _absolute(await catalog.listed_episode_numbers(show_id), number)
-        # The cache may not have an episode TMDB added since it was refreshed.
-        if absolute is not None and absolute in numbers:
+        # The cache may not have an episode TMDB added since it was refreshed. A season 2 in Jellyfin means its
+        # season 1 is not the whole series: TVDB and TMDB just split the seasons differently.
+        if absolute is not None and absolute in numbers and await regular_seasons(item.series_id) == 1:
             return show_id, *absolute
     return JellyfinUnmatchedReason.EPISODE_NOT_FOUND
 

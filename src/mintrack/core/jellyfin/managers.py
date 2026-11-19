@@ -202,46 +202,44 @@ class JellyfinManager:
         account_id, user = account.id, await self.session.get_one(User, account.user_id)
         # No database connection stays checked out while Jellyfin answers.
         await self.session.commit()
+        # The client stays open while matching, which asks Jellyfin for a series' seasons when it needs them.
         async with self._client(account) as client:
             played = await self._played_since(client, account.jellyfin_user_id, since)
             series_ids = {item.series_id for item in played if item.type == "Episode" and item.series_id}
             series = {item.id: item for item in await client.items(account.jellyfin_user_id, series_ids)}
-        seasons: dict[str, set[int]] = {}
-        for item in played:
-            if item.type == "Episode" and item.series_id and item.parent_index_number is not None:
-                seasons.setdefault(item.series_id, set()).add(item.parent_index_number)
-        previous_sync, synced_until = account.synced_until, account.synced_until
-        imported = 0
-        unmatched = _Unmatched()
-        library = _Library(self.session, tmdb, now)
-        tracking = TrackingManager(self.session)
-        for batch in itertools.batched(played, BATCH_SIZE, strict=False):
-            shows: dict[Media, dict[uuid.UUID, dt.datetime]] = {}
-            for item in batch:
-                event = await match(item, _played_at(item), series, library, seasons)
-                if isinstance(event, JellyfinUnmatchedReason):
-                    unmatched.add(unmatched_item(item, series, event), item)
-                    logger.info(
-                        "jellyfin item not matched",
-                        account_id=str(account_id),
-                        item_id=item.id,
-                        type=item.type,
-                        reason=event,
-                    )
-                    continue
-                media, episode_id = library.watched(event)
-                # A play date after now is a server clock ahead of ours.
-                watched_at = min(event.watched_at, now)
-                if episode_id is None:
-                    await tracking.set_movie_watched(user, media, watched=True, at=watched_at, now=now)
-                else:
-                    shows.setdefault(media, {})[episode_id] = watched_at
-                imported += previous_sync is None or event.watched_at > previous_sync
-            await tracking.record_watches(user, shows, now=now)
-            batch_end = typing.cast("dt.datetime", batch[-1].user_data.last_played_date)
-            synced_until = max(synced_until or batch_end, batch_end)
-            if not await self._record(account, account_id, synced_until=synced_until):
-                raise _UnlinkedError
+            seasons = _RegularSeasons(self.session, client, account.jellyfin_user_id)
+            previous_sync, synced_until = account.synced_until, account.synced_until
+            imported = 0
+            unmatched = _Unmatched()
+            library = _Library(self.session, tmdb, now)
+            tracking = TrackingManager(self.session)
+            for batch in itertools.batched(played, BATCH_SIZE, strict=False):
+                shows: dict[Media, dict[uuid.UUID, dt.datetime]] = {}
+                for item in batch:
+                    event = await match(item, _played_at(item), series, library, seasons)
+                    if isinstance(event, JellyfinUnmatchedReason):
+                        unmatched.add(unmatched_item(item, series, event), item)
+                        logger.info(
+                            "jellyfin item not matched",
+                            account_id=str(account_id),
+                            item_id=item.id,
+                            type=item.type,
+                            reason=event,
+                        )
+                        continue
+                    media, episode_id = library.watched(event)
+                    # A play date after now is a server clock ahead of ours.
+                    watched_at = min(event.watched_at, now)
+                    if episode_id is None:
+                        await tracking.set_movie_watched(user, media, watched=True, at=watched_at, now=now)
+                    else:
+                        shows.setdefault(media, {})[episode_id] = watched_at
+                    imported += previous_sync is None or event.watched_at > previous_sync
+                await tracking.record_watches(user, shows, now=now)
+                batch_end = typing.cast("dt.datetime", batch[-1].user_data.last_played_date)
+                synced_until = max(synced_until or batch_end, batch_end)
+                if not await self._record(account, account_id, synced_until=synced_until):
+                    raise _UnlinkedError
         return imported, unmatched
 
     @staticmethod
@@ -305,6 +303,24 @@ class _Unmatched:
             key = item.id
         if len(self.items) < MAX_REPORTED_UNMATCHED:
             self.items.setdefault(key, unmatched)
+
+
+class _RegularSeasons:
+    """The number of regular seasons (specials aside) Jellyfin has for each series, asked once per series in a sync."""
+
+    def __init__(self, session: AsyncSession, client: JellyfinClient, user_id: str) -> None:
+        self.session = session
+        self.client = client
+        self.user_id = user_id
+        self.counts: dict[str, int] = {}
+
+    async def __call__(self, series_id: str) -> int:
+        if series_id not in self.counts:
+            # No database connection stays checked out while Jellyfin answers.
+            await self.session.commit()
+            numbers = await self.client.season_numbers(self.user_id, series_id)
+            self.counts[series_id] = len({number for number in numbers if number >= 1})
+        return self.counts[series_id]
 
 
 class _Library:

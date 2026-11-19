@@ -2,6 +2,7 @@ import collections.abc
 import datetime as dt
 import itertools
 import json
+import re
 import secrets
 
 import httpx
@@ -24,6 +25,7 @@ class FakeJellyfin:
         self.devices: dict[str, str] = {}
         self.played: dict[str, list[dict]] = {}
         self.series: dict[str, dict] = {}
+        self.seasons: dict[str, tuple[int, ...]] = {}
         self.requests: list[httpx.Request] = []
         self._ids = itertools.count(1)
         router.get(f"{url}/System/Info/Public").mock(side_effect=self._public_info)
@@ -31,6 +33,7 @@ class FakeJellyfin:
         self.is_jellyfin = True
         router.post(f"{url}/Users/AuthenticateByName").mock(side_effect=self._authenticate)
         router.get(f"{url}/Items").mock(side_effect=self._items)
+        router.get(url__regex=rf"^{re.escape(url)}/Shows/[^/?]+/Seasons\b").mock(side_effect=self._seasons)
         router.post(f"{url}/Sessions/Logout").mock(side_effect=self._logout)
         router.get(f"{url}/QuickConnect/Enabled").mock(
             side_effect=lambda _: httpx.Response(200, json=self.quick_connect)
@@ -46,7 +49,10 @@ class FakeJellyfin:
         self.passwords[name] = password
         self.played[name] = []
 
-    def add_series(self, provider_ids: dict[str, str], name: str = "", year: int | None = None) -> str:
+    def add_series(
+        self, provider_ids: dict[str, str], name: str = "", year: int | None = None, seasons: tuple[int, ...] = (1, 2)
+    ) -> str:
+        """A series with these season numbers, 0 for its specials."""
         series_id = f"series{next(self._ids)}"
         self.series[series_id] = {
             "Id": series_id,
@@ -55,6 +61,7 @@ class FakeJellyfin:
             "ProductionYear": year,
             "ProviderIds": provider_ids,
         }
+        self.seasons[series_id] = seasons
         return series_id
 
     def play_movie(
@@ -162,6 +169,18 @@ class FakeJellyfin:
         played = sorted(self.played[user], key=lambda item: item["UserData"]["LastPlayedDate"] or "", reverse=True)
         start, limit = int(params["StartIndex"]), int(params["Limit"])
         return httpx.Response(200, json={"Items": played[start : start + limit], "TotalRecordCount": len(played)})
+
+    def _seasons(self, request: httpx.Request) -> httpx.Response:
+        if self._user(request) is None:
+            return httpx.Response(401)
+        series_id = request.url.path.split("/")[-2]
+        if series_id not in self.seasons:
+            return httpx.Response(404)
+        items = [
+            {"Id": f"{series_id}-season{number}", "Type": "Season", "IndexNumber": number, "SeriesId": series_id}
+            for number in self.seasons[series_id]
+        ]
+        return httpx.Response(200, json={"Items": items, "TotalRecordCount": len(items)})
 
     def _logout(self, request: httpx.Request) -> httpx.Response:
         if self._user(request) is None:
