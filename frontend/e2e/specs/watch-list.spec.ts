@@ -1,9 +1,12 @@
 import { expect, test } from '../dsl/fixtures';
+import { emptyMessage } from '../dsl/upcoming';
 import {
   check,
   finishedInHistory,
   finishedShow,
   firstCardOnScreen,
+  followWelcome,
+  hideWelcome,
   historyReachedItsStart,
   isGrid,
   isOnWatchList,
@@ -18,6 +21,7 @@ import {
   sectionHeaders,
   sectionOf,
   serveWatchList,
+  settingsGroupOnScreen,
   showWatchedUpTo,
   slowServer,
   takeOut,
@@ -26,6 +30,8 @@ import {
   toggleView,
   undo,
   watchedShows,
+  welcomeShown,
+  welcomeSteps,
 } from '../dsl/watch-list';
 
 test.describe('Watch list', () => {
@@ -270,5 +276,53 @@ test.describe('Watch list', () => {
     // Then only the finished show's episodes carry the badge
     await expect.poll(() => finishedInHistory(viewer, finished)).toBe(true);
     await expect.poll(() => finishedInHistory(viewer, watching)).toBe(false);
+  });
+});
+
+test.describe('Welcome', () => {
+  test('a new user is shown three steps, each opening where it says', async ({ viewer }) => {
+    // Given someone whose library is empty, on the watch list
+    await openWatchList(viewer);
+
+    // Then the watch list welcomes them with three steps
+    expect(await welcomeSteps(viewer)).toEqual(['Bring your history', 'Find your shows', 'Turn on notifications']);
+
+    // And importing opens Settings at the imports, or at the integrations for Jellyfin
+    expect(await followWelcome(viewer, 'Import a file')).toBe('/profile/settings');
+    expect(await settingsGroupOnScreen(viewer, 'Import history')).toBe(true);
+    await openWatchList(viewer);
+    expect(await followWelcome(viewer, 'Link Jellyfin')).toBe('/profile/settings');
+    expect(await settingsGroupOnScreen(viewer, 'Integrations')).toBe(true);
+
+    // And the other steps open Discover and the notifications guide
+    await openWatchList(viewer);
+    expect(await followWelcome(viewer, 'Open Discover')).toBe('/discover');
+    await openWatchList(viewer);
+    expect(await followWelcome(viewer, 'How to turn them on')).toBe('/profile/settings/notifications');
+  });
+
+  test('a dismissed welcome stays hidden, leaving the empty watch list’s message', async ({ viewer }) => {
+    // Given a new user who hides the welcome
+    await openWatchList(viewer);
+    await hideWelcome(viewer);
+
+    // Then the watch list says it is empty, even after coming back
+    expect(await emptyMessage(viewer)).toContain('bring your history from another tracker');
+    await reopenWatchList(viewer);
+    expect(await emptyMessage(viewer)).toContain('bring your history from another tracker');
+  });
+
+  test('the welcome leaves once a show is added, without being dismissed', async ({ viewer }) => {
+    // Given a new user who sees the welcome
+    await openWatchList(viewer);
+    expect(await welcomeSteps(viewer)).toHaveLength(3);
+
+    // When they watch a show
+    const show = await showWatchedUpTo(viewer, 'Welcome Gone', 1, 1);
+    await reopenWatchList(viewer);
+
+    // Then its card replaces the welcome
+    expect(await nextEpisodeOf(viewer, show)).toBe('S01|E02+3');
+    expect(await welcomeShown(viewer)).toBe(false);
   });
 });

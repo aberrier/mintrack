@@ -40,6 +40,27 @@ export default {
       start: 'The start of your watch history',
     },
   },
+  welcome: {
+    title: 'Welcome to MinTrack',
+    intro: 'Three steps to fill your watch list.',
+    dismiss: 'Hide these steps',
+    import: {
+      title: 'Bring your history',
+      text: 'Import what you watched in TV Time or Yamtrack, or link Jellyfin to track what you play there.',
+      file: 'Import a file',
+      jellyfin: 'Link Jellyfin',
+    },
+    discover: {
+      title: 'Find your shows',
+      text: 'Search or browse, then add what you watch.',
+      action: 'Open Discover',
+    },
+    notifications: {
+      title: 'Turn on notifications',
+      text: 'Get notified when an episode airs.',
+      action: 'How to turn them on',
+    },
+  },
   episodeCard: {
     check: 'Mark {episode} of {show} watched',
     spoken: 'season {season} episode {episode}',

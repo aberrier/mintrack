@@ -35,6 +35,38 @@ export async function openWatchList(viewer: Viewer): Promise<void> {
   await viewer.app.openWatchList();
 }
 
+/** The steps the welcome of an empty watch list offers, in order. */
+export async function welcomeSteps(viewer: Viewer): Promise<string[]> {
+  return viewer.app.welcomeSteps();
+}
+
+/** Follow a link of the welcome; returns the address it opens. */
+export async function followWelcome(viewer: Viewer, link: string): Promise<string> {
+  const before = viewer.app.address();
+  await viewer.app.followWelcomeLink(link);
+  await expect.poll(() => viewer.app.address()).not.toBe(before);
+  return viewer.app.address();
+}
+
+/** Whether the Settings group of that title is on screen. */
+export async function settingsGroupOnScreen(viewer: Viewer, title: string): Promise<boolean> {
+  return expect(viewer.app.settingsGroupTitle(title))
+    .toBeInViewport()
+    .then(
+      () => true,
+      () => false,
+    );
+}
+
+export async function hideWelcome(viewer: Viewer): Promise<void> {
+  await viewer.app.hideWelcome();
+}
+
+/** Whether the watch list, once loaded, shows the welcome. */
+export async function welcomeShown(viewer: Viewer): Promise<boolean> {
+  return viewer.app.welcome().isVisible();
+}
+
 /** The episode a show's card offers next, such as "S01 | E02+3" (three more aired after it). */
 export async function nextEpisodeOf(viewer: Viewer, show: string): Promise<string> {
   await expect(viewer.app.card(show)).toBeVisible();

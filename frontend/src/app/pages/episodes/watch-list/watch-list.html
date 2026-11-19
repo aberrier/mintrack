@@ -85,7 +85,9 @@
       }
     </section>
   } @empty {
-    @if (store.episodes() && store.libraryEmpty()) {
+    @if (store.episodes() && store.libraryEmpty() && !welcomeChoice.$hidden()) {
+      <app-welcome data-testid="welcome" />
+    } @else if (store.episodes() && store.libraryEmpty()) {
       <app-empty-state
         icon="explore"
         [title]="translate('app.watchList.newTitle')"

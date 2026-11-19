@@ -10,15 +10,18 @@ import calendar_month from '@material-symbols/svg-400/outlined/calendar_month.sv
 import check from '@material-symbols/svg-400/outlined/check.svg';
 import check_circle_fill from '@material-symbols/svg-400/outlined/check_circle-fill.svg';
 import check_circle from '@material-symbols/svg-400/outlined/check_circle.svg';
+import close from '@material-symbols/svg-400/outlined/close.svg';
 import cloud_off from '@material-symbols/svg-400/outlined/cloud_off.svg';
 import contentCopy from '@material-symbols/svg-400/outlined/content_copy.svg';
 import explore_fill from '@material-symbols/svg-400/outlined/explore-fill.svg';
 import explore from '@material-symbols/svg-400/outlined/explore.svg';
 import grid_view from '@material-symbols/svg-400/outlined/grid_view.svg';
+import history from '@material-symbols/svg-400/outlined/history.svg';
 import expand_more from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg';
 import live_tv_fill from '@material-symbols/svg-400/outlined/live_tv-fill.svg';
 import live_tv from '@material-symbols/svg-400/outlined/live_tv.svg';
 import more_vert from '@material-symbols/svg-400/outlined/more_vert.svg';
+import notifications from '@material-symbols/svg-400/outlined/notifications.svg';
 import person_fill from '@material-symbols/svg-400/outlined/person-fill.svg';
 import person from '@material-symbols/svg-400/outlined/person.svg';
 import refresh from '@material-symbols/svg-400/outlined/refresh.svg';
@@ -41,15 +44,18 @@ const icons = {
   check,
   check_circle,
   check_circle_fill,
+  close,
   cloud_off,
   content_copy: contentCopy,
   expand_more,
   explore,
   explore_fill,
   grid_view,
+  history,
   live_tv,
   live_tv_fill,
   more_vert,
+  notifications,
   person,
   person_fill,
   refresh,
