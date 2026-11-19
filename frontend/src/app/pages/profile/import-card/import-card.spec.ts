@@ -1,6 +1,7 @@
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { loadProfileTexts } from '../../../core/i18n';
 import { ImportsStore } from '../../../core/imports/imports.store';
 import { ImportCard } from './import-card';
 
@@ -21,6 +22,7 @@ const nextTask = () => new Promise((resolve) => setTimeout(resolve));
 const storeOf = (fixture: ComponentFixture<ImportCard>) => fixture.debugElement.injector.get(ImportsStore);
 
 describe('ImportCard', () => {
+  beforeAll(() => loadProfileTexts());
   let http: HttpTestingController;
   let settle: () => Promise<void>;
   let store: () => ImportsStore;

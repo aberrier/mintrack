@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { SwPush } from '@angular/service-worker';
 import { of } from 'rxjs';
+import { loadProfileTexts } from '../i18n';
 import { PushStore } from './push.store';
 
 const OTHER_KEY = 'BAUG';
@@ -20,6 +21,7 @@ function browserSubscription(endpoint: string, key = 'AQID'): PushSubscription {
 }
 
 describe('PushStore', () => {
+  beforeAll(() => loadProfileTexts());
   let requestPermission: ReturnType<typeof vi.fn>;
   let swPush: {
     isEnabled: boolean;

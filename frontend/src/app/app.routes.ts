@@ -1,7 +1,7 @@
 import { Routes } from '@angular/router';
 import { appRoutes } from './app.paths';
 import { adminGuard, signedInGuard, signedOutGuard } from './core/auth/guards';
-import { TranslationPath } from './core/i18n';
+import { TranslationPath, withProfileTexts } from './core/i18n';
 
 export { routesConfig };
 
@@ -44,7 +44,7 @@ const routesConfig: Routes = [
     path: appRoutes.profile(''),
     title: title('app.nav.profile'),
     canActivate: [signedInGuard],
-    loadComponent: () => import('./pages/profile/profile'),
+    loadComponent: () => withProfileTexts(import('./pages/profile/profile')),
   },
   {
     path: appRoutes.collection(''),
@@ -56,19 +56,19 @@ const routesConfig: Routes = [
     path: appRoutes.settings(''),
     title: title('app.profile.settings'),
     canActivate: [signedInGuard],
-    loadComponent: () => import('./pages/profile/settings/settings'),
+    loadComponent: () => withProfileTexts(import('./pages/profile/settings/settings')),
   },
   {
     path: appRoutes.mcpHelp(''),
     title: title('app.mcpHelp.title'),
     canActivate: [signedInGuard],
-    loadComponent: () => import('./pages/profile/mcp-help/mcp-help'),
+    loadComponent: () => withProfileTexts(import('./pages/profile/mcp-help/mcp-help')),
   },
   {
     path: appRoutes.pushHelp(''),
     title: title('app.pushHelp.title'),
     canActivate: [signedInGuard],
-    loadComponent: () => import('./pages/profile/push-help/push-help'),
+    loadComponent: () => withProfileTexts(import('./pages/profile/push-help/push-help')),
   },
   {
     path: appRoutes.admin(''),

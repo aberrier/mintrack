@@ -1,10 +1,12 @@
 import app from './translations/app.en';
+import type profileTexts from './translations/profile.en';
 
-export { injectTranslator, type TranslationPath };
+export { injectTranslator, loadProfileTexts, withProfileTexts, type TranslationPath };
 
 /**
  * Inject a translator for the given kinds of translations.
- * The English texts are bundled with the app, so they are available from the first render.
+ * The English texts are bundled with the app, so they are available from the first render, except the Profile tab's,
+ * which load with its pages (`withProfileTexts`).
  *
  * @example
  * ```html
@@ -27,7 +29,18 @@ function injectTranslator<K extends TranslationKinds[]>(..._kinds: K) {
   };
 }
 
-const translations = { app };
+const translations = { app: { ...app } as typeof app & typeof profileTexts };
+
+/** Adds the Profile tab's texts, kept out of the initial bundle. */
+async function loadProfileTexts(): Promise<void> {
+  Object.assign(translations.app, (await import('./translations/profile.en')).default);
+}
+
+/** A page of the Profile tab, loaded together with its texts. */
+async function withProfileTexts<T>(page: Promise<T>): Promise<T> {
+  const [loaded] = await Promise.all([page, loadProfileTexts()]);
+  return loaded;
+}
 
 type Translations = typeof translations;
 type TranslationKinds = keyof Translations;
