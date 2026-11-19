@@ -34,7 +34,7 @@ import { IconName } from '../core/icons/icons';
       margin-inline: auto;
       padding: 48px 16px;
       text-align: center;
-      animation: rise-in var(--duration-medium) var(--ease-emph-decel) both;
+      animation: rise-in var(--duration-medium) var(--ease-emph-decel) backwards;
     }
     .badge {
       display: grid;
