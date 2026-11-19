@@ -6,8 +6,24 @@ import pytest
 
 from mintrack.db.models import MediaType
 from mintrack.integrations.tmdb.client import TMDBClient, TMDBNotConfiguredError, TMDBNotFoundError
+from mintrack.integrations.tmdb.schemas import TMDBMovie
 from tests.conftest import make_tmdb_client
 from tests.fakes.tmdb import INVALID_KEY, MAX_ID, FakeTMDB
+
+
+def test_release_dates_without_a_date_are_skipped() -> None:
+    releases = [
+        {"type": 4, "release_date": None},
+        {"type": 4, "release_date": ""},
+        {"type": 4},
+        {"type": 4, "release_date": "2026-03-02T00:00:00.000Z"},
+    ]
+
+    movie = TMDBMovie.model_validate(
+        {"id": 1, "title": "Patchy", "release_dates": {"results": [{"release_dates": releases}]}}
+    )
+
+    assert movie.digital_release_date() == dt.date(2026, 3, 2)
 
 
 async def test_search_returns_shows_and_movies_but_not_people(tmdb: TMDBClient) -> None:
