@@ -8,7 +8,17 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import ARRAY, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mintrack.db.models import Episode, Media, MediaType, Season, TrackingStatus, User, UserMedia, WatchedEpisode
+from mintrack.db.models import (
+    Episode,
+    EpisodeRating,
+    Media,
+    MediaType,
+    Season,
+    TrackingStatus,
+    User,
+    UserMedia,
+    WatchedEpisode,
+)
 from mintrack.integrations.tmdb.client import TMDBClient
 from mintrack.integrations.tmdb.schemas import TMDBMovie, TMDBSearchResult, TMDBShow
 from mintrack.worker.defer import defer_refresh
@@ -134,6 +144,8 @@ class CatalogManager:
                 "tmdb_status": movie.status,
                 "refreshed_at": now,
                 "language": self.tmdb.language,
+                "vote_average": movie.vote_average,
+                "vote_count": movie.vote_count,
             },
         )
 
@@ -152,6 +164,8 @@ class CatalogManager:
                 "tvdb_id": show.external_ids.tvdb_id,
                 "refreshed_at": now,
                 "language": self.tmdb.language,
+                "vote_average": show.vote_average,
+                "vote_count": show.vote_count,
             },
         )
         seasons = [
@@ -165,13 +179,20 @@ class CatalogManager:
                 "episode_number": episode.episode_number,
                 "title": episode.name,
                 "air_date": episode.air_date,
+                "overview": episode.overview,
+                "still_path": episode.still_path,
+                "vote_average": episode.vote_average,
+                "vote_count": episode.vote_count,
             }
             for season in show.seasons
             for episode in season.episodes
         ]
         await self._upsert(Season, seasons, keys=("media_id", "season_number"), updated=("title",))
         await self._upsert(
-            Episode, episodes, keys=("media_id", "season_number", "episode_number"), updated=("title", "air_date")
+            Episode,
+            episodes,
+            keys=("media_id", "season_number", "episode_number"),
+            updated=("title", "air_date", "overview", "still_path", "vote_average", "vote_count"),
         )
         await self._delete_dropped(media, seasons, episodes)
         return media
@@ -193,7 +214,7 @@ class CatalogManager:
             )
 
     async def _delete_dropped(self, media: Media, seasons: Rows, episodes: Rows) -> None:
-        """Delete what TMDB no longer lists, except the episodes someone watched and their seasons."""
+        """Delete what TMDB no longer lists, except the episodes someone watched or rated and their seasons."""
         listed = sa.select(
             sa.func.unnest(sa.bindparam("seasons", [e["season_number"] for e in episodes], type_=ARRAY(sa.Integer))),
             sa.func.unnest(sa.bindparam("numbers", [e["episode_number"] for e in episodes], type_=ARRAY(sa.Integer))),
@@ -203,6 +224,7 @@ class CatalogManager:
                 Episode.media_id == media.id,
                 sa.tuple_(Episode.season_number, Episode.episode_number).not_in(listed),
                 ~sa.exists().where(WatchedEpisode.episode_id == Episode.id),
+                ~sa.exists().where(EpisodeRating.episode_id == Episode.id),
             )
         )
         await self.session.execute(

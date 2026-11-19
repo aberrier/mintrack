@@ -8,9 +8,11 @@ from mintrack.server.api import (
     api_tokens,
     auth,
     catalog,
+    episodes,
     imports,
     jellyfin,
     push,
+    ratings,
     tracking,
     upcoming,
 )
@@ -42,6 +44,8 @@ def build_api_router() -> fastapi.APIRouter:
     protected.include_router(admin_users.router)
     protected.include_router(catalog.router)
     protected.include_router(tracking.router)
+    protected.include_router(episodes.router)
+    protected.include_router(ratings.router)
     protected.include_router(upcoming.router)
     protected.include_router(push.router)
     protected.include_router(jellyfin.router)

@@ -70,6 +70,8 @@ class HistoryEntryResponse(pydantic.BaseModel):
     watched_at: dt.datetime
     # The user finished the show; always false for movies.
     finished: bool
+    # The user's stars for the episode or the movie, if rated.
+    rating: int | None
 
 
 class HistoryResponse(pydantic.BaseModel):

@@ -13,7 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mintrack.core.catalog.managers import ENDED_STATUSES, INSERT_BATCH, is_airing
 from mintrack.db.models import (
     Episode,
+    EpisodeRating,
     Media,
+    MediaRating,
     MediaType,
     Season,
     TrackingStatus,
@@ -101,6 +103,8 @@ class HistoryEntry:
     watched_at: dt.datetime
     # The user finished the show; always False for movies.
     finished: bool
+    # The user's stars for the episode or the movie, if rated.
+    rating: int | None
 
 
 class TrackingManager:
@@ -181,6 +185,24 @@ class TrackingManager:
         )
         user_media = await self._locked(user, media)
         return await self._update_show_status(user, media, user_media, now) if user_media else None
+
+    async def change_watch_date(
+        self, user: User, media: Media, episode_id: uuid.UUID, at: dt.datetime, *, now: dt.datetime
+    ) -> ShowTracking | None:
+        """Date the user's watch of the episode `at`; None when they have not watched it.
+
+        Raises `UnknownEpisodesError` and, when `at` is after `now`, `FutureWatchError`.
+        """
+        if at > now:
+            raise FutureWatchError
+        await self._check_episodes(media, [episode_id])
+        changed = await self.session.scalar(
+            sa.update(WatchedEpisode)
+            .where(WatchedEpisode.user_id == user.id, WatchedEpisode.episode_id == episode_id)
+            .values(watched_at=at)
+            .returning(WatchedEpisode.episode_id)
+        )
+        return None if changed is None else await self.show_tracking(user, media)
 
     async def set_show_status(
         self, user: User, media: Media, status: ShowTrackingChoice, now: dt.datetime
@@ -364,10 +386,12 @@ class TrackingManager:
                 Episode.title.label("episode_title"),
                 WatchedEpisode.watched_at,
                 sa.func.coalesce(UserMedia.status == TrackingStatus.FINISHED, sa.false()).label("finished"),
+                EpisodeRating.stars.label("rating"),
             )
             .join(Episode, Episode.id == WatchedEpisode.episode_id)
             .join(Media, Media.id == Episode.media_id)
             .outerjoin(UserMedia, (UserMedia.user_id == user.id) & (UserMedia.media_id == Media.id))
+            .outerjoin(EpisodeRating, (EpisodeRating.user_id == user.id) & (EpisodeRating.episode_id == Episode.id))
             .where(WatchedEpisode.user_id == user.id)
         )
         movies = (
@@ -382,8 +406,10 @@ class TrackingManager:
                 sa.cast(sa.null(), sa.TEXT).label("episode_title"),
                 WatchedMovie.watched_at,
                 sa.false().label("finished"),
+                MediaRating.stars.label("rating"),
             )
             .join(Media, Media.id == WatchedMovie.media_id)
+            .outerjoin(MediaRating, (MediaRating.user_id == user.id) & (MediaRating.media_id == Media.id))
             .where(WatchedMovie.user_id == user.id)
         )
         if before is not None:

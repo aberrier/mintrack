@@ -10,6 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager, SearchHit, find_media
+from mintrack.core.ratings.managers import RatingManager
 from mintrack.core.tracking.managers import TrackingManager
 from mintrack.core.upcoming.managers import UpcomingManager
 from mintrack.db.dependencies import DbSessionDepType
@@ -89,6 +90,16 @@ class MovieTrackingResponse(pydantic.BaseModel):
     watched_at: dt.datetime | None
 
 
+class RatingResponse(pydantic.BaseModel):
+    """The user's own rating."""
+
+    model_config = pydantic.ConfigDict(from_attributes=True)
+
+    stars: int
+    review: str
+    updated_at: dt.datetime
+
+
 class MediaResponse(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
 
@@ -101,6 +112,9 @@ class MediaResponse(pydantic.BaseModel):
     runtime: int | None
     release_date: dt.date | None
     tmdb_status: str | None
+    # TMDB users' average score out of 10 and their number of votes, when known.
+    vote_average: float | None
+    vote_count: int | None
 
 
 class NextEpisodeResponse(EpisodeResponse):
@@ -114,10 +128,12 @@ class ShowResponse(MediaResponse):
     # The episode to watch next, as on the watch list (in the user's time zone); None when the show is not in
     # progress or nothing aired is left.
     next_episode: NextEpisodeResponse | None
+    rating: RatingResponse | None
 
 
 class MovieResponse(MediaResponse):
     tracking: MovieTrackingResponse | None
+    rating: RatingResponse | None
 
 
 @contextlib.contextmanager
@@ -179,11 +195,13 @@ async def get_show(
         next_episode = NextEpisodeResponse(
             **EpisodeResponse.model_validate(episode).model_dump(), remaining=card.remaining
         )
+    rating = await RatingManager(session).media_rating(user, media.id)
     response = ShowResponse(
         **MediaResponse.model_validate(media).model_dump(),
         seasons=[SeasonResponse.model_validate(season) for season in await tracking_manager.seasons(user, media, now)],
         tracking=ShowTrackingResponse.model_validate(tracking) if tracking else None,
         next_episode=next_episode,
+        rating=RatingResponse.model_validate(rating) if rating else None,
     )
     await session.commit()
     return response
@@ -227,8 +245,11 @@ async def get_movie(
 ) -> MovieResponse:
     media = await cached_media(session, tmdb, MediaType.MOVIE, tmdb_id, dt.datetime.now(dt.UTC))
     tracking = await TrackingManager(session).movie_tracking(user, media)
-    await session.commit()
-    return MovieResponse(
+    rating = await RatingManager(session).media_rating(user, media.id)
+    response = MovieResponse(
         **MediaResponse.model_validate(media).model_dump(),
         tracking=MovieTrackingResponse.model_validate(tracking) if tracking else None,
+        rating=RatingResponse.model_validate(rating) if rating else None,
     )
+    await session.commit()
+    return response
