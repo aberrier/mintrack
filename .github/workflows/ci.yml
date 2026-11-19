@@ -105,7 +105,9 @@ jobs:
             echo "MINTRACK__TVMAZE__URL=http://172.30.0.1:8002"
             echo "MINTRACK_VERSION=edge"
           } > .env
-          docker compose up --detach --wait --wait-timeout 120
+          docker compose up --detach
+          # The worker has no healthcheck, which --wait refuses: wait for the server (and its db and migrate) only.
+          docker compose up --detach --wait --wait-timeout 120 server
       - uses: actions/setup-node@v7
         with:
           node-version: 24
