@@ -32,7 +32,6 @@ export default {
     error: 'Cannot load your watch list.',
     movedLater: 'Moved to Watch later',
     stopped: 'Stopped watching',
-    undo: 'Undo',
     history: {
       title: 'Watch history',
       earlier: 'Show earlier',
@@ -40,7 +39,6 @@ export default {
       failed: 'Cannot load your history.',
       start: 'The start of your watch history',
     },
-    checked: '{episode} watched',
   },
   episodeCard: {
     check: 'Mark {episode} of {show} watched',
@@ -146,6 +144,8 @@ export default {
     notFound: 'This title is not on TMDB.',
     loading: 'Loading…',
     findShows: 'Find something to watch',
+    undo: 'Undo',
+    checked: '{episode} watched',
   },
   status: {
     not_started: 'Haven’t started',

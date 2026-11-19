@@ -6,7 +6,7 @@ import { appRoutes } from '../../app.paths';
 import { AuthStore } from '../../core/auth/auth.store';
 import { formatDate } from '../../core/dates';
 import { injectTranslator } from '../../core/i18n';
-import { injectNotify } from '../../core/notify';
+import { injectNotify, injectNotifyChecked } from '../../core/notify';
 import {
   isAired,
   isWatched,
@@ -20,7 +20,7 @@ import { TrackingStore } from '../../core/tracking/tracking.store';
 import { CHECKED_PAUSE_MS } from '../../core/tracking/watch-list.store';
 import { BackButton } from '../../shared/back-button';
 import { injectConfirm } from '../../shared/confirm-dialog';
-import { CardEpisode, EpisodeCard, episodeCode, showEpisodeCard } from '../../shared/episode-card/episode-card';
+import { CardEpisode, EpisodeCard, showEpisodeCard } from '../../shared/episode-card/episode-card';
 import { LoadError } from '../../shared/load-error';
 import { MediaHeader } from '../../shared/media-header';
 import { loadMediaPage } from '../../shared/media-page';
@@ -47,6 +47,7 @@ const NO_NEXT_EPISODE: readonly Model.Http.TrackingStatus[] = ['stopped', 'watch
 export default class Show {
   private readonly store = inject(TrackingStore);
   private readonly notify = injectNotify();
+  private readonly notifyChecked = injectNotifyChecked();
   private readonly confirm = injectConfirm();
   protected readonly timeZone = inject(AuthStore).$timeZone;
   protected readonly translate = injectTranslator('app');
@@ -211,11 +212,6 @@ export default class Show {
     this.mark(show, [next.episode], true);
     setTimeout(() => this.$checked.set(null), CHECKED_PAUSE_MS);
     const { season_number, episode_number } = next.episode;
-    this.notify(
-      this.translate('app.watchList.checked', { episode: episodeCode(season_number, episode_number, true) }),
-      this.translate('app.watchList.undo'),
-    )
-      .onAction()
-      .subscribe(() => this.mark(show, [next.episode], false));
+    this.notifyChecked(season_number, episode_number, () => this.mark(show, [next.episode], false));
   }
 }

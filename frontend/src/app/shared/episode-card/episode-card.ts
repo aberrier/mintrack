@@ -17,6 +17,7 @@ import { RouterLink } from '@angular/router';
 import { appRoutes } from '../../app.paths';
 import { injectTranslator } from '../../core/i18n';
 import { IconName } from '../../core/icons/icons';
+import { episodeCode } from '../../core/tracking/episodes';
 import { CheckButton } from '../check-button';
 import { Poster } from '../poster';
 import { SwipeActions } from '../swipe-actions';
@@ -92,12 +93,6 @@ export interface CardAction<T extends string> {
   id: T;
   label: string;
   icon: IconName;
-}
-
-/** An episode's number as shown on cards: S01 | E05, or S01E05 where space is short. */
-export function episodeCode(season: number, episode: number, compact = false): string {
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return compact ? `S${pad(season)}E${pad(episode)}` : `S${pad(season)} | E${pad(episode)}`;
 }
 
 /** A watched episode or movie of the history, as a card. */

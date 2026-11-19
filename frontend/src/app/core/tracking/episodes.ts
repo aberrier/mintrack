@@ -1,6 +1,7 @@
 import { dayIn } from '../dates';
 
 export {
+  episodeCode,
   followingEpisode,
   guessNext,
   isAired,
@@ -13,6 +14,12 @@ export {
 };
 
 const SPECIALS = 0;
+
+/** An episode's number as shown on cards: S01 | E05, or S01E05 where space is short. */
+function episodeCode(season: number, episode: number, compact = false): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return compact ? `S${pad(season)}E${pad(episode)}` : `S${pad(season)} | E${pad(episode)}`;
+}
 
 /** A show's loaded episodes by season number; a season missing here was not loaded yet. */
 export type LoadedSeasons = Readonly<Record<number, Model.Http.Episode[]>>;

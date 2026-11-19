@@ -1,4 +1,5 @@
 import {
+  episodeCode,
   followingEpisode,
   guessNext,
   isAired,
@@ -10,6 +11,14 @@ import {
 
 const NOW = new Date('2026-06-10T12:00:00Z');
 const UTC = 'UTC';
+
+describe('episodeCode', () => {
+  it('pads season and episode numbers', () => {
+    expect(episodeCode(1, 5)).toBe('S01 | E05');
+    expect(episodeCode(12, 104)).toBe('S12 | E104');
+    expect(episodeCode(1, 5, true)).toBe('S01E05');
+  });
+});
 
 function episode(season: number, number: number, airDate: string | null): Model.Http.Episode {
   return {

@@ -5,12 +5,15 @@ import { Haptics } from './haptics';
 describe('Haptics', () => {
   let vibrate: ReturnType<typeof vi.fn>;
   let reducedMotion: boolean;
+  let touchScreen: boolean;
 
   function haptics(withVibration = true): Haptics {
     vibrate = vi.fn(() => true);
     const window = {
       navigator: withVibration ? { vibrate } : {},
-      matchMedia: (query: string) => ({ matches: query.includes('reduce') && reducedMotion }),
+      matchMedia: (query: string) => ({
+        matches: query.includes('coarse') ? touchScreen : query.includes('reduce') && reducedMotion,
+      }),
     };
     TestBed.configureTestingModule({ providers: [{ provide: DOCUMENT, useValue: { defaultView: window } }] });
     return TestBed.inject(Haptics);
@@ -18,6 +21,7 @@ describe('Haptics', () => {
 
   beforeEach(() => {
     reducedMotion = false;
+    touchScreen = true;
     localStorage.clear();
   });
 
@@ -51,5 +55,15 @@ describe('Haptics', () => {
 
     expect(service.supported).toBe(false);
     expect(() => service.tap()).not.toThrow();
+  });
+
+  it('is not offered on a desktop, whose browser has the API but nothing to vibrate', () => {
+    touchScreen = false;
+
+    const service = haptics();
+    service.tap();
+
+    expect(service.supported).toBe(false);
+    expect(vibrate).not.toHaveBeenCalled();
   });
 });

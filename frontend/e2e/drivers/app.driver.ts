@@ -374,9 +374,12 @@ export class AppDriver {
     return text;
   }
 
-  /** The snackbar on screen, not the one it replaced, which leaves meanwhile. */
+  /**
+   * The snackbar on screen, not the one it replaced, which leaves meanwhile: Material marks a leaving one with the
+   * mat-exit attribute at once, and with its exit class only at the next render.
+   */
   snackBar(): Locator {
-    return this.page.locator('mat-snack-bar-container:not(.mat-snack-bar-container-exit)');
+    return this.page.locator('mat-snack-bar-container:not([mat-exit])');
   }
 
   /** The snackbar's action, such as Undo. */
@@ -384,9 +387,9 @@ export class AppDriver {
     await this.snackBar().getByRole('button', { name }).click();
   }
 
-  /** Whether the browser has the Vibration API, as Android's does and iOS's does not. */
+  /** Whether this is a touch screen whose browser has the Vibration API, as Android's does and iOS's does not. */
   canVibrate(): Promise<boolean> {
-    return this.page.evaluate(() => typeof navigator.vibrate === 'function');
+    return this.page.evaluate(() => typeof navigator.vibrate === 'function' && matchMedia('(pointer: coarse)').matches);
   }
 
   /** Load the app again, its vibrations recorded instead of felt. */
