@@ -568,6 +568,30 @@ export class AppDriver {
     return this.page.getByTestId('empty');
   }
 
+  /** The welcome of an empty watch list, with its steps. */
+  welcome(): Locator {
+    return this.page.getByTestId('welcome');
+  }
+
+  /** The titles of the welcome's steps, in order. */
+  async welcomeSteps(): Promise<string[]> {
+    await expect(this.welcome()).toBeVisible();
+    return (await this.welcome().getByRole('heading', { level: 3 }).allInnerTexts()).map((text) => text.trim());
+  }
+
+  async followWelcomeLink(name: string): Promise<void> {
+    await this.welcome().getByRole('link', { name }).click();
+  }
+
+  async hideWelcome(): Promise<void> {
+    await this.welcome().getByRole('button', { name: 'Hide these steps' }).click();
+  }
+
+  /** A Settings group's title, such as Integrations. */
+  settingsGroupTitle(name: string): Locator {
+    return this.page.getByRole('heading', { level: 2, name, exact: true });
+  }
+
   /** An upcoming episode's line under its title: its air time. */
   upcomingEpisodeDetail(day: Locator): Locator {
     return day.getByTestId('episode-detail');

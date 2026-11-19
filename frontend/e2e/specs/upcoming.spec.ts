@@ -10,12 +10,12 @@ import {
   serveUpcoming,
   toggleView,
 } from '../dsl/upcoming';
-import { openWatchList, showWatchedUpTo } from '../dsl/watch-list';
+import { openWatchList, showWatchedUpTo, welcomeSteps } from '../dsl/watch-list';
 
-test('someone following no show is told what Watch list and Upcoming will show', async ({ viewer }) => {
-  // An empty library points to adding shows or importing a history
+test('someone following no show is welcomed on the watch list and told what Upcoming will show', async ({ viewer }) => {
+  // An empty library shows the welcome's steps
   await openWatchList(viewer);
-  expect(await emptyMessage(viewer)).toContain('bring your history from another tracker');
+  expect(await welcomeSteps(viewer)).toHaveLength(3);
 
   expect(await openUpcoming(viewer)).toBe(true);
   expect(await emptyMessage(viewer)).toContain('Nothing airs in the next four weeks');

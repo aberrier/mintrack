@@ -24,6 +24,7 @@ import { PullToLoad } from '../../../shared/pull-to-load';
 import { Skeleton } from '../../../shared/skeleton';
 import { ViewModes } from '../../../shared/view-toggle';
 import { EpisodesTabs } from '../episodes-tabs';
+import { Welcome, WelcomeChoice } from './welcome';
 
 const SECTIONS: Record<Model.Http.WatchListSection, TranslationPath<'app'>> = {
   next: 'app.watchList.next',
@@ -37,7 +38,7 @@ const SECTIONS: Record<Model.Http.WatchListSection, TranslationPath<'app'>> = {
  */
 @Component({
   selector: 'app-watch-list',
-  imports: [EpisodeCard, EpisodesTabs, EmptyState, Skeleton, MatIcon, PullToLoad, LoadError],
+  imports: [EpisodeCard, EpisodesTabs, EmptyState, Skeleton, MatIcon, PullToLoad, LoadError, Welcome],
   templateUrl: './watch-list.html',
   styles: `
     /* A section's title as a full-width button folding it: the title, its count, then a chevron. */
@@ -89,6 +90,7 @@ export default class WatchList {
   protected readonly $mode = inject(ViewModes).mode('watchList');
   protected readonly $failed = signal(false);
   private readonly collapsedSections = inject(CollapsedSections);
+  protected readonly welcomeChoice = inject(WelcomeChoice);
 
   private readonly historyBlock = viewChild.required<ElementRef<HTMLElement>>('history');
 
