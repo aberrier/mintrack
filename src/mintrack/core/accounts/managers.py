@@ -69,6 +69,10 @@ class SetupClosedError(Exception):
     pass
 
 
+class UserGoneError(Exception):
+    pass
+
+
 class UserStatus(enum.StrEnum):
     INVITED = enum.auto()
     INVITATION_EXPIRED = enum.auto()
@@ -318,9 +322,12 @@ class AccountManager:
         if sa.inspect(user).persistent:
             # Locking the row first waits for a concurrent use of the link, so the lifetime and the link to replace
             # are read from the committed row; it is also the order use_link locks in, so the two never deadlock.
-            await self.session.scalar(
+            locked = await self.session.scalar(
                 sa.select(User).where(User.id == user.id).with_for_update().execution_options(populate_existing=True)
             )
+            if locked is None:
+                # Deleted by a concurrent request since it was loaded.
+                raise UserGoneError
         if not user.is_active:
             raise UserDisabledError
         previous = user.link_token_hash

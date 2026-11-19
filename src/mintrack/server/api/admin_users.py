@@ -11,6 +11,7 @@ from mintrack.core.accounts.managers import (
     AccountManager,
     LastAdminError,
     UserDisabledError,
+    UserGoneError,
     UsernameTakenError,
     UserStatus,
     user_status,
@@ -108,6 +109,8 @@ async def create_link(user_id: uuid.UUID, db: DbSessionDepType) -> LinkResponse:
         token = await AccountManager(db).issue_link(user, now=utc_now())
     except UserDisabledError:
         raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, "Enable this user first") from None
+    except UserGoneError:
+        raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, "No such user") from None
     await db.commit()
     return _link(user, token)
 
