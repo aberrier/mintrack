@@ -171,14 +171,16 @@ Pi 3, 4 or 5 with a 64-bit system).
 (`http://localhost:8000`, or the server's address on your network). `docker compose ps` shows the server as healthy;
 if it is not, `docker compose logs migrate server` shows why, with one line per setting to fix.
 
-4. Create the first admin. The command prints a link to open in a browser, where the admin sets their password:
+4. Open MinTrack and create the admin account: while no account exists, the login page offers it. Or, from the
+   command line, create the admin and open the link it prints to set their password:
 
    ```bash
    docker compose exec server mintrack users create-admin admin
    ```
 
-   The admin then invites everyone else from the Admin tab, and shares each printed link by hand (MinTrack
-   sends no email). A forgotten password needs a new link: from the Admin tab, or for an admin
+   To keep an instance reachable by others closed until the admin exists, set `MINTRACK__ACCOUNTS__SETUP=false` and
+   use the command. The admin then invites everyone else from the Admin tab, and shares each printed link by hand
+   (MinTrack sends no email). A forgotten password needs a new link: from the Admin tab, or for an admin
    `docker compose exec server mintrack users reset-link USERNAME`.
 
 ### Behind a reverse proxy

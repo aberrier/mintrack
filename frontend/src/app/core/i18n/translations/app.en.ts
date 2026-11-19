@@ -71,6 +71,14 @@ export default {
       rateLimited: 'Too many failed attempts, try again in a few minutes',
     },
   },
+  setup: {
+    title: 'Create the admin account',
+    intro: 'No account exists yet. The admin invites everyone else.',
+    confirm: 'Confirm password',
+    mismatch: 'The passwords differ',
+    usernameHint: 'Letters, digits, dots, dashes or underscores',
+    closed: 'The admin account already exists. Log in instead.',
+  },
   password: {
     title: 'Set your password',
     loading: 'Checking the link…',
