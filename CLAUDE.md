@@ -112,7 +112,7 @@ cd frontend
 npm ci
 npm run check   # prettier, Angular compiler with strict templates, spec and e2e types
 npm test        # Vitest
-npm run build   # fails over the bundle budgets (initial 400 kB, component style 8 kB)
+npm run build   # fails over the bundle budgets (initial: warning at 10 MB, error at 16 MB; component style 8 kB)
 npm run e2e     # Playwright against a running server (MINTRACK_E2E_BASE_URL, default http://localhost:8000)
 ```
 
