@@ -360,7 +360,7 @@ describe('WatchListStore', () => {
         entry('b', '2026-06-02T00:00:00Z'),
         entry('a', '2026-06-01T00:00:00Z'),
       ],
-      has_more: false,
+      has_more: true,
     });
 
     store.episodeChanged(detail('b'), { stars: 4 });
@@ -379,5 +379,24 @@ describe('WatchListStore', () => {
       ['b', 4],
       ['c', null],
     ]);
+  });
+
+  it('adds an episode marked from its sheet to an empty or fully loaded history, whatever its date', () => {
+    store.loadOlderHistory();
+    http.expectOne('/api/history').flush({ entries: [], has_more: false });
+
+    store.episodeChanged(detail('b'), { watched_at: '2026-06-02T00:00:00Z', stars: null });
+    store.episodeChanged(detail('a'), { watched_at: '2026-01-01T00:00:00Z', stars: 3 });
+
+    expect(store.history().map((e) => [e.id, e.stars])).toEqual([
+      ['b', null],
+      ['a', 3],
+    ]);
+  });
+
+  it('leaves an episode marked from its sheet out of a history never opened', () => {
+    store.episodeChanged(detail('a'), { watched_at: '2026-06-02T00:00:00Z', stars: null });
+
+    expect(store.history()).toEqual([]);
   });
 });

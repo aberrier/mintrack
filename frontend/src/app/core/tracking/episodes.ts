@@ -1,6 +1,7 @@
 import { dayIn } from '../dates';
 
 export {
+  earliestWatch,
   episodeCode,
   followingEpisode,
   guessNext,
@@ -19,6 +20,17 @@ const SPECIALS = 0;
 function episodeCode(season: number, episode: number, compact = false): string {
   const pad = (value: number) => String(value).padStart(2, '0');
   return compact ? `S${pad(season)}E${pad(episode)}` : `S${pad(season)} | E${pad(episode)}`;
+}
+
+/**
+ * The earliest watch date the API takes for an episode: the start of the day before its air date in UTC, since that
+ * day starts earlier in the zones ahead of UTC; 1 January 1900 UTC without an air date.
+ */
+function earliestWatch(airDate: string | null): Date {
+  if (!airDate) return new Date(Date.UTC(1900, 0, 1));
+  const day = new Date(`${airDate}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day;
 }
 
 /** A show's loaded episodes by season number; a season missing here was not loaded yet. */

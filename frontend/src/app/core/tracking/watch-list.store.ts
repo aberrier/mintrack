@@ -195,19 +195,22 @@ export class WatchListStore {
 
   /**
    * An episode changed from its sheet: its history entry takes its new date or stars, or leaves once unwatched
-   * (`watched_at` null); an episode just marked joins a history already opened, unless older than all it shows. A
-   * watch list on screen is loaded again when the episode was marked, unmarked or dated differently.
+   * (`watched_at` null); an episode just marked joins a history already opened, unless older than all it shows while
+   * older pages are left to load. A watch list on screen is loaded again when the episode was marked, unmarked or
+   * dated differently.
    */
   episodeChanged(
     episode: Model.Http.EpisodeDetail,
     change: { watched_at?: string | null; stars?: number | null },
   ): void {
     const { watched_at, ...rest } = change;
+    const complete = this.$historyState() === 'done';
     this.$history.update((history) => {
       if (watched_at === null) return history.filter((entry) => entry.id !== episode.id);
       const shown = history.some((entry) => entry.id === episode.id);
       const oldest = history.at(-1);
-      const joins = !shown && !!watched_at && !!oldest && Date.parse(watched_at) >= Date.parse(oldest.watched_at);
+      const joins =
+        !shown && !!watched_at && (complete || (!!oldest && Date.parse(watched_at) >= Date.parse(oldest.watched_at)));
       const changed = joins
         ? [...history, sheetEntry(episode, watched_at, rest.stars ?? null)]
         : history.map((entry) =>

@@ -11,7 +11,7 @@ import { AuthStore } from '../core/auth/auth.store';
 import { formatDate, formatDateTime, localDateTime, zonedInstant } from '../core/dates';
 import { injectTranslator } from '../core/i18n';
 import { injectNotify } from '../core/notify';
-import { episodeCode, isAired, isUpcoming } from '../core/tracking/episodes';
+import { earliestWatch, episodeCode, isAired, isUpcoming } from '../core/tracking/episodes';
 import { TrackingStore } from '../core/tracking/tracking.store';
 import { WatchListStore } from '../core/tracking/watch-list.store';
 import { CheckButton } from './check-button';
@@ -22,9 +22,6 @@ import { RatingForm, tmdbScore } from './rating-form';
 interface EpisodeSheetData {
   episodeId: string;
 }
-
-/** The earliest watch date of an episode without an air date, as the API takes it. */
-const MIN_WATCH_DATE = '1900-01-01T00:00';
 
 /**
  * An episode in a bottom sheet: its still, number and title, a link to its show, its synopsis, air date, network and
@@ -93,7 +90,7 @@ const MIN_WATCH_DATE = '1900-01-01T00:00';
                 matInput
                 type="datetime-local"
                 [value]="local(watchedAt)"
-                [min]="$earliest()"
+                [min]="local($earliest())"
                 [max]="local(now)"
                 (change)="changeDate(ep, $any($event.target))" />
             </mat-form-field>
@@ -186,11 +183,8 @@ export class EpisodeSheet {
     const ep = this.$episode();
     return !!ep && isUpcoming(ep, this.now, this.timeZone());
   });
-  /** The earliest watch date the date field takes: the start of the air date, as a date-time input value. */
-  protected readonly $earliest = computed(() => {
-    const airDate = this.$episode()?.air_date;
-    return airDate ? `${airDate}T00:00` : MIN_WATCH_DATE;
-  });
+  /** The earliest watch date the date field takes, the API's. */
+  protected readonly $earliest = computed(() => earliestWatch(this.$episode()?.air_date ?? null));
   /** "Aired 13 Nov 2025 · Network". */
   protected readonly $facts = computed(() => {
     const ep = this.$episode();
@@ -225,8 +219,10 @@ export class EpisodeSheet {
     this.watchList.episodeChanged(ep, { watched_at: after, stars: this.$rating()?.stars ?? null });
   }
 
-  /** A date picked for the watch: saved unless it is after now or before the episode aired; the field shows the
-   * saved date again when the date is refused. */
+  /**
+   * A date picked for the watch: saved unless it is after now or before the earliest date the API takes; the field
+   * shows the saved date again when the date is refused.
+   */
   protected async changeDate(ep: Model.Http.EpisodeDetail, field: HTMLInputElement): Promise<void> {
     const before = this.$watchedAt();
     if (!before) return;
@@ -237,11 +233,7 @@ export class EpisodeSheet {
     }
     const at = zonedInstant(field.value, this.timeZone());
     const refusal =
-      at > new Date()
-        ? 'app.episodeSheet.future'
-        : field.value < this.$earliest()
-          ? 'app.episodeSheet.beforeAired'
-          : null;
+      at > new Date() ? 'app.episodeSheet.future' : at < this.$earliest() ? 'app.episodeSheet.beforeAired' : null;
     if (refusal) {
       this.notify(this.translate(refusal));
       restore();
