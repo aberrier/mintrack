@@ -23,6 +23,9 @@ class TMDBSearchResult(TMDBModel):
     id: int
     media_type: MediaType
     title: str = pydantic.Field(validation_alias=pydantic.AliasChoices("title", "name"))
+    original_title: str | None = pydantic.Field(
+        default=None, validation_alias=pydantic.AliasChoices("original_title", "original_name")
+    )
     release_date: OptionalDate = pydantic.Field(
         default=None, validation_alias=pydantic.AliasChoices("release_date", "first_air_date")
     )

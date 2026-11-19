@@ -46,17 +46,41 @@ class FakeJellyfin:
         self.passwords[name] = password
         self.played[name] = []
 
-    def add_series(self, provider_ids: dict[str, str]) -> str:
+    def add_series(self, provider_ids: dict[str, str], name: str = "", year: int | None = None) -> str:
         series_id = f"series{next(self._ids)}"
-        self.series[series_id] = {"Id": series_id, "Type": "Series", "ProviderIds": provider_ids}
+        self.series[series_id] = {
+            "Id": series_id,
+            "Type": "Series",
+            "Name": name,
+            "ProductionYear": year,
+            "ProviderIds": provider_ids,
+        }
         return series_id
 
-    def play_movie(self, user: str, provider_ids: dict[str, str], at: dt.datetime | None) -> None:
-        self._play(user, {"Type": "Movie", "ProviderIds": provider_ids}, at)
+    def play_movie(
+        self, user: str, provider_ids: dict[str, str], at: dt.datetime | None, name: str = "", year: int | None = None
+    ) -> None:
+        self._play(user, {"Type": "Movie", "Name": name, "ProductionYear": year, "ProviderIds": provider_ids}, at)
 
-    def play_episode(self, user: str, series_id: str, season: int, episode: int, at: dt.datetime | None) -> None:
-        item = {"Type": "Episode", "SeriesId": series_id, "ParentIndexNumber": season, "IndexNumber": episode}
-        self._play(user, {**item, "ProviderIds": {}}, at)
+    def play_episode(
+        self,
+        user: str,
+        series_id: str,
+        season: int,
+        episode: int,
+        at: dt.datetime | None,
+        provider_ids: dict[str, str] | None = None,
+    ) -> None:
+        series_name = self.series.get(series_id, {}).get("Name")
+        item = {
+            "Type": "Episode",
+            "Name": f"Episode {episode}",
+            "SeriesId": series_id,
+            "SeriesName": series_name,
+            "ParentIndexNumber": season,
+            "IndexNumber": episode,
+        }
+        self._play(user, {**item, "ProviderIds": provider_ids or {}}, at)
 
     def revoke_tokens(self) -> None:
         self.tokens.clear()

@@ -37,7 +37,11 @@ class FakeTMDB:
     dropped: set[tuple[int, int, int]] = dataclasses.field(default_factory=set)
     # (external source, external id) -> ("movie" or "tv", TMDB id), for /find.
     external_ids: dict[tuple[str, str], tuple[str, int]] = dataclasses.field(default_factory=dict)
+    # (external source, external id) -> (show TMDB id, season, episode), for /find.
+    external_episode_ids: dict[tuple[str, str], tuple[int, int, int]] = dataclasses.field(default_factory=dict)
     trending: tuple[str, ...] = TRENDING
+    # Title -> release year of the search results with that title; the others have none (movies) or 2024 (shows).
+    release_years: dict[str, int] = dataclasses.field(default_factory=dict)
 
     def title(self, tmdb_id: int, kind: str) -> str:
         return self.titles.get(tmdb_id, f"{kind} {tmdb_id}")
@@ -140,9 +144,10 @@ class FakeTMDB:
         """A search or trending result of that kind, whose title its pages then answer."""
         tmdb_id = media_id(kind, title)
         self.titles[tmdb_id] = title
+        year = self.release_years.get(title)
         if kind is MediaType.TV:
-            return {"id": tmdb_id, "name": title, "first_air_date": "2024-01-10"}
-        return {"id": tmdb_id, "title": title, "release_date": ""}
+            return {"id": tmdb_id, "name": title, "first_air_date": f"{year or 2024}-01-10"}
+        return {"id": tmdb_id, "title": title, "release_date": f"{year}-05-01" if year else ""}
 
     def add_search_routes(self, app: fastapi.FastAPI) -> None:
         @app.get("/3/search/multi")
@@ -191,10 +196,19 @@ class FakeTMDB:
 
         @app.get("/3/find/{external_id}")
         def find(external_id: str, external_source: str) -> dict[str, typing.Any]:
-            results: dict[str, list[dict[str, typing.Any]]] = {"movie_results": [], "tv_results": []}
+            results: dict[str, list[dict[str, typing.Any]]] = {
+                "movie_results": [],
+                "tv_results": [],
+                "tv_episode_results": [],
+            }
             if found := self.external_ids.get((external_source, external_id)):
                 kind, tmdb_id = found
                 results[f"{kind}_results"].append({"id": tmdb_id})
+            if episode := self.external_episode_ids.get((external_source, external_id)):
+                show_id, season, number = episode
+                results["tv_episode_results"].append(
+                    {"show_id": show_id, "season_number": season, "episode_number": number}
+                )
             return results
 
         return app

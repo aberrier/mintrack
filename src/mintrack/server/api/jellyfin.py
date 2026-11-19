@@ -10,7 +10,7 @@ import pydantic
 
 from mintrack.core.jellyfin.managers import JellyfinManager, QuickConnectPendingError
 from mintrack.db.dependencies import DbSessionDepType
-from mintrack.db.models import JellyfinAccount, JellyfinSyncStatus, User
+from mintrack.db.models import JellyfinAccount, JellyfinSyncStatus, JellyfinUnmatchedReason, User
 from mintrack.integrations.jellyfin.client import (
     ForbiddenAddressError,
     JellyfinError,
@@ -82,6 +82,21 @@ class QuickConnectStateResponse(pydantic.BaseModel):
     approved: bool
 
 
+class JellyfinUnmatchedItemResponse(pydantic.BaseModel):
+    """A played item the last full sync found no watch for, as Jellyfin describes it."""
+
+    name: str
+    type: str
+    year: int | None
+    provider_ids: dict[str, str]
+    series_name: str | None
+    series_year: int | None
+    series_provider_ids: dict[str, str] | None
+    season: int | None
+    episode: int | None
+    reason: JellyfinUnmatchedReason
+
+
 class JellyfinAccountResponse(pydantic.BaseModel):
     model_config = pydantic.ConfigDict(from_attributes=True)
 
@@ -93,6 +108,7 @@ class JellyfinAccountResponse(pydantic.BaseModel):
     last_sync_status: JellyfinSyncStatus | None
     last_sync_imported: int
     last_sync_skipped: int
+    last_sync_unmatched: list[JellyfinUnmatchedItemResponse]
 
 
 LINK_ERRORS: dict[int | str, dict[str, typing.Any]] = {

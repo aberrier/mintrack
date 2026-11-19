@@ -64,6 +64,7 @@ async def test_user_links_a_jellyfin_account_and_a_first_sync_is_queued(
         "last_sync_status": None,
         "last_sync_imported": 0,
         "last_sync_skipped": 0,
+        "last_sync_unmatched": [],
     }
     assert await profile.accounts() == [account]
     assert await queued_syncs(db_session) == [{"account_id": account["id"], "full": False}]
