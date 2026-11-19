@@ -14,16 +14,16 @@ describe('WelcomeChoice', () => {
 
   it('remembers on the device that a user hid the welcome, for that user only', () => {
     const choice = TestBed.inject(WelcomeChoice);
-    expect(choice.$hidden()).toBe(false);
+    expect(choice.hidden()).toBe(false);
 
     choice.hide();
 
-    expect(choice.$hidden()).toBe(true);
+    expect(choice.hidden()).toBe(true);
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ providers: [{ provide: AuthStore, useValue: { $user: user } }] });
     const reloaded = TestBed.inject(WelcomeChoice);
-    expect(reloaded.$hidden()).toBe(true);
+    expect(reloaded.hidden()).toBe(true);
     user.set({ id: 'second', username: 'second', is_admin: false, timezone: 'UTC' });
-    expect(reloaded.$hidden()).toBe(false);
+    expect(reloaded.hidden()).toBe(false);
   });
 });

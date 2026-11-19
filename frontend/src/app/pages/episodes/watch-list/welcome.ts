@@ -6,20 +6,18 @@ import { appRoutes } from '../../../app.paths';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { injectTranslator, TranslationPath } from '../../../core/i18n';
 import { IconName } from '../../../core/icons/icons';
+import { readStoredSet, writeStoredSet } from '../../../core/stored';
 
 const STORAGE_KEY = 'mintrack.welcomeHidden';
 
-/**
- * The users who hid the welcome on this device. Storage may be unavailable (private browsing, blocked site data): the
- * choice then lasts until the app reloads.
- */
+/** The users who hid the welcome on this device. */
 @Injectable({ providedIn: 'root' })
 export class WelcomeChoice {
   private readonly user = inject(AuthStore).$user;
-  private readonly $hiddenFor = signal<ReadonlySet<string>>(read());
+  private readonly $hiddenFor = signal(readStoredSet(STORAGE_KEY));
 
   /** Whether the signed-in user hid the welcome. */
-  readonly $hidden = computed(() => {
+  readonly hidden = computed(() => {
     const user = this.user();
     return !!user && this.$hiddenFor().has(user.id);
   });
@@ -29,20 +27,7 @@ export class WelcomeChoice {
     if (!user) return;
     const next = new Set(this.$hiddenFor()).add(user.id);
     this.$hiddenFor.set(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([...next]));
-    } catch {
-      // Kept in memory only.
-    }
-  }
-}
-
-function read(): ReadonlySet<string> {
-  try {
-    const saved: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '[]');
-    return new Set(Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : []);
-  } catch {
-    return new Set();
+    writeStoredSet(STORAGE_KEY, next);
   }
 }
 
@@ -77,7 +62,7 @@ interface Step {
     </header>
     <ol class="flex flex-col gap-3">
       @for (step of steps; track step.icon) {
-        <li class="step" [style.--i]="$index">
+        <li class="step enter" [style.--i]="$index">
           <span class="badge"><mat-icon [svgIcon]="step.icon" aria-hidden="true" /></span>
           <div class="flex min-w-0 flex-col gap-1">
             <h3 class="[font:var(--mat-sys-title-medium)]">{{ translate(step.title) }}</h3>
@@ -109,7 +94,6 @@ interface Step {
       padding: 16px;
       border-radius: var(--mat-sys-corner-large);
       background: var(--mat-sys-surface-container-low);
-      animation: rise-in var(--duration-medium) var(--ease-emph-decel) calc(var(--i) * 40ms) both;
     }
     .badge {
       display: grid;
