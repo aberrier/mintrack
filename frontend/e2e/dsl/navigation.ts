@@ -106,9 +106,11 @@ export async function openEveryScreen(
       title: 'Profile · MinTrack',
       open: async () => {
         await app.openTab('Profile');
-        await expect(app.logOutButton()).toBeVisible();
+        await expect(app.settingsLink()).toBeVisible();
       },
     },
+    { name: 'Settings', title: 'Settings · MinTrack', open: () => app.openSettings() },
+    { name: 'MCP help', title: 'Connect an AI assistant · MinTrack', open: () => app.openMcpHelp() },
     { name: 'Shows', title: 'Collection · MinTrack', open: () => app.openLibrary('Shows') },
     {
       name: 'Admin',

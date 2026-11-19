@@ -42,10 +42,10 @@ test('the service worker leaves API pages to the server', async ({ admin: { page
   expect(response!.headers()['content-type']).toContain('application/json');
 });
 
-test('the profile explains that this server does not send notifications over plain HTTP', async ({
+test('the settings explain that this server does not send notifications over plain HTTP', async ({
   admin: { page },
 }) => {
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
 
   const settings = page.getByTestId('push-settings');
   await expect(settings.getByRole('switch', { name: 'Notify me on this device when an episode airs' })).toBeDisabled();

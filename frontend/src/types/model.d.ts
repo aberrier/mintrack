@@ -12,6 +12,16 @@ declare namespace Model {
       username: string;
     }
 
+    /** A device signed in to the user's account. */
+    interface Session {
+      id: string;
+      /** Such as "Chrome on Android"; null when the browser did not say. */
+      device: string | null;
+      last_used_at: string;
+      /** The session of this device. */
+      current: boolean;
+    }
+
     type UserStatus = 'invited' | 'invitation_expired' | 'active' | 'disabled';
 
     interface AdminUser {

@@ -1,0 +1,49 @@
+<header class="flex items-center gap-1 ps-1 pe-4 pt-4">
+  <app-back-button [fallback]="appRoutes.settings()" />
+  <h1 class="min-w-0 truncate [font:var(--mat-sys-headline-small)] font-semibold!">
+    {{ translate('app.mcpHelp.title') }}
+  </h1>
+</header>
+
+<div class="flex max-w-[65ch] flex-col gap-8 px-4 pt-4 pb-8">
+  <section class="flex flex-col gap-2" aria-labelledby="mcp-what">
+    <h2 id="mcp-what">{{ translate('app.mcpHelp.what.title') }}</h2>
+    <p>{{ translate('app.mcpHelp.what.text') }}</p>
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="mcp-token">
+    <h2 id="mcp-token">{{ translate('app.mcpHelp.token.title') }}</h2>
+    <p>{{ translate('app.mcpHelp.token.text') }}</p>
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="mcp-url">
+    <h2 id="mcp-url">{{ translate('app.mcpHelp.url.title') }}</h2>
+    <p>{{ translate('app.mcpHelp.url.text') }}</p>
+    <pre data-testid="mcp-url">{{ url }}</pre>
+    <button matButton type="button" class="min-h-12 self-start" (click)="copy(url)">
+      {{ translate('app.mcpHelp.copyUrl') }}
+    </button>
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="mcp-config">
+    <h2 id="mcp-config">{{ translate('app.mcpHelp.config.title') }}</h2>
+    <p>{{ translate('app.mcpHelp.config.json') }}</p>
+    <pre data-testid="mcp-json">{{ json }}</pre>
+    <p>{{ translate('app.mcpHelp.config.claudeCode') }}</p>
+    <pre data-testid="mcp-command">{{ command }}</pre>
+  </section>
+
+  <section class="flex flex-col gap-2" aria-labelledby="mcp-tools">
+    <h2 id="mcp-tools">{{ translate('app.mcpHelp.tools.title') }}</h2>
+    <dl class="flex flex-col gap-3">
+      @for (tool of tools; track tool.name) {
+        <div>
+          <dt>
+            <code>{{ tool.name }}</code>
+          </dt>
+          <dd class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ translate(tool.description) }}</dd>
+        </div>
+      }
+    </dl>
+  </section>
+</div>

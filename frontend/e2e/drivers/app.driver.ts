@@ -395,9 +395,37 @@ export class AppDriver {
     return trimmed(await items.getByRole('link').allInnerTexts());
   }
 
-  /** The Profile tab's Log out button. */
-  logOutButton(): Locator {
-    return this.page.getByRole('button', { name: 'Log out', exact: true });
+  /** The Profile tab's gear, opening the settings. */
+  settingsLink(): Locator {
+    return this.page.getByRole('link', { name: 'Settings', exact: true });
+  }
+
+  /** Wait for the settings loaded from the server: the import card and the device list. */
+  async settingsLoaded(): Promise<void> {
+    await expect(this.page.getByRole('button', { name: 'Choose a file and import' })).toBeVisible();
+    await expect(this.page.getByTestId('device').getByText('This device', { exact: true })).toBeVisible();
+  }
+
+  logOutButtons(): Locator {
+    return this.page.getByRole('button', { name: /^Log out/ });
+  }
+
+  async openSettings(): Promise<void> {
+    await this.openTab('Profile');
+    await this.settingsLink().click();
+    await expect(this.heading()).toHaveText('Settings');
+  }
+
+  /** The page explaining how to connect an assistant, from Learn more in the API tokens settings. */
+  async openMcpHelp(): Promise<void> {
+    await this.openSettings();
+    await this.page.getByRole('region', { name: 'API tokens' }).getByRole('link', { name: 'Learn more' }).click();
+    await expect(this.heading()).toHaveText('Connect an AI assistant');
+  }
+
+  /** A code sample of the MCP help page: the server address, the JSON configuration or the Claude Code command. */
+  async mcpSample(sample: 'url' | 'json' | 'command'): Promise<string> {
+    return (await this.page.getByTestId(`mcp-${sample}`).innerText()).trim();
   }
 
   /** All the user's shows or movies, from See all on the Profile tab. */

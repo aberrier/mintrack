@@ -1,7 +1,7 @@
 import { expect, Page } from '@playwright/test';
 import { ApiDriver } from '../drivers/api.driver';
 import { createAdmin } from '../drivers/cli';
-import { AdminUsersPage, LoginPage, Navigation, PasswordPage, ProfilePage } from '../drivers/pages';
+import { AdminUsersPage, DevicesSection, LoginPage, Navigation, PasswordPage, ProfilePage } from '../drivers/pages';
 
 export interface Account {
   username: string;
@@ -84,13 +84,24 @@ export async function tryLogIn(page: Page, account: Account): Promise<boolean> {
 }
 
 export async function logOutEverywhere(page: Page): Promise<void> {
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
   await new ProfilePage(page).logOutEverywhere();
 }
 
 export async function logOut(page: Page): Promise<void> {
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
   await new ProfilePage(page).logOut();
+}
+
+/** The devices signed in, as the settings list them: name, then "This device" or when last active. */
+export async function connectedDevices(page: Page): Promise<string[]> {
+  await new Navigation(page).openSettings();
+  return new DevicesSection(page).list();
+}
+
+/** Sign out the other device listed in the settings, which are open. */
+export async function signOutOtherDevice(page: Page): Promise<void> {
+  await new DevicesSection(page).signOutAnother();
 }
 
 /** What the Profile tab's Shows row shows: titles, or the message for no show. */

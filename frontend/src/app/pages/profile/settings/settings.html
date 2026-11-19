@@ -1,0 +1,84 @@
+<section class="flex max-w-xl flex-col gap-8 pb-8" aria-labelledby="settings-title">
+  <header class="flex items-center gap-1 ps-1 pe-4 pt-4">
+    <app-back-button [fallback]="appRoutes.profile()" />
+    <h1 id="settings-title" class="min-w-0 truncate [font:var(--mat-sys-headline-small)] font-semibold!">
+      {{ translate('app.profile.settings') }}
+    </h1>
+  </header>
+
+  <section class="group px-4" aria-labelledby="settings-account">
+    <h2 id="settings-account" class="group-title">{{ translate('app.profile.account') }}</h2>
+    <div class="settings-card">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ translate('app.profile.timezone.label') }}</mat-label>
+        <input
+          matInput
+          [formControl]="timezone"
+          [matAutocomplete]="zones"
+          (input)="$timezoneQuery.set(timezone.value)"
+          (keydown.enter)="commitTypedTimezone()"
+          autocomplete="off" />
+        <mat-autocomplete
+          #zones
+          [displayWith]="zoneLabel"
+          (optionSelected)="saveTimezone($event.option.value)"
+          (closed)="resetTimezone()">
+          @for (option of $timezones(); track option.zone) {
+            <mat-option [value]="option.zone">{{ option.label }}</mat-option>
+          }
+        </mat-autocomplete>
+        <mat-hint>{{ translate('app.profile.timezone.hint') }}</mat-hint>
+      </mat-form-field>
+    </div>
+
+    <form class="settings-card" [formGroup]="password" (ngSubmit)="changePassword()">
+      <h3 class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.password.title') }}</h3>
+      <input type="text" class="hidden" autocomplete="username" [value]="$user()?.username" readonly />
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ translate('app.profile.password.current') }}</mat-label>
+        <input matInput type="password" formControlName="current" autocomplete="current-password" required />
+      </mat-form-field>
+      @if ($wrongPassword()) {
+        <p role="alert" class="text-error">{{ translate('app.profile.password.wrong') }}</p>
+      }
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>{{ translate('app.profile.password.new') }}</mat-label>
+        <input matInput type="password" formControlName="new" autocomplete="new-password" required />
+        <mat-hint>{{ translate('app.common.passwordHint') }}</mat-hint>
+        <mat-error>{{ translate('app.common.passwordHint') }}</mat-error>
+      </mat-form-field>
+      <button matButton="tonal" type="submit" class="min-h-12">{{ translate('app.profile.password.submit') }}</button>
+    </form>
+  </section>
+
+  <section class="group px-4" aria-labelledby="settings-notifications">
+    <h2 id="settings-notifications" class="group-title">{{ translate('app.push.title') }}</h2>
+    <app-push-settings class="settings-card" />
+  </section>
+
+  <section class="group px-4" aria-labelledby="settings-integrations">
+    <h2 id="settings-integrations" class="group-title">{{ translate('app.profile.integrations') }}</h2>
+    <app-jellyfin-accounts class="settings-card" />
+    <app-api-tokens class="settings-card" />
+  </section>
+
+  <section class="group px-4" aria-labelledby="settings-imports">
+    <h2 id="settings-imports" class="group-title">{{ translate('app.profile.imports.title') }}</h2>
+    <app-import-card class="settings-card" />
+  </section>
+
+  <section class="group px-4" aria-labelledby="settings-devices">
+    <h2 id="settings-devices" class="group-title">{{ translate('app.profile.devices.title') }}</h2>
+    <div class="settings-card">
+      <app-devices />
+      <div class="flex flex-col gap-2">
+        <button matButton="outlined" type="button" class="min-h-12" (click)="logout(false)">
+          {{ translate('app.profile.logout') }}
+        </button>
+        <button matButton="outlined" type="button" class="min-h-12" (click)="logout(true)">
+          {{ translate('app.profile.logoutEverywhere') }}
+        </button>
+      </div>
+    </div>
+  </section>
+</section>

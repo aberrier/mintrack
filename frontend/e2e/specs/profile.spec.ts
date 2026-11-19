@@ -4,15 +4,17 @@ import {
   choices,
   choose,
   libraryOfThree,
+  mcpHelp,
   openAndGoBack,
   profile,
   reload,
   seeAllShows,
+  settings,
   titles,
 } from '../dsl/profile';
 import { uniqueTitle } from '../dsl/tracking';
 
-test('Profile shows the name, a row of shows and of movies, then the settings', async ({ viewer, admin }) => {
+test('Profile shows the name, a row of shows and of movies; its gear opens the settings', async ({ viewer, admin }) => {
   // Given shows and a movie in the library
   const library = await libraryOfThree(viewer);
   const movie = uniqueTitle('Harbor Lights');
@@ -21,17 +23,41 @@ test('Profile shows the name, a row of shows and of movies, then the settings', 
   // When they open the Profile tab
   const shown = await profile(viewer);
 
-  // Then it shows their name, their shows (last watched first) and movies, then the settings in groups
+  // Then it shows their name, their shows (last watched first) and movies, and no settings
   expect(shown.name).toBe(admin.account.username);
   expect(shown.shows).toEqual([library.finished, library.watching, library.notStarted]);
   expect(shown.movies).toEqual([movie]);
-  const groups = ['Account', 'Notifications', 'Integrations', 'Import history', 'Log out', 'Log out everywhere'];
-  expect(shown.settings.filter((setting) => groups.includes(setting))).toEqual(groups);
-  expect(shown.settings).toEqual(
+  expect(shown.hasSettings).toBe(false);
+
+  // When they tap the gear, the settings open on their own page, in groups
+  const shownSettings = await settings(viewer);
+  const groups = [
+    'Account',
+    'Notifications',
+    'Integrations',
+    'Import history',
+    'Connected devices',
+    'Log out',
+    'Log out everywhere',
+  ];
+  expect(shownSettings.filter((setting) => groups.includes(setting))).toEqual(groups);
+  expect(shownSettings).toEqual(
     expect.arrayContaining(['Time zone', 'Change password', 'Jellyfin', 'API tokens', 'Choose a file and import']),
   );
   // Users are managed from the Admin tab.
-  expect(shown.settings).not.toContain('Manage users');
+  expect(shownSettings).not.toContain('Manage users');
+});
+
+test('Learn more explains how to connect an assistant to this server', async ({ viewer }) => {
+  const shown = await mcpHelp(viewer);
+
+  expect(shown.url).toBe(new URL('/mcp', viewer.app.url()).href);
+  expect(JSON.parse(shown.json)).toEqual({
+    mcpServers: { mintrack: { type: 'http', url: shown.url, headers: { Authorization: 'Bearer YOUR_TOKEN' } } },
+  });
+  expect(shown.command).toBe(
+    `claude mcp add --transport http mintrack ${shown.url} --header "Authorization: Bearer YOUR_TOKEN"`,
+  );
 });
 
 test('See all opens a grid sorted and filtered by progress, both kept in the address', async ({ viewer }) => {

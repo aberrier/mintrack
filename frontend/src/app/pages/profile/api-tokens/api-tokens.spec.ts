@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
+import { provideRouter } from '@angular/router';
 import { ApiTokens } from './api-tokens';
 
 const token: Model.Http.ApiToken = {
@@ -17,6 +18,7 @@ describe('ApiTokens', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
+        provideRouter([]),
         { provide: MATERIAL_ANIMATIONS, useValue: { animationsDisabled: true } },
       ],
     }),

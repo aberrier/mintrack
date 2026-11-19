@@ -1,5 +1,5 @@
 <section class="flex flex-col gap-4" aria-labelledby="jellyfin-title">
-  <h4 id="jellyfin-title" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.title') }}</h4>
+  <h3 id="jellyfin-title" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.title') }}</h3>
 
   @for (account of store.$accounts(); track account.id) {
     <article class="flex flex-col gap-2 rounded-xl bg-surface-container p-4" data-testid="jellyfin-account">
@@ -44,7 +44,7 @@
   }
 
   <div class="flex flex-col gap-3" data-testid="jellyfin-link">
-    <h5 class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.linkTitle') }}</h5>
+    <h4 class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.jellyfin.linkTitle') }}</h4>
 
     <ng-template #serverField>
       <mat-form-field subscriptSizing="dynamic">

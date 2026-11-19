@@ -37,7 +37,7 @@ test('someone imports a Yamtrack export from their profile and reads the report'
       },
     }),
   ]);
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
 
   await imports.upload({
     name: 'yamtrack.csv',
@@ -55,7 +55,7 @@ test('someone imports a Yamtrack export from their profile and reads the report'
 test('someone choosing TV Time sees which export files to upload', async ({ admin: { page } }) => {
   const imports = new ImportsSection(page);
   await imports.serveImports([]);
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
 
   await imports.chooseSource('TV Time');
 

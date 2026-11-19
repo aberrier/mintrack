@@ -25,6 +25,7 @@ import person from '@material-symbols/svg-400/outlined/person.svg';
 import refresh from '@material-symbols/svg-400/outlined/refresh.svg';
 import schedule from '@material-symbols/svg-400/outlined/schedule.svg';
 import search from '@material-symbols/svg-400/outlined/search.svg';
+import settings from '@material-symbols/svg-400/outlined/settings.svg';
 import view_agenda from '@material-symbols/svg-400/outlined/view_agenda.svg';
 
 /**
@@ -56,6 +57,7 @@ const icons = {
   refresh,
   schedule,
   search,
+  settings,
   view_agenda,
 } as const;
 

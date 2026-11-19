@@ -8,6 +8,8 @@ export const appRoutes = {
   password: (rp = '/') => `${rp}password`,
   profile: (rp = '/') => `${rp}profile`,
   collection: (rp = '/') => `${rp}profile/collection`,
+  settings: (rp = '/') => `${rp}profile/settings`,
+  mcpHelp: (rp = '/') => `${rp}profile/settings/mcp`,
   admin: (rp = '/') => `${rp}admin`,
   show: (tmdbId: number | string, rp = '/') => `${rp}shows/${tmdbId}`,
   movie: (tmdbId: number | string, rp = '/') => `${rp}movies/${tmdbId}`,
