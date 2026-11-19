@@ -10,7 +10,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.catalog.managers import CatalogManager
 from mintrack.core.tracking.managers import TrackingManager
-from mintrack.db.models import Episode, JellyfinAccount, JellyfinSyncStatus, Media, MediaType, User
+from mintrack.db.models import (
+    Episode,
+    JellyfinAccount,
+    JellyfinSyncStatus,
+    JellyfinUnmatchedItem,
+    JellyfinUnmatchedReason,
+    Media,
+    MediaType,
+    User,
+)
 from mintrack.integrations.jellyfin.client import (
     Authentication,
     Item,
@@ -22,13 +31,16 @@ from mintrack.integrations.jellyfin.client import (
     QuickConnectDisabledError,
 )
 from mintrack.integrations.tmdb.client import ExternalSource, TMDBClient, TMDBNotFoundError
+from mintrack.integrations.tmdb.schemas import TMDBSearchResult
 from mintrack.observability.logging import logger
 from mintrack.worker.defer import defer_jellyfin_sync
 
-from .matching import FindTmdbId, WatchEvent, match
+from .matching import Found, WatchEvent, match, unmatched_item
 
 # Watches committed together with the cursor, so a failure keeps the batches before it.
 BATCH_SIZE = 100
+# Items not matched described in the sync report; the count covers all of them.
+MAX_REPORTED_UNMATCHED = 100
 # Played items read in one sync, far above a real library's history.
 MAX_PLAYED_ITEMS = 200_000
 
@@ -50,21 +62,6 @@ def failure_status(error: Exception) -> JellyfinSyncStatus:
             return JellyfinSyncStatus.UNAUTHORIZED
         case _:
             return JellyfinSyncStatus.FAILED
-
-
-def tmdb_finder(tmdb: TMDBClient) -> FindTmdbId:
-    """TMDB's /find, remembered for one sync: the episodes of a series share its ids."""
-    found: dict[tuple[ExternalSource, str, MediaType], int | None] = {}
-
-    async def find(source: ExternalSource, external_id: str, media_type: MediaType) -> int | None:
-        key = (source, external_id, media_type)
-        if key not in found:
-            results = await tmdb.find(external_id, source)
-            matches = results["movie_results" if media_type is MediaType.MOVIE else "tv_results"]
-            found[key] = matches[0]["id"] if matches else None
-        return found[key]
-
-    return find
 
 
 def _played_at(item: Item) -> dt.datetime:
@@ -163,7 +160,7 @@ class JellyfinManager:
         account_id = account.id
         since = None if full else account.synced_until
         try:
-            imported, skipped = await self._import(account, since, tmdb, now)
+            imported, unmatched = await self._import(account, since, tmdb, now)
         except Exception as error:
             await self.session.rollback()
             logger.warning("jellyfin sync failed", account_id=str(account_id), error=type(error).__name__)
@@ -181,7 +178,8 @@ class JellyfinManager:
         }
         # Only a pass over the whole history knows every item still not recognised.
         if since is None:
-            values["last_sync_skipped"] = skipped
+            values["last_sync_skipped"] = unmatched.count
+            values["last_sync_unmatched"] = list(unmatched.items.values())
         await self._record(account, account_id, **values)
 
     async def _record(self, account: JellyfinAccount, account_id: uuid.UUID, **values: object) -> bool:
@@ -200,7 +198,7 @@ class JellyfinManager:
 
     async def _import(
         self, account: JellyfinAccount, since: dt.datetime | None, tmdb: TMDBClient, now: dt.datetime
-    ) -> tuple[int, int]:
+    ) -> tuple[int, _Unmatched]:
         account_id, user = account.id, await self.session.get_one(User, account.user_id)
         # No database connection stays checked out while Jellyfin answers.
         await self.session.commit()
@@ -208,23 +206,26 @@ class JellyfinManager:
             played = await self._played_since(client, account.jellyfin_user_id, since)
             series_ids = {item.series_id for item in played if item.type == "Episode" and item.series_id}
             series = {item.id: item for item in await client.items(account.jellyfin_user_id, series_ids)}
-        find = tmdb_finder(tmdb)
         previous_sync, synced_until = account.synced_until, account.synced_until
-        imported = skipped = 0
+        imported = 0
+        unmatched = _Unmatched()
         library = _Library(self.session, tmdb, now)
         tracking = TrackingManager(self.session)
         for batch in itertools.batched(played, BATCH_SIZE, strict=False):
             shows: dict[Media, dict[uuid.UUID, dt.datetime]] = {}
             for item in batch:
-                event = await match(item, series, find)
-                found = None if event is None else await library.find(event)
-                if event is None or found is None:
-                    skipped += 1
+                event = await match(item, _played_at(item), series, library)
+                if isinstance(event, JellyfinUnmatchedReason):
+                    unmatched.add(unmatched_item(item, series, event), item)
                     logger.info(
-                        "jellyfin item not matched", account_id=str(account_id), item_id=item.id, type=item.type
+                        "jellyfin item not matched",
+                        account_id=str(account_id),
+                        item_id=item.id,
+                        type=item.type,
+                        reason=event,
                     )
                     continue
-                media, episode_id = found
+                media, episode_id = library.watched(event)
                 # A play date after now is a server clock ahead of ours.
                 watched_at = min(event.watched_at, now)
                 if episode_id is None:
@@ -237,7 +238,7 @@ class JellyfinManager:
             synced_until = max(synced_until or batch_end, batch_end)
             if not await self._record(account, account_id, synced_until=synced_until):
                 raise _UnlinkedError
-        return imported, skipped
+        return imported, unmatched
 
     @staticmethod
     async def _played_since(client: JellyfinClient, user_id: str, since: dt.datetime | None) -> list[Item]:
@@ -285,31 +286,84 @@ class _UnlinkedError(Exception):
     """The account was unlinked during its sync."""
 
 
+class _Unmatched:
+    """The items no watch was found for: all counted, the first ones described, once per series not found."""
+
+    def __init__(self) -> None:
+        self.count = 0
+        self.items: dict[str, JellyfinUnmatchedItem] = {}
+
+    def add(self, unmatched: JellyfinUnmatchedItem, item: Item) -> None:
+        self.count += 1
+        if unmatched["reason"] is JellyfinUnmatchedReason.NOT_FOUND and item.type == "Episode":
+            key = f"series:{item.series_id}"
+        else:
+            key = item.id
+        if len(self.items) < MAX_REPORTED_UNMATCHED:
+            self.items.setdefault(key, unmatched)
+
+
 class _Library:
-    """The media and episodes plays stand for, each looked up once per sync."""
+    """The TMDB lookups of one sync, each made once, and the media and episodes the matched plays stand for."""
 
     def __init__(self, session: AsyncSession, tmdb: TMDBClient, now: dt.datetime) -> None:
         self.session = session
+        self.tmdb = tmdb
         self.catalog = CatalogManager(session, tmdb)
         self.now = now
+        self.found: dict[tuple[ExternalSource, str], Found] = {}
+        self.searched: dict[tuple[MediaType, str], list[TMDBSearchResult]] = {}
         self.media: dict[tuple[MediaType, int], Media | None] = {}
         self.episodes: dict[uuid.UUID, dict[tuple[int, int], uuid.UUID]] = {}
 
-    async def find(self, event: WatchEvent) -> tuple[Media, uuid.UUID | None] | None:
-        """The media and, for an episode, its id; None when TMDB or the show does not list it."""
-        key = (event.media_type, event.tmdb_id)
+    async def find(self, source: ExternalSource, external_id: str) -> Found:
+        key = (source, external_id)
+        if key not in self.found:
+            results = await self.tmdb.find(external_id, source)
+            self.found[key] = Found(
+                movies=tuple(result["id"] for result in results.get("movie_results") or []),
+                shows=tuple(result["id"] for result in results.get("tv_results") or []),
+                episodes=tuple(
+                    (result["show_id"], result["season_number"], result["episode_number"])
+                    for result in results.get("tv_episode_results") or []
+                ),
+            )
+        return self.found[key]
+
+    async def search(self, media_type: MediaType, title: str) -> list[TMDBSearchResult]:
+        key = (media_type, title)
+        if key not in self.searched:
+            self.searched[key] = await self.tmdb.search(title, media_type)
+        return self.searched[key]
+
+    async def exists(self, media_type: MediaType, tmdb_id: int) -> bool:
+        key = (media_type, tmdb_id)
         if key not in self.media:
             try:
-                self.media[key] = await self.catalog.get_or_fetch(event.media_type, event.tmdb_id, self.now)
+                self.media[key] = await self.catalog.get_or_fetch(media_type, tmdb_id, self.now)
             except TMDBNotFoundError:
                 self.media[key] = None
-        media = self.media[key]
-        if media is None or media.media_type is MediaType.MOVIE:
-            return None if media is None else (media, None)
+        return self.media[key] is not None
+
+    async def episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
+        return (await self._episodes(self._media(MediaType.TV, show_id))).keys()
+
+    def watched(self, event: WatchEvent) -> tuple[Media, uuid.UUID | None]:
+        """The media and, for an episode, its id, of a watch `match` found."""
+        media = self._media(event.media_type, event.tmdb_id)
+        if media.media_type is MediaType.MOVIE:
+            return media, None
+        return media, self.episodes[media.id][
+            typing.cast("int", event.season_number), typing.cast("int", event.episode_number)
+        ]
+
+    def _media(self, media_type: MediaType, tmdb_id: int) -> Media:
+        return typing.cast("Media", self.media[media_type, tmdb_id])
+
+    async def _episodes(self, media: Media) -> dict[tuple[int, int], uuid.UUID]:
         if media.id not in self.episodes:
             rows = await self.session.execute(
                 sa.select(Episode.season_number, Episode.episode_number, Episode.id).where(Episode.media_id == media.id)
             )
             self.episodes[media.id] = {(season, number): episode_id for season, number, episode_id in rows}
-        episode_id = self.episodes[media.id].get((event.season_number or 0, event.episode_number or 0))
-        return None if episode_id is None else (media, episode_id)
+        return self.episodes[media.id]

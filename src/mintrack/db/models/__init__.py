@@ -2,7 +2,7 @@ from mintrack.db.base import DatabaseModel
 
 from .api_token import ApiToken
 from .import_job import ImportJob, ImportReport, ImportSource, ImportStatus
-from .jellyfin import JellyfinAccount, JellyfinSyncStatus
+from .jellyfin import JellyfinAccount, JellyfinSyncStatus, JellyfinUnmatchedItem, JellyfinUnmatchedReason
 from .media import Episode, Media, MediaType, Season
 from .push import EpisodeNotification, MovieReleaseNotification, PushSubscription
 from .rating import EpisodeRating, MediaRating
@@ -21,6 +21,8 @@ __all__ = [
     "ImportStatus",
     "JellyfinAccount",
     "JellyfinSyncStatus",
+    "JellyfinUnmatchedItem",
+    "JellyfinUnmatchedReason",
     "LinkProblem",
     "LoginFailure",
     "Media",

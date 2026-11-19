@@ -7,11 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.jellyfin import managers
 from mintrack.core.jellyfin.managers import JellyfinManager
-from mintrack.db.models import Episode, JellyfinAccount, JellyfinSyncStatus, Media, User, WatchedEpisode, WatchedMovie
+from mintrack.db.models import (
+    Episode,
+    JellyfinAccount,
+    JellyfinSyncStatus,
+    JellyfinUnmatchedReason,
+    Media,
+    MediaType,
+    User,
+    WatchedEpisode,
+    WatchedMovie,
+)
 from mintrack.integrations.jellyfin import client
 from mintrack.integrations.tmdb.client import TMDBClient
 from tests.fakes.jellyfin import SERVER_URL, FakeJellyfin
-from tests.fakes.tmdb import FakeTMDB
+from tests.fakes.tmdb import FakeTMDB, media_id
 
 NOW = dt.datetime(2026, 11, 18, 12, tzinfo=dt.UTC)
 DAY_1 = dt.datetime(2026, 11, 1, 20, tzinfo=dt.UTC)
@@ -86,6 +96,8 @@ async def test_unmatched_items_are_counted_and_undated_ones_left_out(
     jellyfin.play_movie(bob, {}, DAY_1)
     jellyfin.play_movie(bob, {"Tmdb": "603"}, None)
     jellyfin.play_episode(bob, "deleted-series", 1, 1, DAY_2)
+    # A TMDB id TMDB does not have.
+    jellyfin.play_movie(bob, {"Tmdb": "99999999"}, DAY_3)
     account = await link(db_session, user)
 
     await JellyfinManager(db_session).sync(account, tmdb, NOW)
@@ -94,7 +106,7 @@ async def test_unmatched_items_are_counted_and_undated_ones_left_out(
     assert (account.last_sync_status, account.last_sync_imported, account.last_sync_skipped) == (
         JellyfinSyncStatus.OK,
         0,
-        2,
+        3,
     )
 
 
@@ -113,6 +125,80 @@ async def test_external_ids_are_looked_up_and_episodes_tmdb_does_not_list_are_sk
 
     assert await watched(db_session, user) == {(603, None, None, DAY_1), (1399, 1, 1, DAY_2)}
     assert (account.last_sync_imported, account.last_sync_skipped) == (2, 1)
+
+
+async def test_items_without_known_ids_match_by_title_and_year_or_by_their_episode_ids(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient, fake_tmdb: FakeTMDB
+) -> None:
+    fake_tmdb.release_years["Paper Moons"] = 2019
+    fake_tmdb.external_episode_ids[("tvdb_id", "7001")] = (1399, 2, 1)
+    jellyfin.play_movie(bob, {}, DAY_1, name="Paper Moons", year=2019)
+    jellyfin.play_episode(bob, "deleted-series", 1, 9, DAY_2, {"Tvdb": "7001"})
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    paper_moons = media_id(MediaType.MOVIE, "Paper Moons")
+    assert await watched(db_session, user) == {(paper_moons, None, None, DAY_1), (1399, 2, 1, DAY_2)}
+    assert account.last_sync_unmatched == []
+
+
+async def test_a_full_sync_describes_the_items_not_matched_once_per_series_not_found(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
+) -> None:
+    # TMDB has a show of that title, but from another year.
+    unknown = jellyfin.add_series({}, name="Nowhere Show", year=2020)
+    jellyfin.play_episode(bob, unknown, 1, 1, DAY_1)
+    jellyfin.play_episode(bob, unknown, 1, 2, DAY_1 + dt.timedelta(hours=1))
+    known = jellyfin.add_series({"Tmdb": "1399"}, name="Paper Moons")
+    jellyfin.play_episode(bob, known, 3, 1, DAY_2, {"Tvdb": "42"})
+    jellyfin.play_movie(bob, {"Imdb": "tt404"}, DAY_3, name="Lost Film", year=1990)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert account.last_sync_skipped == 4
+    assert [(item["name"], item["series_name"], item["reason"]) for item in account.last_sync_unmatched] == [
+        ("Episode 1", "Nowhere Show", JellyfinUnmatchedReason.NOT_FOUND),
+        ("Episode 1", "Paper Moons", JellyfinUnmatchedReason.EPISODE_NOT_FOUND),
+        ("Lost Film", None, JellyfinUnmatchedReason.NOT_FOUND),
+    ]
+    assert account.last_sync_unmatched[1] == {
+        "name": "Episode 1",
+        "type": "Episode",
+        "year": None,
+        "provider_ids": {"Tvdb": "42"},
+        "series_name": "Paper Moons",
+        "series_year": None,
+        "series_provider_ids": {"Tmdb": "1399"},
+        "season": 3,
+        "episode": 1,
+        "reason": JellyfinUnmatchedReason.EPISODE_NOT_FOUND,
+    }
+
+    # Only a full sync knows every item not matched.
+    jellyfin.play_movie(bob, {}, NOW)
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+    assert (account.last_sync_skipped, len(account.last_sync_unmatched)) == (4, 3)
+
+
+async def test_the_sync_report_describes_only_the_first_items_not_matched(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(managers, "MAX_REPORTED_UNMATCHED", 1)
+    jellyfin.play_movie(bob, {}, DAY_1, name="First")
+    jellyfin.play_movie(bob, {}, DAY_2, name="Second")
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert account.last_sync_skipped == 2
+    assert [item["name"] for item in account.last_sync_unmatched] == ["First"]
 
 
 async def test_a_full_sync_picks_up_items_skipped_before(
@@ -179,11 +265,11 @@ async def test_a_failing_batch_keeps_the_batches_before_it(
         jellyfin.play_movie(bob, {"Tmdb": str(day)}, DAY_1 + dt.timedelta(days=day))
     account = await link(db_session, user)
 
-    async def find(*_: object) -> int | None:
+    async def find(*_: object) -> dict[str, list[dict[str, int]]]:
         raise RuntimeError
 
     jellyfin.play_movie(bob, {"Imdb": "tt1"}, DAY_1 + dt.timedelta(days=6))
-    monkeypatch.setattr(managers, "tmdb_finder", lambda _tmdb: find)
+    monkeypatch.setattr(TMDBClient, "find", find)
 
     with pytest.raises(RuntimeError):
         await JellyfinManager(db_session).sync(account, tmdb, NOW)
@@ -266,12 +352,12 @@ async def test_a_full_sync_never_moves_the_cursor_back(
     account = await link(db_session, user)
     await JellyfinManager(db_session).sync(account, tmdb, NOW)
 
-    async def find(*_: object) -> int | None:
+    async def find(*_: object) -> dict[str, list[dict[str, int]]]:
         raise RuntimeError
 
     # The full pass commits its first batch, played on DAY_1, then fails on the next one.
     jellyfin.play_movie(bob, {"Imdb": "tt1"}, DAY_2)
-    monkeypatch.setattr(managers, "tmdb_finder", lambda _tmdb: find)
+    monkeypatch.setattr(TMDBClient, "find", find)
     with pytest.raises(RuntimeError):
         await JellyfinManager(db_session).sync(account, tmdb, NOW, full=True)
 

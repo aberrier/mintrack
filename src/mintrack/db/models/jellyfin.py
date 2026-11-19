@@ -1,8 +1,10 @@
 import datetime as dt
 import enum
+import typing
 import uuid
 
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from mintrack.db.base import DatabaseModel
@@ -14,6 +16,32 @@ class JellyfinSyncStatus(enum.StrEnum):
     UNREACHABLE = enum.auto()
     UNAUTHORIZED = enum.auto()
     FAILED = enum.auto()
+
+
+class JellyfinUnmatchedReason(enum.StrEnum):
+    # Neither a movie nor an episode.
+    UNSUPPORTED = enum.auto()
+    # An episode without a season or episode number.
+    NO_NUMBERS = enum.auto()
+    # No provider id TMDB knows, and no title TMDB answers alone.
+    NOT_FOUND = enum.auto()
+    # TMDB knows the show, not this episode.
+    EPISODE_NOT_FOUND = enum.auto()
+
+
+class JellyfinUnmatchedItem(typing.TypedDict):
+    """A played item no watch was found for, as Jellyfin describes it."""
+
+    name: str
+    type: str
+    year: int | None
+    provider_ids: dict[str, str]
+    series_name: str | None
+    series_year: int | None
+    series_provider_ids: dict[str, str] | None
+    season: int | None
+    episode: int | None
+    reason: JellyfinUnmatchedReason
 
 
 class JellyfinAccount(DatabaseModel):
@@ -44,4 +72,8 @@ class JellyfinAccount(DatabaseModel):
     )
     last_sync_imported: Mapped[int] = mapped_column(default=0)
     last_sync_skipped: Mapped[int] = mapped_column(default=0)
+    # The first of them, at the last full sync, one entry per series not found.
+    last_sync_unmatched: Mapped[list[JellyfinUnmatchedItem]] = mapped_column(
+        JSONB, default=list, server_default=sa.text("'[]'::jsonb")
+    )
     created_at: Mapped[dt.datetime] = mapped_column(server_default=sa.func.now())

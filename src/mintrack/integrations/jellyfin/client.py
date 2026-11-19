@@ -93,8 +93,13 @@ class UserData(_Payload):
 class Item(_Payload):
     id: Text
     type: Text
+    name: Text = ""
+    original_title: Text | None = None
+    # Sent without asking, like the names and numbers; the other fields come through `Fields`.
+    production_year: int | None = None
     provider_ids: dict[str, Text | None] = {}
     series_id: Text | None = None
+    series_name: Text | None = None
     parent_index_number: int | None = None
     index_number: int | None = None
     user_data: UserData = UserData()
@@ -253,7 +258,7 @@ class JellyfinClient:
             "Recursive": "true",
             "IncludeItemTypes": "Movie,Episode",
             "Filters": "IsPlayed",
-            "Fields": "ProviderIds",
+            "Fields": "ProviderIds,OriginalTitle",
             "SortBy": "DatePlayed",
             "SortOrder": "Descending",
             "EnableImages": "false",
@@ -270,7 +275,7 @@ class JellyfinClient:
             params: Params = {
                 "userId": user_id,
                 "Ids": ",".join(ids[start : start + IDS_PER_REQUEST]),
-                "Fields": "ProviderIds",
+                "Fields": "ProviderIds,OriginalTitle",
             }
             page = await self._get_json(ItemsPage, "GET", "/Items", params=params)
             found.extend(_at_most(page, IDS_PER_REQUEST).items)
