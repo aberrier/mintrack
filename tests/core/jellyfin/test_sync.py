@@ -5,6 +5,7 @@ import respx
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mintrack.core.catalog.managers import CatalogManager
 from mintrack.core.jellyfin import managers
 from mintrack.core.jellyfin.managers import JellyfinManager
 from mintrack.db.models import (
@@ -325,6 +326,53 @@ async def test_an_account_unlinked_during_its_sync_ends_it_quietly(
     await JellyfinManager(db_session).sync(account, tmdb, NOW)
 
     assert await db_session.scalar(sa.select(JellyfinAccount).where(JellyfinAccount.id == account.id)) is None
+
+
+@pytest.mark.parametrize(
+    ("seasons", "expected"),
+    [
+        # Jellyfin keeps the whole series in season 1, specials aside: its 4th episode is TMDB's S02E01.
+        ((0, 1), {(1399, 2, 1, DAY_1)}),
+        # Jellyfin has a season 2 too, though nothing of it was played: the seasons are split differently.
+        ((1, 2), set()),
+    ],
+)
+async def test_an_episode_past_tmdb_season_1_is_matched_by_its_absolute_number_only_in_a_one_season_series(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    seasons: tuple[int, ...],
+    expected: set[tuple[int, int, int, dt.datetime]],
+) -> None:
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=seasons)
+    jellyfin.play_episode(bob, show, 1, 4, DAY_1)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == expected
+    assert [item["reason"] for item in account.last_sync_unmatched or []] == (
+        [] if expected else [JellyfinUnmatchedReason.EPISODE_NOT_FOUND]
+    )
+
+
+async def test_an_absolute_number_is_not_guessed_for_an_episode_tmdb_lists_but_the_cache_lacks(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient, fake_tmdb: FakeTMDB
+) -> None:
+    # The show was cached before TMDB listed S02E03, the 6th episode.
+    fake_tmdb.dropped.add((1399, 2, 3))
+    await CatalogManager(db_session, tmdb).get_or_fetch(MediaType.TV, 1399, NOW)
+    fake_tmdb.dropped.clear()
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1,))
+    jellyfin.play_episode(bob, show, 1, 6, DAY_1)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == set()
+    assert [item["reason"] for item in account.last_sync_unmatched or []] == [JellyfinUnmatchedReason.EPISODE_NOT_FOUND]
 
 
 async def test_a_play_dated_after_now_is_recorded_now(

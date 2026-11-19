@@ -3,7 +3,7 @@ import datetime as dt
 
 import pytest
 
-from mintrack.core.jellyfin.matching import Found, WatchEvent, match, unmatched_item
+from mintrack.core.jellyfin.matching import Found, RegularSeasons, WatchEvent, match, unmatched_item
 from mintrack.db.models import JellyfinUnmatchedReason, MediaType
 from mintrack.integrations.jellyfin.client import Item
 from mintrack.integrations.tmdb.client import ExternalSource
@@ -111,6 +111,15 @@ def series(provider_ids: dict[str, str | None], name: str = "Game of Thrones") -
     return {"s": Item.model_validate(item)}
 
 
+def jellyfin_seasons(count: int) -> RegularSeasons:
+    """Jellyfin's answer for the number of regular seasons of any series."""
+
+    async def regular_seasons(_: str) -> int:
+        return count
+
+    return regular_seasons
+
+
 def movie_watch(tmdb_id: int = MATRIX) -> WatchEvent:
     return WatchEvent(MediaType.MOVIE, tmdb_id, AT)
 
@@ -212,14 +221,18 @@ async def test_an_episode_falls_back_on_its_own_ids(
 async def test_an_absolute_number_past_tmdb_season_1_matches_the_episode_at_that_place(
     catalog: FakeCatalog, number: int, expected: WatchEvent | JellyfinUnmatchedReason
 ) -> None:
-    assert await match(episode(1, number), AT, series({"Tmdb": "1399"}), catalog) == expected
+    found = await match(episode(1, number), AT, series({"Tmdb": "1399"}), catalog, jellyfin_seasons(1))
+
+    assert found == expected
 
 
-async def test_an_absolute_number_is_not_guessed_when_jellyfin_has_a_season_2(catalog: FakeCatalog) -> None:
-    # Jellyfin's season 1 runs longer than TMDB's, but Jellyfin has a season 2 too: the seasons are split differently.
-    played_seasons = {"s": {1, 2}}
-
-    found = await match(episode(1, 4), AT, series({"Tmdb": "1399"}), catalog, played_seasons)
+@pytest.mark.parametrize("regular_seasons", [jellyfin_seasons(2), None])
+async def test_an_absolute_number_is_guessed_only_when_jellyfin_has_one_regular_season(
+    catalog: FakeCatalog, regular_seasons: RegularSeasons | None
+) -> None:
+    # Jellyfin's season 1 runs longer than TMDB's, but Jellyfin has a season 2 too (the seasons are split
+    # differently), or its seasons are not known.
+    found = await match(episode(1, 4), AT, series({"Tmdb": "1399"}), catalog, regular_seasons)
 
     assert found is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
 
@@ -228,15 +241,18 @@ async def test_an_absolute_number_counts_only_the_episodes_tmdb_lists(catalog: F
     # S01E04 is gone from TMDB, kept because someone watched it: the 5th episode is still S02E02.
     catalog.kept = frozenset({(1, 4)})
 
-    found = await match(episode(1, 5), AT, series({"Tmdb": "1399"}), catalog, {"s": {1}})
+    found = await match(episode(1, 5), AT, series({"Tmdb": "1399"}), catalog, jellyfin_seasons(1))
 
     assert found == episode_watch(2, 2)
 
 
 async def test_specials_match_their_season_0_number_and_never_an_absolute_one(catalog: FakeCatalog) -> None:
-    assert await match(episode(0, 1), AT, series({"Tmdb": "1399"}), catalog) == episode_watch(0, 1)
+    one_season = jellyfin_seasons(1)
+
+    assert await match(episode(0, 1), AT, series({"Tmdb": "1399"}), catalog, one_season) == episode_watch(0, 1)
     assert (
-        await match(episode(0, 4), AT, series({"Tmdb": "1399"}), catalog) is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
+        await match(episode(0, 4), AT, series({"Tmdb": "1399"}), catalog, one_season)
+        is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
     )
 
 
