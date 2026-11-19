@@ -67,6 +67,8 @@ export default {
       syncFailed: 'Could not start the sync',
       unlinkFailed: 'Could not unlink the account',
       loadFailed: 'Could not load your Jellyfin accounts',
+      copyDetails: 'Copy details',
+      detailsCopied: 'Details of the items not recognized copied',
       errors: {
         invalidAddress: 'Enter the server address, starting with http:// or https://',
         invalidCredentials: 'Wrong username or password',

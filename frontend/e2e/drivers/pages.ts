@@ -414,8 +414,46 @@ export class JellyfinSection {
           last_sync_status: null,
           last_sync_imported: 0,
           last_sync_skipped: 0,
+          last_sync_unmatched: [],
         },
       }),
     );
+  }
+
+  /** A linked account, as MinTrack's API reports it, whose last full sync did not recognize these movies. */
+  async serveAccountWithUnrecognized(movies: { name: string; year: number }[]): Promise<void> {
+    const now = new Date().toISOString();
+    const unmatched = movies.map(({ name, year }) => ({
+      name,
+      type: 'Movie',
+      year,
+      provider_ids: {},
+      series_name: null,
+      series_year: null,
+      series_provider_ids: null,
+      season: null,
+      episode: null,
+      reason: 'not_found',
+    }));
+    const account = {
+      id: 'e2e-account',
+      server_url: 'https://jellyfin.example.com',
+      username: 'bob',
+      last_sync_at: now,
+      last_success_at: now,
+      last_sync_status: 'ok',
+      last_sync_imported: 0,
+      last_sync_skipped: unmatched.length,
+      last_sync_unmatched: unmatched,
+    };
+    await this.page.route('/api/jellyfin/accounts', (route) => route.fulfill({ json: [account] }));
+  }
+
+  /** Copy the details of the items not recognized; returns what the app then says. */
+  async copyDetails(): Promise<string> {
+    await this.accounts().getByRole('button', { name: 'Copy details' }).click();
+    const snackBar = this.page.locator('mat-snack-bar-container');
+    await expect(snackBar).toBeVisible();
+    return (await snackBar.innerText()).trim();
   }
 }
