@@ -2,6 +2,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { loadProfileTexts } from '../../../core/i18n';
 import { SYNC_POLL_MS } from '../../../core/jellyfin/jellyfin.store';
 import { JellyfinAccounts, QUICK_CONNECT_POLL_MS } from './jellyfin-accounts';
 
@@ -23,6 +24,7 @@ function account(changes: Partial<Model.Http.JellyfinAccount> = {}): Model.Http.
 }
 
 describe('JellyfinAccounts', () => {
+  beforeAll(() => loadProfileTexts());
   let fixture: ComponentFixture<JellyfinAccounts>;
   let http: HttpTestingController;
   let snackBar: { open: ReturnType<typeof vi.fn> };

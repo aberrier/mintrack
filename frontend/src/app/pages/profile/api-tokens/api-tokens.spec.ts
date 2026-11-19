@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { MATERIAL_ANIMATIONS } from '@angular/material/core';
 import { provideRouter } from '@angular/router';
+import { loadProfileTexts } from '../../../core/i18n';
 import { ApiTokens } from './api-tokens';
 
 const token: Model.Http.ApiToken = {
@@ -13,6 +14,7 @@ const token: Model.Http.ApiToken = {
 };
 
 describe('ApiTokens', () => {
+  beforeAll(() => loadProfileTexts());
   beforeEach(() =>
     TestBed.configureTestingModule({
       providers: [
