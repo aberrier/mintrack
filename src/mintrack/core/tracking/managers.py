@@ -41,6 +41,22 @@ class FutureWatchError(Exception):
     """A watch dated after now."""
 
 
+class EarlyWatchError(Exception):
+    """A watch dated before the episode could be watched."""
+
+
+# The earliest watch date of an episode without an air date.
+MIN_WATCH_DATE = dt.datetime(1900, 1, 1, tzinfo=dt.UTC)
+
+
+def earliest_watch(episode: Episode) -> dt.datetime:
+    """The earliest date a watch of the episode can have: the start of the day before its air date in UTC, since that
+    day starts earlier in the zones ahead of UTC; 1900 without an air date."""
+    if episode.air_date is None:
+        return MIN_WATCH_DATE
+    return dt.datetime.combine(episode.air_date - dt.timedelta(days=1), dt.time(), tzinfo=dt.UTC)
+
+
 class ShowTrackingChoice(enum.StrEnum):
     """The statuses a user sets on a show; the others follow from the episodes watched."""
 
@@ -104,7 +120,7 @@ class HistoryEntry:
     # The user finished the show; always False for movies.
     finished: bool
     # The user's stars for the episode or the movie, if rated.
-    rating: int | None
+    stars: int | None
 
 
 class TrackingManager:
@@ -187,18 +203,21 @@ class TrackingManager:
         return await self._update_show_status(user, media, user_media, now) if user_media else None
 
     async def change_watch_date(
-        self, user: User, media: Media, episode_id: uuid.UUID, at: dt.datetime, *, now: dt.datetime
+        self, user: User, media: Media, episode: Episode, at: dt.datetime, *, now: dt.datetime
     ) -> ShowTracking | None:
         """Date the user's watch of the episode `at`; None when they have not watched it.
 
-        Raises `UnknownEpisodesError` and, when `at` is after `now`, `FutureWatchError`.
+        Raises `UnknownEpisodesError`, `FutureWatchError` when `at` is after `now`, and `EarlyWatchError` when `at`
+        is before `earliest_watch(episode)`.
         """
         if at > now:
             raise FutureWatchError
-        await self._check_episodes(media, [episode_id])
+        if at < earliest_watch(episode):
+            raise EarlyWatchError
+        await self._check_episodes(media, [episode.id])
         changed = await self.session.scalar(
             sa.update(WatchedEpisode)
-            .where(WatchedEpisode.user_id == user.id, WatchedEpisode.episode_id == episode_id)
+            .where(WatchedEpisode.user_id == user.id, WatchedEpisode.episode_id == episode.id)
             .values(watched_at=at)
             .returning(WatchedEpisode.episode_id)
         )
@@ -386,7 +405,7 @@ class TrackingManager:
                 Episode.title.label("episode_title"),
                 WatchedEpisode.watched_at,
                 sa.func.coalesce(UserMedia.status == TrackingStatus.FINISHED, sa.false()).label("finished"),
-                EpisodeRating.stars.label("rating"),
+                EpisodeRating.stars,
             )
             .join(Episode, Episode.id == WatchedEpisode.episode_id)
             .join(Media, Media.id == Episode.media_id)
@@ -406,7 +425,7 @@ class TrackingManager:
                 sa.cast(sa.null(), sa.TEXT).label("episode_title"),
                 WatchedMovie.watched_at,
                 sa.false().label("finished"),
-                MediaRating.stars.label("rating"),
+                MediaRating.stars,
             )
             .join(Media, Media.id == WatchedMovie.media_id)
             .outerjoin(MediaRating, (MediaRating.user_id == user.id) & (MediaRating.media_id == Media.id))

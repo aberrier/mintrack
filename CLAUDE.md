@@ -47,7 +47,7 @@ src/mintrack/
   cli/commands/    # one Typer app per module, registered in cli/app.py: mintrack server | worker | db | healthcheck | users | import
   config/          # Config(BaseSettings): MINTRACK__SECTION__FIELD variables, *_FILE variants, .env
   core/<domain>/   # business logic: accounts (users, sessions, password links, login limit), api_tokens, catalog (TMDB cache),
-                   # imports (Yamtrack, TV Time), jellyfin (sync), push, tracking (watched episodes, statuses), upcoming (watch list, air times)
+                   # imports (Yamtrack, TV Time), jellyfin (sync), push, ratings (a user's stars and reviews), tracking (watched episodes, statuses), upcoming (watch list, air times)
   db/              # DatabaseModel, models/, DatabaseManager, Alembic config built in code, migrations/
   integrations/    # clients of outside services: tmdb/, tvmaze/ (air times), jellyfin/
   observability/   # structlog logging, Sentry (off unless a DSN is set, no personal data)
@@ -72,7 +72,8 @@ Dockerfile, docker-compose.yml  # the image and the install, self-contained; REA
 ```
 
 Business logic goes in `core/<domain>/managers`, endpoints and their Pydantic schemas in `server/api/`,
-dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAlchemy directly.
+dependencies as `*DepType` `Annotated` aliases. Simple endpoints may query SQLAlchemy directly. Lookups several API
+modules need (a cached media, an episode and its show) live in `server/api/common.py`, never in another API module.
 
 ## Rules
 

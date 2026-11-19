@@ -1,5 +1,4 @@
 import datetime as dt
-import typing
 import uuid
 
 import fastapi
@@ -8,15 +7,14 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.ratings.managers import RatingManager
-from mintrack.core.tracking.managers import FutureWatchError, TrackingManager
+from mintrack.core.tracking.managers import EarlyWatchError, FutureWatchError, TrackingManager
 from mintrack.db.dependencies import DbSessionDepType
-from mintrack.db.models import Episode, Media, User, WatchedEpisode
+from mintrack.db.models import User, WatchedEpisode
 from mintrack.server.api.catalog import EpisodeResponse, RatingResponse, ShowTrackingResponse
+from mintrack.server.api.common import EpisodeId, episode_and_show
 from mintrack.server.api.dependencies import CurrentUserDepType
 
 router = fastapi.APIRouter(tags=["episodes"])
-
-EpisodeId = typing.Annotated[uuid.UUID, fastapi.Path()]
 
 
 class EpisodeDetailResponse(EpisodeResponse):
@@ -37,14 +35,6 @@ class EpisodeDetailResponse(EpisodeResponse):
 
 class WatchDateRequest(pydantic.BaseModel):
     watched_at: pydantic.AwareDatetime
-
-
-async def episode_and_show(session: AsyncSession, episode_id: uuid.UUID) -> tuple[Episode, Media]:
-    """Episodes exist only once their show's page loaded them into the catalog."""
-    episode = await session.get(Episode, episode_id)
-    if episode is None:
-        raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, "No such episode")
-    return episode, await session.get_one(Media, episode.media_id)
 
 
 async def watched_at(session: AsyncSession, user: User, episode_id: uuid.UUID) -> dt.datetime | None:
@@ -83,15 +73,20 @@ async def get_episode(
 async def change_watch_date(
     episode_id: EpisodeId, body: WatchDateRequest, user: CurrentUserDepType, session: DbSessionDepType
 ) -> ShowTrackingResponse:
-    """Date the user's watch of the episode differently; a date after now is refused."""
+    """Date the user's watch of the episode differently; a date after now, or before the day before the episode
+    aired (1900 without an air date), is refused."""
     episode, media = await episode_and_show(session, episode_id)
     try:
         tracking = await TrackingManager(session).change_watch_date(
-            user, media, episode.id, body.watched_at, now=dt.datetime.now(dt.UTC)
+            user, media, episode, body.watched_at, now=dt.datetime.now(dt.UTC)
         )
     except FutureWatchError:
         raise fastapi.HTTPException(
             fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, "The date is in the future"
+        ) from None
+    except EarlyWatchError:
+        raise fastapi.HTTPException(
+            fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT, "The date is before the episode aired"
         ) from None
     if tracking is None:
         raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND, "Not watched")
