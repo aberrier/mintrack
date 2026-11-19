@@ -1,4 +1,19 @@
-import { APIResponse, expect, Page } from '@playwright/test';
+import { APIResponse, expect, Page, request } from '@playwright/test';
+
+/** User agents of messaging apps' link previews, which fetch a shared link before the person opens it. */
+const PREVIEW_AGENTS = ['WhatsApp/2.24.1 A', 'facebookexternalhit/1.1', 'TelegramBot (like TwitterBot)', 'Signal'];
+
+/** Fetch a link as link previews do: without cookies or JavaScript, with GET and HEAD, several times. */
+export async function previewLink(link: string): Promise<void> {
+  for (const userAgent of PREVIEW_AGENTS) {
+    const crawler = await request.newContext({ userAgent });
+    for (const method of ['GET', 'HEAD']) {
+      const response = await crawler.fetch(link, { method });
+      expect(response.status()).toBe(200);
+    }
+    await crawler.dispose();
+  }
+}
 
 /**
  * The API back-channel, for given state the scenarios do not exercise. Sends what the app itself sends: the page's

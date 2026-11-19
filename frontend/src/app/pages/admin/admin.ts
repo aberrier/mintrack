@@ -16,9 +16,8 @@ import { injectNotify } from '../../core/notify';
 import { LoadError } from '../../shared/load-error';
 import { usernameValidators } from '../../shared/validators';
 
-interface ShownLink {
+interface ShownLink extends Model.Http.Link {
   username: string;
-  link: string;
 }
 
 /**
@@ -103,7 +102,13 @@ export default class Admin {
     this.form.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => this.$taken.set(false));
   }
 
-  protected lastSeen(user: Model.Http.AdminUser): string {
+  /** A pending invitation's deadline, otherwise when the user was last seen. */
+  protected activity(user: Model.Http.AdminUser): string {
+    const until = user.link_expires_at;
+    if (until && user.status === 'invited')
+      return this.translate('app.admin.invitedUntil', { date: this.formatDate(until) });
+    if (until && user.status === 'invitation_expired')
+      return this.translate('app.admin.invitationExpiredOn', { date: this.formatDate(until) });
     return user.last_seen_at
       ? this.translate('app.admin.lastSeen', { date: formatDateTime(user.last_seen_at, this.timeZone()) })
       : this.translate('app.admin.neverSeen');
@@ -114,8 +119,8 @@ export default class Admin {
     this.$busy.set(true);
     const { username } = this.form.getRawValue();
     try {
-      const created = await firstValueFrom(this.api.adminUsers.create(username));
-      this.$shownLink.set({ username: created.user.username, link: created.link });
+      const { user, ...link } = await firstValueFrom(this.api.adminUsers.create(username));
+      this.$shownLink.set({ username: user.username, ...link });
       formDirective.resetForm();
       this.users.reload();
     } catch (error: unknown) {
@@ -128,8 +133,8 @@ export default class Admin {
 
   protected async newLink(user: Model.Http.AdminUser): Promise<void> {
     try {
-      const { link } = await firstValueFrom(this.api.adminUsers.newLink(user.id));
-      this.$shownLink.set({ username: user.username, link });
+      const link = await firstValueFrom(this.api.adminUsers.newLink(user.id));
+      this.$shownLink.set({ username: user.username, ...link });
     } catch {
       this.notify(this.translate('app.errors.unknown'));
     }
@@ -144,6 +149,10 @@ export default class Admin {
       this.notify(this.translate(lastAdmin ? 'app.admin.lastAdmin' : 'app.errors.unknown'));
     }
     this.users.reload();
+  }
+
+  protected formatDate(iso: string): string {
+    return formatDateTime(iso, this.timeZone());
   }
 
   protected copy(link: string): void {

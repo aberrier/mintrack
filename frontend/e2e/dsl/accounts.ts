@@ -1,5 +1,5 @@
 import { expect, Page } from '@playwright/test';
-import { ApiDriver } from '../drivers/api.driver';
+import { ApiDriver, previewLink } from '../drivers/api.driver';
 import { createAdmin } from '../drivers/cli';
 import {
   AdminUsersPage,
@@ -53,16 +53,33 @@ export async function invite(admin: Page, name = 'user'): Promise<Invitation> {
 }
 
 /** Open a password link and set the password; returns the account name the page showed. */
-export async function acceptLink(page: Page, link: string): Promise<string> {
+export async function acceptLink(page: Page, link: string, { reloaded = false } = {}): Promise<string> {
   const passwordPage = new PasswordPage(page);
   await passwordPage.open(link);
+  // The page loads again before the password is typed: a tab the phone discarded, a pull to refresh.
+  if (reloaded) await passwordPage.reload();
   const username = await passwordPage.accountName();
   await passwordPage.setPassword(PASSWORD);
   return username;
 }
 
+/** A messaging app shows a preview of the link before the person opens it. */
+export async function linkPreviewed(link: string): Promise<void> {
+  await previewLink(link);
+}
+
 export async function isLinkRefused(page: Page, link: string): Promise<boolean> {
-  return new PasswordPage(page).visitRefused(link);
+  return (await linkRefusal(page, link)) !== null;
+}
+
+/** Why the page refuses the link, or null when it offers to set the password. */
+export async function linkRefusal(page: Page, link: string): Promise<string | null> {
+  return new PasswordPage(page).visitRefusal(link);
+}
+
+/** Whether the page of a refused link offers to log in instead. */
+export async function isLogInOffered(page: Page): Promise<boolean> {
+  return new PasswordPage(page).offersLogIn();
 }
 
 export async function newLink(admin: Page, username: string): Promise<string> {

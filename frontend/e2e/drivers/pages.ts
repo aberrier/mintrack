@@ -121,12 +121,23 @@ export class PasswordPage {
     await expect(this.page.getByLabel('New password')).toBeVisible();
   }
 
-  /** Open a link and report whether the page refuses it. */
-  async visitRefused(link: string): Promise<boolean> {
+  /** Load the page again, as a restored tab or a pull to refresh does; the form shows again. */
+  async reload(): Promise<void> {
+    await this.page.reload();
+    await expect(this.page.getByLabel('New password')).toBeVisible();
+  }
+
+  /** Open a link and return why the page refuses it, or null when it offers to set the password. */
+  async visitRefusal(link: string): Promise<string | null> {
     await this.page.goto(link);
-    const refused = this.page.getByText('This link is invalid or has expired');
+    const refused = this.page.getByRole('alert');
     await expect(refused.or(this.page.getByLabel('New password'))).toBeVisible();
-    return refused.isVisible();
+    return (await refused.isVisible()) ? (await refused.textContent())!.trim() : null;
+  }
+
+  /** Whether the refused link's page offers to log in. */
+  async offersLogIn(): Promise<boolean> {
+    return this.page.getByRole('link', { name: 'Log in' }).isVisible();
   }
 
   async accountName(): Promise<string> {
@@ -137,7 +148,7 @@ export class PasswordPage {
     await this.page.getByLabel('New password').fill(password);
     await this.page.getByRole('button', { name: 'Set password and log in' }).click();
     await expect(new Navigation(this.page).bar()).toBeVisible();
-    // The app moves on to the watch list; the token is gone from the address bar once read.
+    // The app moves on to the watch list, replacing the address that held the token.
     await expect(this.page).toHaveURL(/\/episodes\/watch-list$/);
   }
 }
@@ -204,12 +215,15 @@ export class AdminUsersPage {
   async invite(username: string): Promise<string> {
     await this.page.getByLabel('Username').fill(username);
     await this.page.getByRole('button', { name: 'Invite' }).click();
-    return this.shownLink();
+    return this.shownLink(username);
   }
 
   async newLink(username: string): Promise<string> {
+    const previous = (await this.linkText().count()) ? await this.linkText().textContent() : null;
     await this.row(username).getByRole('button', { name: 'New link' }).click();
-    return this.shownLink();
+    // The box may still show the previous link until the new one arrives.
+    if (previous) await expect(this.linkText()).not.toHaveText(previous);
+    return this.shownLink(username);
   }
 
   async disable(username: string): Promise<void> {
@@ -235,10 +249,15 @@ export class AdminUsersPage {
     return this.page.locator(`[data-username="${username}"]`);
   }
 
-  private async shownLink(): Promise<string> {
-    const link = this.page.getByTestId('shown-link').getByTestId('link');
-    await expect(link).toContainText('/password#');
-    return (await link.textContent())!.trim();
+  private linkText() {
+    return this.page.getByTestId('shown-link').getByTestId('link');
+  }
+
+  private async shownLink(username: string): Promise<string> {
+    await expect(this.page.getByTestId('shown-link')).toContainText(`Send this link to ${username}.`);
+    await expect(this.linkText()).toContainText('/password#');
+    await expect(this.page.getByTestId('link-validity')).toContainText('Valid until');
+    return (await this.linkText().textContent())!.trim();
   }
 }
 

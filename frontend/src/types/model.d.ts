@@ -29,6 +29,15 @@ declare namespace Model {
       username: string;
     }
 
+    /** Why a password link does not work. */
+    type LinkProblem = 'invalid' | 'expired' | 'used' | 'replaced';
+
+    /** The 400 answer to a password link that does not work. */
+    interface LinkRefused {
+      detail: string;
+      reason: LinkProblem;
+    }
+
     /** A device signed in to the user's account. */
     interface Session {
       id: string;
@@ -47,10 +56,13 @@ declare namespace Model {
       is_admin: boolean;
       status: UserStatus;
       last_seen_at: string | null;
+      /** When the current invitation or reset link stops working, used or not; null without one. */
+      link_expires_at: string | null;
     }
 
     interface Link {
       link: string;
+      expires_at: string;
     }
 
     interface CreatedUser extends Link {

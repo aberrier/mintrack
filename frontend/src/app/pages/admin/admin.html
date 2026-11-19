@@ -25,6 +25,9 @@
         <p class="[font:var(--mat-sys-body-medium)]">
           {{ translate('app.admin.link.intro', { username: shown.username }) }}
         </p>
+        <p class="[font:var(--mat-sys-body-medium)]" data-testid="link-validity">
+          {{ translate('app.admin.link.validity', { date: formatDate(shown.expires_at) }) }}
+        </p>
         <div class="flex items-center gap-2">
           <code class="min-w-0 flex-1 break-all select-all" data-testid="link">{{ shown.link }}</code>
           <button
@@ -81,7 +84,7 @@
                 <span class="tag">{{ translate('app.admin.admin') }}</span>
               }
             </div>
-            <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ lastSeen(user) }}</span>
+            <span class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">{{ activity(user) }}</span>
           </div>
           <div class="flex flex-wrap gap-2">
             @if (user.status === 'disabled') {
