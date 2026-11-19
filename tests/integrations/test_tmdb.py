@@ -2,11 +2,13 @@ import asyncio
 import datetime as dt
 import typing
 
+import httpx
 import pytest
 
 from mintrack.db.models import MediaType
 from mintrack.integrations.tmdb.client import TMDBClient, TMDBNotConfiguredError, TMDBNotFoundError
-from mintrack.integrations.tmdb.schemas import TMDBMovie
+from mintrack.integrations.tmdb.config import TMDBConfig
+from mintrack.integrations.tmdb.schemas import TMDBEpisodeGroup, TMDBMovie
 from tests.conftest import make_tmdb_client
 from tests.fakes.tmdb import INVALID_KEY, MAX_ID, FakeTMDB
 
@@ -100,3 +102,80 @@ async def test_requests_arriving_together_refill_the_trending_cache_once(
     await asyncio.gather(*(tmdb.trending(MediaType.TV, now) for _ in range(5)))
 
     assert calls == 1
+
+
+def tmdb_answering(answers: dict[str, typing.Any]) -> TMDBClient:
+    """A client of a TMDB answering these JSON bodies by path, and 404 to the others."""
+
+    def answer(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/3/")
+        return httpx.Response(200, json=answers[path]) if path in answers else httpx.Response(404)
+
+    return TMDBClient(TMDBConfig(api_key="test-key"), transport=httpx.MockTransport(answer))
+
+
+GROUP = {"groups": [{"order": 1, "episodes": [{"season_number": 1, "episode_number": 1, "order": 0}]}]}
+
+
+@pytest.mark.parametrize(
+    "answers",
+    [
+        # The show is gone.
+        {},
+        {"tv/1/episode_groups": [{"id": "g1", "type": 6}]},
+        {"tv/1/episode_groups": {"results": "g1"}},
+    ],
+)
+async def test_a_show_whose_episode_groups_tmdb_does_not_list_as_expected_has_none(
+    answers: dict[str, typing.Any],
+) -> None:
+    assert await tmdb_answering(answers | {"tv/episode_group/g1": GROUP}).season_groups(1) == []
+
+
+async def test_only_the_season_groups_tmdb_lists_and_answers_as_expected_are_read() -> None:
+    results = [
+        {"id": "kept", "type": 6},
+        {"id": "kept", "type": 7},
+        {"id": "arcs", "type": 5},
+        {"id": 7, "type": 6},
+        {"type": 7},
+        {"id": "gone", "type": 7},
+        {"id": "malformed", "type": 7},
+        "group",
+    ]
+    answers = {
+        "tv/1/episode_groups": {"results": results},
+        "tv/episode_group/kept": GROUP,
+        "tv/episode_group/arcs": GROUP,
+        "tv/episode_group/malformed": {"groups": [{"order": 1, "episodes": [{"season_number": "one"}]}]},
+    }
+
+    groups = await tmdb_answering(answers).season_groups(1)
+
+    assert [group.seasons() for group in groups] == [{1: ((1, 1),)}]
+
+
+@pytest.mark.parametrize(
+    ("orders", "expected"),
+    [
+        ([(0, 0), (1, 1), (2, 1)], {0: ((0, 1),), 1: ((1, 1),), 2: ((1, 1),)}),
+        # Regular episodes in order 0: every season would be off by one.
+        ([(0, 1), (1, 1)], None),
+        ([(2, 1), (3, 1)], None),
+        ([(1, 1), (1, 1)], None),
+        ([(-1, 1), (1, 1)], None),
+    ],
+)
+def test_an_episode_group_gives_seasons_only_when_its_orders_number_seasons_from_1(
+    orders: list[tuple[int, int]], expected: dict[int, tuple[tuple[int, int], ...]] | None
+) -> None:
+    group = TMDBEpisodeGroup.model_validate(
+        {
+            "groups": [
+                {"order": order, "episodes": [{"season_number": season, "episode_number": 1, "order": 0}]}
+                for order, season in orders
+            ]
+        }
+    )
+
+    assert group.seasons() == expected

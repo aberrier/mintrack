@@ -121,7 +121,7 @@ class FakeTMDB:
 
     def episode_group(self, group_id: str) -> dict[str, typing.Any]:
         """TMDB's answer for an episode group, whose id is "<show id>-<index>": its groups number the show's season 1
-        episodes in order."""
+        episodes in order, each group listing its episodes last first."""
         show_id, index = (int(part) for part in group_id.split("-"))
         group_type, sizes = self.episode_groups[show_id][index]
         start = itertools.accumulate(sizes, initial=0)
@@ -133,7 +133,7 @@ class FakeTMDB:
                 "locked": True,
                 "episodes": [
                     {"id": number, "show_id": show_id, "season_number": 1, "episode_number": number, "order": place}
-                    for place, number in enumerate(range(first + 1, first + size + 1))
+                    for place, number in reversed(list(enumerate(range(first + 1, first + size + 1))))
                 ],
             }
             for order, (first, size) in enumerate(zip(start, sizes, strict=False), start=1)
@@ -236,23 +236,6 @@ class FakeTMDB:
                 raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND)
             return self.movie(tmdb_id, append_to_response.split(","))
 
-        self.add_find_route(app)
-        return app
-
-    def add_episode_group_routes(self, app: fastapi.FastAPI) -> None:
-        @app.get("/3/tv/{tmdb_id}/episode_groups")
-        def episode_groups(tmdb_id: int) -> dict[str, typing.Any]:
-            results = [
-                {"id": f"{tmdb_id}-{index}", "type": group_type, "group_count": len(sizes), "episode_count": sum(sizes)}
-                for index, (group_type, sizes) in enumerate(self.episode_groups.get(tmdb_id, []))
-            ]
-            return {"id": tmdb_id, "results": results}
-
-        @app.get("/3/tv/episode_group/{group_id}")
-        def episode_group(group_id: str) -> dict[str, typing.Any]:
-            return self.episode_group(group_id)
-
-    def add_find_route(self, app: fastapi.FastAPI) -> None:
         @app.get("/3/find/{external_id}")
         def find(external_id: str, external_source: str) -> dict[str, typing.Any]:
             results: dict[str, list[dict[str, typing.Any]]] = {
@@ -269,6 +252,21 @@ class FakeTMDB:
                     {"show_id": show_id, "season_number": season, "episode_number": number}
                 )
             return results
+
+        return app
+
+    def add_episode_group_routes(self, app: fastapi.FastAPI) -> None:
+        @app.get("/3/tv/{tmdb_id}/episode_groups")
+        def episode_groups(tmdb_id: int) -> dict[str, typing.Any]:
+            results = [
+                {"id": f"{tmdb_id}-{index}", "type": group_type, "group_count": len(sizes), "episode_count": sum(sizes)}
+                for index, (group_type, sizes) in enumerate(self.episode_groups.get(tmdb_id, []))
+            ]
+            return {"id": tmdb_id, "results": results}
+
+        @app.get("/3/tv/episode_group/{group_id}")
+        def episode_group(group_id: str) -> dict[str, typing.Any]:
+            return self.episode_group(group_id)
 
 
 fake = FakeTMDB()
