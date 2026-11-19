@@ -22,6 +22,8 @@ FALLBACK_AIR_TIME = dt.timedelta(hours=9)
 # Each device costs a request per notification: a user cannot register an unbounded number of them.
 MAX_DEVICES = 20
 ICON = "/icons/icon-192.png"
+# White on transparent: Android draws it in the status bar; iOS ignores it.
+BADGE = "/icons/badge-96.png"
 
 
 def notification(title: str, body: str, tag: str, url: str | None = None) -> bytes:
@@ -38,6 +40,7 @@ def notification(title: str, body: str, tag: str, url: str | None = None) -> byt
                 "title": title,
                 "body": body,
                 "icon": ICON,
+                "badge": BADGE,
                 "tag": tag,
                 "data": {"onActionClick": {"default": action}},
             }
