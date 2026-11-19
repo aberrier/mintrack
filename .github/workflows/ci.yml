@@ -101,15 +101,22 @@ jobs:
           nohup uv run uvicorn tests.fakes.tvmaze:app --host 0.0.0.0 --port 8002 > fake-tvmaze.log 2>&1 &
       - name: Start MinTrack with docker compose
         run: |
-          {
-            echo "POSTGRES_PASSWORD=$(openssl rand -hex 16)p@ss/w:rd%#"
-            echo "MINTRACK__SECURITY__SECRET_KEY=$(openssl rand -hex 32)"
-            echo "MINTRACK__PROJECT__PUBLIC_URL=http://localhost:8000"
-            echo "MINTRACK__TMDB__API_KEY=e2e-key"
-            echo "MINTRACK__TMDB__URL=http://172.30.0.1:8001/3"
-            echo "MINTRACK__TVMAZE__URL=http://172.30.0.1:8002"
-            echo "MINTRACK_VERSION=edge"
-          } > .env
+          # The values an installer edits, set in an override Compose merges into docker-compose.yml.
+          cat > docker-compose.override.yml << EOF
+          x-environment: &environment
+            MINTRACK__SECURITY__SECRET_KEY: "$(openssl rand -hex 32)"
+            MINTRACK__TMDB__API_KEY: e2e-key
+            MINTRACK__TMDB__URL: http://172.30.0.1:8001/3
+            MINTRACK__TVMAZE__URL: http://172.30.0.1:8002
+            MINTRACK__DATABASE__PASSWORD: &password "$(openssl rand -hex 16)p@ss/w:rd%#"
+          services:
+            db:
+              environment:
+                POSTGRES_PASSWORD: *password
+            migrate: { image: "ghcr.io/aberrier/mintrack:edge", environment: *environment }
+            server: { image: "ghcr.io/aberrier/mintrack:edge", environment: *environment }
+            worker: { image: "ghcr.io/aberrier/mintrack:edge", environment: *environment }
+          EOF
           docker compose up --detach
           # The worker has no healthcheck, which --wait refuses: wait for the server (and its db and migrate) only.
           docker compose up --detach --wait --wait-timeout 120 server

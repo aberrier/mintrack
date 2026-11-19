@@ -55,19 +55,29 @@ e2e-stop:
 image:
     docker build --tag ghcr.io/aberrier/mintrack:edge --build-arg COMMIT=$(git rev-parse --short HEAD) .
 
-# Set the version on a clean master, commit it and tag vX.Y.Z locally (`just release 1.4.2`); pushing is up to you
+# Set the version on a clean tree, commit it and tag vX.Y.Z locally (`just release 1.4.2`, from master) or a release
+# candidate vX.Y.Z-rc.N (`just release 1.4.2-rc.1`, from any branch); pushing is up to you
 [positional-arguments]
 release version:
     #!/usr/bin/env bash
     set -euo pipefail
     version=$1
     fail() { echo "$1" >&2; exit 1; }
-    [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "The version is X.Y.Z, such as 1.4.2."
-    [[ "$(git branch --show-current)" == master ]] || fail "Releases are cut from master."
+    number='(0|[1-9][0-9]*)'
+    branch=$(git branch --show-current)
+    if [[ "$version" =~ ^$number\.$number\.$number-rc\.([1-9][0-9]*)$ ]]; then
+        python_version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}rc${BASH_REMATCH[4]}"
+    elif [[ "$version" =~ ^$number\.$number\.$number$ ]]; then
+        python_version=$version
+        [[ "$branch" == master ]] || fail "Releases are cut from master; release candidates from any branch."
+    else
+        fail "The version is X.Y.Z, such as 1.4.2, or X.Y.Z-rc.N, such as 1.4.2-rc.1."
+    fi
+    [[ -n "$branch" ]] || fail "Check out a branch first."
     [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "Commit or stash the changes first."
     ! git rev-parse --quiet --verify "refs/tags/v$version" > /dev/null || fail "The tag v$version exists."
-    uv version --no-sync "$version"
+    uv version --no-sync "$python_version"
     (cd frontend && npm version "$version" --no-git-tag-version > /dev/null)
     git commit --quiet --message "chore: release $version" -- pyproject.toml uv.lock frontend/package.json frontend/package-lock.json
     git tag --annotate "v$version" --message "MinTrack $version"
-    echo "Tagged v$version. Publish it with: git push --atomic origin master v$version"
+    echo "Tagged v$version. Publish it with: git push --atomic origin $branch v$version"

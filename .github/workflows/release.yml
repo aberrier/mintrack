@@ -1,16 +1,18 @@
 name: Release
 
 # Publishes X.Y.Z for every vX.Y.Z tag of a commit on master, X.Y when it is the highest of its line, and latest
-# when it is the highest of all: a patch to an older line moves neither. Then creates the GitHub release of the tag.
-# `just release X.Y.Z` sets the versions the tag must match.
+# when it is the highest of all: a patch to an older line moves neither. A release candidate vX.Y.Z-rc.N, from any
+# branch, publishes only X.Y.Z-rc.N. Then creates the GitHub release of the tag, a pre-release for a candidate.
+# `just release X.Y.Z` (or X.Y.Z-rc.N) sets the versions the tag must match.
 on:
   push:
     tags: ["v*"]
 
 permissions: {}
 
+# One group per tag: a single group would keep only the latest of several pending runs.
 concurrency:
-  group: release
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -33,26 +35,34 @@ jobs:
         run: |
           version='(0|[1-9][0-9]*)'
           pattern="^v$version\.$version\.$version\$"
-          if [[ ! "$TAG" =~ $pattern ]]; then
-            echo "::error::$TAG is not a vX.Y.Z tag without leading zeros"
-            exit 1
-          fi
-          major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}"
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
-            echo "::error::$TAG is not on master"
+          candidate="^v$version\.$version\.$version-rc\.([1-9][0-9]*)\$"
+          if [[ "$TAG" =~ $candidate ]]; then
+            major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}" rc="${BASH_REMATCH[4]}"
+            python_version="$major.$minor.${patch}rc$rc" npm_version="$major.$minor.$patch-rc.$rc"
+          elif [[ "$TAG" =~ $pattern ]]; then
+            major="${BASH_REMATCH[1]}" minor="${BASH_REMATCH[2]}" patch="${BASH_REMATCH[3]}" rc=""
+            python_version="$major.$minor.$patch" npm_version="$major.$minor.$patch"
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/master; then
+              echo "::error::$TAG is not on master"
+              exit 1
+            fi
+          else
+            echo "::error::$TAG is not a vX.Y.Z or vX.Y.Z-rc.N tag without leading zeros"
             exit 1
           fi
           project=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           frontend=$(jq -r .version frontend/package.json)
-          if [[ "$project" != "$major.$minor.$patch" || "$frontend" != "$major.$minor.$patch" ]]; then
+          if [[ "$project" != "$python_version" || "$frontend" != "$npm_version" ]]; then
             echo "::error::$TAG does not match pyproject.toml ($project) and frontend/package.json ($frontend)"
             exit 1
           fi
           highest() { git tag --list "$1" | grep -E "$pattern" | sort -V | tail -n 1; }
           image=ghcr.io/aberrier/mintrack
-          list="$image:$major.$minor.$patch"
-          if [[ "$(highest "v$major.$minor.*")" == "$TAG" ]]; then list+=",$image:$major.$minor"; fi
-          if [[ "$(highest 'v*')" == "$TAG" ]]; then list+=",$image:latest"; fi
+          list="$image:${TAG#v}"
+          if [[ -z "$rc" ]]; then
+            if [[ "$(highest "v$major.$minor.*")" == "$TAG" ]]; then list+=",$image:$major.$minor"; fi
+            if [[ "$(highest 'v*')" == "$TAG" ]]; then list+=",$image:latest"; fi
+          fi
           echo "commit=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
           echo "list=$list" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-qemu-action@v4
@@ -87,4 +97,6 @@ jobs:
         run: |
           # The generated notes follow these lines.
           notes="Image: \`docker pull ghcr.io/aberrier/mintrack:${TAG#v}\`"
-          gh release create "$TAG" --verify-tag --generate-notes --notes "$notes"
+          prerelease=()
+          if [[ "$TAG" == *-rc.* ]]; then prerelease=(--prerelease); fi
+          gh release create "$TAG" --verify-tag --generate-notes --notes "$notes" "${prerelease[@]}"

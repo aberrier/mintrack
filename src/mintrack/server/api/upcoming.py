@@ -4,9 +4,11 @@ import uuid
 
 import fastapi
 import pydantic
+import sqlalchemy as sa
 
 from mintrack.core.upcoming.managers import UpcomingManager, WatchListSection
 from mintrack.db.dependencies import DbSessionDepType
+from mintrack.db.models import UserMedia
 from mintrack.server.api.catalog import EpisodeResponse
 from mintrack.server.api.dependencies import CurrentUserDepType
 
@@ -49,6 +51,8 @@ class WatchListEpisode(UpcomingEpisode):
 class WatchListResponse(pydantic.BaseModel):
     # By section, then most recently watched, then most recently added.
     episodes: list[WatchListEpisode]
+    # Nothing in the user's library at all, as after the first sign-in: there is nothing to be caught up with.
+    library_empty: bool
 
 
 @router.get("/upcoming")
@@ -70,5 +74,7 @@ async def watch_list(user: CurrentUserDepType, session: DbSessionDepType) -> Wat
                 {**dataclasses.asdict(episode), "following": following.get(episode.episode_id)}, from_attributes=True
             )
             for episode in episodes
-        ]
+        ],
+        library_empty=not episodes
+        and not await session.scalar(sa.select(sa.exists().where(UserMedia.user_id == user.id))),
     )

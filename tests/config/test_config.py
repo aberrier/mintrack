@@ -72,7 +72,7 @@ def test_prod_requires_a_secret_key(env: pytest.MonkeyPatch) -> None:
 @pytest.mark.parametrize(
     ("secret_key", "problem"),
     [
-        (SECRET_KEY_PLACEHOLDER, "is still the .env.example placeholder"),
+        (SECRET_KEY_PLACEHOLDER, "is still the placeholder of docker-compose.yml"),
         ("too-short-secret", "must be at least 32 characters"),
     ],
 )

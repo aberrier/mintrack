@@ -5,6 +5,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideRouter } from '@angular/router';
 import { of, Subject } from 'rxjs';
+import { CHECKED_PAUSE_MS } from '../../core/tracking/watch-list.store';
 import { Confetti } from '../../shared/confetti';
 import Show from './show';
 
@@ -175,6 +176,8 @@ describe('Show', () => {
     watched(['1x2'], 'up_to_date');
     await fixture.whenStable();
     http.expectOne('/api/shows/7').flush(show(['1x1', '1x2'], 'Returning Series', { ...EPISODES[2][0], remaining: 0 }));
+    await fixture.whenStable();
+    await new Promise((resolve) => setTimeout(resolve, CHECKED_PAUSE_MS + 10));
     await fixture.whenStable();
 
     expect(code(page)).toBe('S02|E01');

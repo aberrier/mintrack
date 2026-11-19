@@ -58,6 +58,7 @@
               [posterPath]="result.poster_path"
               [finished]="result.tracking_status === 'finished'"
               [tracked]="tracked(result)"
+              [busy]="saving(result)"
               [detail]="detail(result)"
               (add)="add(result)"
               data-testid="search-result" />
@@ -85,6 +86,7 @@
                   [posterPath]="result.poster_path"
                   [finished]="result.tracking_status === 'finished'"
                   [tracked]="tracked(result)"
+                  [busy]="saving(result)"
                   (add)="add(result)"
                   data-testid="trending-item" />
               </li>

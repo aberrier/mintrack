@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.config import get_config
 from mintrack.core.accounts.managers import AccountManager, SetupClosedError
+from mintrack.core.accounts.passwords import PASSWORD_MAX_LENGTH
 from mintrack.db.database import DatabaseManager
 from mintrack.db.models import LoginFailure, User
 from tests.server.api.conftest import PASSWORD, CreateUser
@@ -54,9 +55,9 @@ async def test_setup_turned_off_is_never_offered(
     "body",
     [
         {**SETUP, "password": "too short"},
-        {**SETUP, "password": "x" * 1025},
+        {**SETUP, "password": "x" * (PASSWORD_MAX_LENGTH + 1)},
         {**SETUP, "username": "with space"},
-        {**SETUP, "timezone": "Mars/Olympus"},
+        {**SETUP, "timezone": "x" * 65},
     ],
 )
 async def test_the_admin_account_follows_the_usual_rules(api: httpx.AsyncClient, body: dict[str, str]) -> None:
@@ -64,6 +65,16 @@ async def test_the_admin_account_follows_the_usual_rules(api: httpx.AsyncClient,
 
     assert response.status_code == fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT
     assert await setup_open(api)
+
+
+@pytest.mark.parametrize("timezone", [None, "Etc/Unknown"])
+async def test_without_a_known_browser_zone_the_admin_keeps_the_default(
+    api: httpx.AsyncClient, timezone: str | None
+) -> None:
+    response = await api.post("/api/auth/setup", json={**SETUP, "timezone": timezone})
+
+    assert response.status_code == fastapi.status.HTTP_201_CREATED
+    assert response.json()["timezone"] == "UTC"
 
 
 async def test_refused_setups_are_limited_like_logins(api: httpx.AsyncClient, create_user: CreateUser) -> None:
@@ -74,13 +85,14 @@ async def test_refused_setups_are_limited_like_logins(api: httpx.AsyncClient, cr
 
 
 async def test_simultaneous_setups_create_one_admin(database: DatabaseManager) -> None:
-    address = "10.8.8.8"
+    # One address per attempt, so the per-address login lock does not serialise them.
+    addresses = [f"10.8.8.{index}" for index in range(4)]
 
-    async def attempt(username: str) -> bool:
+    async def attempt(index: int) -> bool:
         async with AsyncSession(database.engine) as session:
             try:
                 await AccountManager(session).create_first_admin(
-                    username, PASSWORD, address=address, now=dt.datetime.now(dt.UTC)
+                    f"admin{index}", PASSWORD, address=addresses[index], now=dt.datetime.now(dt.UTC)
                 )
             except SetupClosedError:
                 await session.commit()
@@ -89,12 +101,12 @@ async def test_simultaneous_setups_create_one_admin(database: DatabaseManager) -
             return True
 
     try:
-        created = await asyncio.gather(*(attempt(f"admin{index}") for index in range(4)))
+        created = await asyncio.gather(*(attempt(index) for index in range(len(addresses))))
         async with AsyncSession(database.engine) as session:
             admins = await session.scalar(sa.select(sa.func.count()).select_from(User).where(User.is_admin))
         assert (created.count(True), admins) == (1, 1)
     finally:
         async with AsyncSession(database.engine) as cleanup:
             await cleanup.execute(sa.delete(User))
-            await cleanup.execute(sa.delete(LoginFailure).where(LoginFailure.address == address))
+            await cleanup.execute(sa.delete(LoginFailure).where(LoginFailure.address.in_(addresses)))
             await cleanup.commit()

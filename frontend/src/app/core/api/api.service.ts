@@ -17,6 +17,7 @@ export class ApiService {
     setUp: (username: string, password: string, timezone: string) =>
       this.http.post<Model.Http.User>('/api/auth/setup', { username, password, timezone }),
     updateMe: (timezone: string) => this.http.patch<Model.Http.User>('/api/auth/me', { timezone }),
+    timezones: () => this.http.get<Model.Http.Timezone[]>('/api/auth/timezones'),
     logout: () => this.http.post<void>('/api/auth/logout', null),
     logoutEverywhere: () => this.http.post<void>('/api/auth/logout-all', null),
     sessions: () => this.http.get<Model.Http.Session[]>('/api/auth/sessions'),
@@ -121,4 +122,6 @@ export class ApiService {
     create: (name: string) => this.http.post<Model.Http.CreatedApiToken>('/api/api-tokens', { name }),
     revoke: (id: string) => this.http.delete<void>(`/api/api-tokens/${id}`),
   };
+
+  readonly about = () => this.http.get<Model.Http.About>('/api/about');
 }

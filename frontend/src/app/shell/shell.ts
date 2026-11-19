@@ -1,7 +1,9 @@
 import { CdkScrollable } from '@angular/cdk/scrolling';
 import { ChangeDetectionStrategy, Component, computed, inject, Signal } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MatIcon } from '@angular/material/icon';
 import { isActive, Router, RouterLink, RouterOutlet } from '@angular/router';
+import { filter, fromEvent } from 'rxjs';
 import { appRoutes } from '../app.paths';
 import { AuthStore } from '../core/auth/auth.store';
 import { injectTranslator, TranslationPath } from '../core/i18n';
@@ -52,9 +54,19 @@ export class Shell {
   );
   protected readonly $navItems = computed(() => (this.auth.$isAdmin() ? [...this.tabs, this.adminTab] : this.tabs));
 
+  constructor() {
+    // Back online, the unreachable screen asks the server again by itself.
+    fromEvent(window, 'online')
+      .pipe(
+        filter(() => this.$failure() === 'unreachable'),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => this.retry());
+  }
+
   /** Ask the server again, opening the page that could not open. */
   protected retry(): void {
-    void this.router.navigateByUrl(this.auth.blockedUrl ?? this.router.url);
+    void this.router.navigateByUrl(this.auth.$blockedUrl() ?? this.router.url);
   }
 
   /** A tab opening `route`, active on every page under `section`. */

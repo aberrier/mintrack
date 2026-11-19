@@ -74,8 +74,9 @@ const SECTIONS: Record<Model.Http.WatchListSection, TranslationPath<'app'>> = {
     .chevron.open {
       transform: none;
     }
-    .history-toggle {
-      align-self: flex-end;
+    /* What was already watched reads as past: greyed, behind the watch list. */
+    .past {
+      filter: grayscale(1) opacity(0.72);
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,

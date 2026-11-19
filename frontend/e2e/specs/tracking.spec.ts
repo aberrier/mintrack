@@ -144,9 +144,9 @@ test('the Watch next card marks the next episode in one tap', async ({ viewer })
   await tapEpisode(viewer, 1, 1);
   expect(await watchNext(viewer)).toBe('S01|E02+3');
 
-  // When they tap the card's check, it moves on to the next episode
+  // When they tap the card's check, it shows the check for a moment, then moves on to the next episode
   await checkWatchNext(viewer);
-  expect(await watchNext(viewer)).toBe('S01|E03+2');
+  await expect.poll(() => watchNext(viewer)).toBe('S01|E03+2');
   expect(await isWatched(viewer, 1, 2)).toBe(true);
 });
 

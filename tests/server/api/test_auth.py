@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mintrack.core.accounts import passwords
 from mintrack.core.accounts.managers import (
+    SESSION_IDLE_TIMEOUT,
     AccountManager,
     InvalidCredentialsError,
     LoginRateLimitedError,
@@ -167,12 +168,21 @@ async def test_sessions_lists_the_signed_in_devices_and_signs_one_out(
     api_app: fastapi.FastAPI, create_user: CreateUser, db_session: AsyncSession
 ) -> None:
     alice = await create_user("alice")
-    async with make_client(api_app) as phone, make_client(api_app) as laptop:
+    async with make_client(api_app) as phone, make_client(api_app) as laptop, make_client(api_app) as tablet:
         phone.headers["User-Agent"] = ANDROID_CHROME
+        tablet.headers["User-Agent"] = "tablet"
         await log_in(phone)
         await log_in(laptop)
+        await log_in(tablet)
+        await db_session.execute(
+            sa.update(UserSession)
+            .where(UserSession.user_agent == "tablet")
+            .values(last_used_at=dt.datetime.now(dt.UTC) - SESSION_IDLE_TIMEOUT)
+        )
         laptop_session = await db_session.scalar(
-            sa.select(UserSession.id).where(UserSession.user_id == alice.id, UserSession.user_agent != ANDROID_CHROME)
+            sa.select(UserSession.id).where(
+                UserSession.user_id == alice.id, UserSession.user_agent.not_in([ANDROID_CHROME, "tablet"])
+            )
         )
         db_session.add(
             PushSubscription(
@@ -194,6 +204,13 @@ async def test_sessions_lists_the_signed_in_devices_and_signs_one_out(
         assert (await laptop.get("/api/auth/me")).status_code == 401
         assert (await phone.get("/api/auth/me")).status_code == 200
         assert [item["device"] for item in (await phone.get("/api/auth/sessions")).json()] == ["Chrome on Android"]
+        phone_session = await db_session.scalar(
+            sa.select(UserSession.id).where(UserSession.user_agent == ANDROID_CHROME)
+        )
+        signed_out_here = await phone.delete(f"/api/auth/sessions/{phone_session}", headers=xsrf(phone))
+        assert signed_out_here.status_code == fastapi.status.HTTP_204_NO_CONTENT
+        assert "__Host-mintrack_session" not in phone.cookies
+        assert (await phone.get("/api/auth/me")).status_code == 401
     assert await db_session.scalar(sa.select(sa.func.count()).select_from(PushSubscription)) == 0
 
 

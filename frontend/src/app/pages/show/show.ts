@@ -17,9 +17,10 @@ import {
   SPECIALS,
 } from '../../core/tracking/episodes';
 import { TrackingStore } from '../../core/tracking/tracking.store';
+import { CHECKED_PAUSE_MS } from '../../core/tracking/watch-list.store';
 import { BackButton } from '../../shared/back-button';
 import { injectConfirm } from '../../shared/confirm-dialog';
-import { EpisodeCard, showEpisodeCard } from '../../shared/episode-card/episode-card';
+import { CardEpisode, EpisodeCard, showEpisodeCard } from '../../shared/episode-card/episode-card';
 import { LoadError } from '../../shared/load-error';
 import { MediaHeader } from '../../shared/media-header';
 import { loadMediaPage } from '../../shared/media-page';
@@ -84,8 +85,12 @@ export default class Show {
     return date ? formatDate(date, this.timeZone()) : null;
   });
 
+  /** The Watch next card just checked, kept for a moment so the tap visibly registered before the next one. */
+  private readonly $checked = signal<{ episode: Model.Http.Episode; card: CardEpisode } | null>(null);
   /** The episode to watch next and its card. */
   protected readonly $next = computed(() => {
+    const checked = this.$checked();
+    if (checked) return checked;
     const show = this.$show();
     const next = show?.next_episode;
     return next ? { episode: next, card: showEpisodeCard(show, next, next.remaining) } : null;
@@ -181,5 +186,14 @@ export default class Show {
   /** Mark or unmark episodes; the store shows them at once, and throws confetti when the server says it is finished. */
   protected mark(show: Model.Http.Show, episodes: Model.Http.Episode[], watched: boolean): void {
     void this.store.setWatched(show.tmdb_id, episodes, watched);
+  }
+
+  /** Check the Watch next card: it stays checked for a moment, then the next episode rises in; taps meanwhile wait. */
+  protected checkNext(show: Model.Http.Show): void {
+    const next = this.$next();
+    if (!next || this.$checked()) return;
+    this.$checked.set(next);
+    this.mark(show, [next.episode], true);
+    setTimeout(() => this.$checked.set(null), CHECKED_PAUSE_MS);
   }
 }

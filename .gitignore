@@ -22,6 +22,7 @@ blob-report/
 .env
 .env.*
 !.env.example
+docker-compose.override.yml
 
 # The browser-test stack of scripts/e2e-stack.sh
 /.e2e/

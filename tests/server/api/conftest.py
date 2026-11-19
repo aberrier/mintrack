@@ -25,7 +25,19 @@ class CreateUser(typing.Protocol):
 @pytest_asyncio.fixture
 async def api_app(app: fastapi.FastAPI, db_session: AsyncSession, tmdb: TMDBClient) -> fastapi.FastAPI:
     """The app on the test's rolled-back session, so what requests write disappears; TMDB is the fake."""
-    app.dependency_overrides[get_db_session] = lambda: db_session
+
+    async def request_session() -> collections.abc.AsyncGenerator[AsyncSession]:
+        # As in production, a request loses what it leaves uncommitted. Rolling back a savepoint only expires what
+        # changed inside it, so the test's objects stay loaded.
+        await db_session.commit()
+        request_transaction = await db_session.begin_nested()
+        try:
+            yield db_session
+        finally:
+            if request_transaction.is_active:
+                await request_transaction.rollback()
+
+    app.dependency_overrides[get_db_session] = request_session
     app.dependency_overrides[get_tmdb_client] = lambda: tmdb
     return app
 

@@ -15,7 +15,6 @@ import contentCopy from '@material-symbols/svg-400/outlined/content_copy.svg';
 import explore_fill from '@material-symbols/svg-400/outlined/explore-fill.svg';
 import explore from '@material-symbols/svg-400/outlined/explore.svg';
 import grid_view from '@material-symbols/svg-400/outlined/grid_view.svg';
-import history from '@material-symbols/svg-400/outlined/history.svg';
 import expand_more from '@material-symbols/svg-400/outlined/keyboard_arrow_down.svg';
 import live_tv_fill from '@material-symbols/svg-400/outlined/live_tv-fill.svg';
 import live_tv from '@material-symbols/svg-400/outlined/live_tv.svg';
@@ -48,7 +47,6 @@ const icons = {
   explore,
   explore_fill,
   grid_view,
-  history,
   live_tv,
   live_tv_fill,
   more_vert,

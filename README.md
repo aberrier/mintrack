@@ -8,8 +8,7 @@ people you share it with. It focuses on the things TV Time did well on a phone: 
 episode comes next, what airs soon, and marking what you watched without friction.
 Your Jellyfin servers fill in your history on their own.
 
-> **Status:** before its first release. Everything below works; expect
-> changes until 1.0.
+> **Status:** young and before 1.0: expect changes between releases, and read the release notes before upgrading.
 
 ## What it does
 
@@ -32,8 +31,8 @@ Your Jellyfin servers fill in your history on their own.
 - **Easy to self-host and private.** One docker-compose file, several users
   per instance, invited by the admin. No email, no social features, no tracking.
 - **An MCP server** so an AI assistant (Claude Code, Claude Desktop...) can read
-  and update your tracking, with a token you create on your profile page.
-- **Imports from Yamtrack and TV Time**, from your profile page, with watch
+  and update your tracking, with a token you create in **Profile › Settings**.
+- **Imports from Yamtrack and TV Time**, from **Profile › Settings**, with watch
   dates kept. Importing the same file again adds nothing. The file (20 MB at
   most) is deleted once imported.
   - Yamtrack: the CSV export (Settings, Export). Movies, TV shows and anime
@@ -56,23 +55,36 @@ types (books, games, music) and no integrations other than Jellyfin.
 ## Install
 
 Docker Compose is the recommended way to run MinTrack. Images are published for x86-64 and 64-bit ARM (a Raspberry
-Pi 3, 4 or 5 with a 64-bit system).
+Pi 3, 4 or 5 with a 64-bit system). Everything is in one file: there is no `.env` to write.
 
-1. In an empty folder, create `docker-compose.yml`:
+1. In an empty folder, create `docker-compose.yml` with this content, and keep it private
+   (`chmod 600 docker-compose.yml`): it holds the secrets.
 
    ```yaml
    name: mintrack
 
+   # Edit the four values marked EDIT, then `docker compose up -d`. Keep this file private (chmod 600): it holds the
+   # secrets. Every other setting and its default is in the README, under Configuration.
+
+   x-database-password: &database-password change-me # EDIT: the output of `openssl rand -hex 32`, before the first start
+
    # Settings shared by the MinTrack services, which run the same image.
    x-mintrack: &mintrack
-     # A release (1.4.2), a release line (1.4) or latest, set by MINTRACK_VERSION in .env.
-     image: ghcr.io/aberrier/mintrack:${MINTRACK_VERSION:-latest}
+     # latest follows every release; a release line (1.4) or a release (1.4.2) pins it.
+     image: ghcr.io/aberrier/mintrack:latest
      restart: unless-stopped
-     env_file: .env
      environment: &mintrack-environment
+       # EDIT: the address you open MinTrack at, the root of an origin. Installing the app and push need https://.
+       MINTRACK__PROJECT__PUBLIC_URL: http://localhost:8000
+       # EDIT: the output of `openssl rand -hex 32`. Back it up: it encrypts the stored Jellyfin tokens.
+       MINTRACK__SECURITY__SECRET_KEY: change-me-to-the-output-of-openssl-rand-hex-32
+       # EDIT: your TMDB API key (free, https://www.themoviedb.org/settings/api). Empty: no search and no new pages.
+       MINTRACK__TMDB__API_KEY: ""
+       # Behind a reverse proxy on this host: the gateway of the network below, from which the proxy connects.
+       # MINTRACK__SERVER__FORWARDED_ALLOW_IPS: 172.30.0.1
        MINTRACK__DATABASE__HOST: db
        MINTRACK__DATABASE__USER: mintrack
-       MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+       MINTRACK__DATABASE__PASSWORD: *database-password
        MINTRACK__DATABASE__NAME: mintrack
      read_only: true
      tmpfs: [/tmp]
@@ -87,7 +99,7 @@ Pi 3, 4 or 5 with a 64-bit system).
        restart: unless-stopped
        environment:
          POSTGRES_USER: mintrack
-         POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+         POSTGRES_PASSWORD: *database-password
          POSTGRES_DB: mintrack
        volumes:
          - db:/var/lib/postgresql
@@ -117,7 +129,8 @@ Pi 3, 4 or 5 with a 64-bit system).
          <<: *mintrack-environment
          MINTRACK__SERVER__RUN_WORKER: "false"
        ports:
-         - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
+         # Behind a reverse proxy on this host: "127.0.0.1:8000:8000", so only the proxy reaches it.
+         - "0.0.0.0:8000:8000"
        depends_on:
          migrate:
            condition: service_completed_successfully
@@ -134,31 +147,26 @@ Pi 3, 4 or 5 with a 64-bit system).
 
    networks:
      default:
-       name: mintrack
-       # A proxy on the host reaches MinTrack from the gateway address. Change both when the range is taken on the host.
+       # A proxy on the host reaches MinTrack from the gateway address. Change both when the range is taken on the host,
+       # as by a second MinTrack.
        ipam:
          config:
-           - subnet: ${MINTRACK_SUBNET:-172.30.0.0/24}
-             gateway: ${MINTRACK_GATEWAY:-172.30.0.1}
+           - subnet: 172.30.0.0/24
+             gateway: 172.30.0.1
 
    volumes:
      db:
    ```
 
-2. Next to it, create `.env` and keep it private (`chmod 600 .env`). Generate each secret with
-   `openssl rand -hex 32`:
+2. Edit the four values marked `EDIT`:
+   - The database password and the secret key: run `openssl rand -hex 32` twice and paste one output into each. The
+     database password is set when the database is first created.
+   - `MINTRACK__PROJECT__PUBLIC_URL`: the address you open MinTrack at, such as `http://192.168.1.10:8000` or, behind
+     a reverse proxy, `https://mintrack.example.com`.
+   - `MINTRACK__TMDB__API_KEY`: the TMDB key is free: create a TMDB account, then copy the "API Key" from
+     https://www.themoviedb.org/settings/api.
 
-   ```dotenv
-   POSTGRES_PASSWORD=<a random password>
-   MINTRACK__SECURITY__SECRET_KEY=<another random value>
-   MINTRACK__PROJECT__PUBLIC_URL=http://localhost:8000
-   MINTRACK__TMDB__API_KEY=<your TMDB API key>
-   ```
-
-   `MINTRACK__PROJECT__PUBLIC_URL` is the address you open MinTrack at. The TMDB key is free: create a TMDB account,
-   then copy the "API Key" from https://www.themoviedb.org/settings/api. Every other setting is listed with its
-   default in [`.env.example`](.env.example); each can also be read from a file through a `_FILE` variant, for
-   Docker secrets. `MINTRACK_VERSION` picks the image: `latest` (the default) follows every release; see
+   The image line picks the version: `latest` follows every release; see
    [Upgrades and rollback](#upgrades-and-rollback) to pin one.
 
 3. Start it:
@@ -167,9 +175,9 @@ Pi 3, 4 or 5 with a 64-bit system).
    docker compose up -d
    ```
 
-`migrate` upgrades the database schema and exits; then `server` and `worker` start. MinTrack answers on port 8000
-(`http://localhost:8000`, or the server's address on your network). `docker compose ps` shows the server as healthy;
-if it is not, `docker compose logs migrate server` shows why, with one line per setting to fix.
+   `migrate` upgrades the database schema and exits; then `server` and `worker` start. MinTrack answers on port 8000.
+   `docker compose ps` shows the server as healthy; if it is not, `docker compose logs migrate server` shows why, with
+   one line per setting to fix.
 
 4. Open MinTrack and create the admin account: while no account exists, the login page offers it. Or, from the
    command line, create the admin and open the link it prints to set their password:
@@ -178,40 +186,63 @@ if it is not, `docker compose logs migrate server` shows why, with one line per 
    docker compose exec server mintrack users create-admin admin
    ```
 
-   To keep an instance reachable by others closed until the admin exists, set `MINTRACK__ACCOUNTS__SETUP=false` and
-   use the command. The admin then invites everyone else from the Admin tab, and shares each printed link by hand
+   To keep an instance reachable by others closed until the admin exists, add `MINTRACK__ACCOUNTS__SETUP: "false"`
+   and use the command. The admin then invites everyone else from the Admin tab, and shares each printed link by hand
    (MinTrack sends no email). A forgotten password needs a new link: from the Admin tab, or for an admin
    `docker compose exec server mintrack users reset-link USERNAME`.
+
+### Configuration
+
+Settings are environment variables of the `migrate`, `server` and `worker` services, in the `environment` block that
+`docker-compose.yml` shares between them. Each can also be read from a file through a `_FILE` variant, for Docker
+secrets: `MINTRACK__SECURITY__SECRET_KEY_FILE: /run/secrets/mintrack_secret_key`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MINTRACK__PROJECT__PUBLIC_URL` | `http://localhost:8000` | The address MinTrack is opened at, the root of an origin (no path). |
+| `MINTRACK__SECURITY__SECRET_KEY` | required | At least 32 characters. Changing it makes the stored Jellyfin tokens unreadable (link the accounts again) and each device register for notifications again. |
+| `MINTRACK__TMDB__API_KEY` | none | Without it, search and new pages are unavailable. |
+| `MINTRACK__TMDB__LANGUAGE` | `en` | Language of titles and overviews, such as `fr` or `pt-BR`; after a change, titles in a library are fetched again within the hour, the others when next opened. |
+| `MINTRACK__ACCOUNTS__SETUP` | `true` | While no account exists, the login page offers to create the admin account. |
+| `MINTRACK__SERVER__FORWARDED_ALLOW_IPS` | none | The reverse proxy's exact address, allowed to set `X-Forwarded-For` and `X-Forwarded-Proto`. |
+| `MINTRACK__DATABASE__HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_NAME` | port `5432` | The PostgreSQL database. |
+| `MINTRACK__DATABASE__SSLMODE` | none | `disable`, `allow`, `prefer`, `require`, `verify-ca` or `verify-full`, for an external PostgreSQL. |
+| `MINTRACK__SERVER__RUN_WORKER` | `true` | The server runs the background jobs itself; `false` when `mintrack worker` runs as its own service. |
+| `MINTRACK__LOGGING__FORMAT` | `console` | `console` or `json`. |
+| `MINTRACK__LOGGING__LEVEL` | `info` | `debug`, `info`, `warning`, `error` or `critical`. |
+| `MINTRACK__LOGGING__SENTRY_DSN` | none | Error reporting, off unless set; no personal data is sent. |
+| `MINTRACK__LOGGING__SENTRY_TRACES_SAMPLE_RATE` | `0.0` | Share of requests traced for performance. |
 
 ### Behind a reverse proxy
 
 HTTPS is needed to install MinTrack on a phone and for push notifications. Put any reverse proxy (Caddy,
 nginx, Traefik...) in front, serving MinTrack at the root of its own domain, such as `https://mintrack.example.com`
-(not under a path). Set HSTS on the proxy. Then, in `.env`:
+(not under a path). Set HSTS on the proxy. Then, in `docker-compose.yml`:
 
-- `MINTRACK__PROJECT__PUBLIC_URL=https://mintrack.example.com`
-- `MINTRACK__SERVER__FORWARDED_ALLOW_IPS` to the proxy's exact address, so MinTrack sees the real client address:
-  `172.30.0.1` for a proxy on the same host; for a proxy container, give it a fixed address on the `mintrack` network
-  and trust that.
-  Never a whole shared subnet: any container on it could pretend to be any client.
-- `MINTRACK_BIND=127.0.0.1` when the proxy runs on the same host, so port 8000 is not reachable from outside. Trust
-  the proxy address only together with this setting: otherwise clients reaching port 8000 directly can come from
-  that same address and forge their own.
+- `MINTRACK__PROJECT__PUBLIC_URL: https://mintrack.example.com`.
+- `MINTRACK__SERVER__FORWARDED_ALLOW_IPS` to the address the proxy connects from, so MinTrack sees the real client
+  address. A proxy on the same host connects from the network's gateway, `172.30.0.1`. A proxy container joins the
+  project's network (`mintrack_default`) with a fixed address, and that address is the one to trust. Never a whole
+  shared subnet: any container on it could pretend to be any client.
+- With the proxy on the same host, publish the port as `127.0.0.1:8000:8000`, so port 8000 is not reachable from
+  outside. Trust the proxy address only together with this setting: otherwise clients reaching port 8000 directly can
+  come from that same address and forge their own.
 
-Ports Docker publishes bypass host firewalls such as ufw: with the default bind address, port 8000 is open to every
-network the machine is on.
+Ports Docker publishes bypass host firewalls such as ufw: with `0.0.0.0`, port 8000 is open to every network the
+machine is on.
 
-The `mintrack` network uses `172.30.0.0/24`. When that range is already taken on the host, set another one with its
-gateway in `.env` (`MINTRACK_SUBNET=172.31.0.0/24` and `MINTRACK_GATEWAY=172.31.0.1`), and trust that gateway
-instead of `172.30.0.1`.
+The network uses `172.30.0.0/24`. When that range is already taken on the host, set another subnet and gateway at
+the end of `docker-compose.yml`, such as `172.31.0.0/24` and `172.31.0.1`, and trust that gateway instead of
+`172.30.0.1`. A second MinTrack on the same host needs, besides its own range, another project name (the `name:`
+line) and another published port.
 
 ### Install the app and turn on notifications
 
 Notifications need an `https://` `MINTRACK__PROJECT__PUBLIC_URL`; their keys come from
 `MINTRACK__SECURITY__SECRET_KEY`, so there is nothing else to configure. Each device is turned on separately, in
-**Profile > Notifications**, which also has a button to send a test notification. MinTrack notifies you when an
-episode of a show you are watching or up to date with airs: at its air time when known, otherwise at 9:00 in your
-time zone.
+**Profile › Settings › Notifications**, which also has a button to send a test notification. MinTrack notifies you
+when an episode of a show you are watching or up to date with airs: at its air time when known, otherwise at 9:00 in
+your time zone.
 
 - **Android:** open MinTrack in Chrome, then use **Install app** (or **Add to Home screen**) in Chrome's menu.
   Notifications also work in the browser tab without installing.
@@ -227,10 +258,11 @@ on it.
 
 MinTrack serves an [MCP](https://modelcontextprotocol.io) server at `/mcp` (Streamable HTTP), so an assistant can
 search shows and movies, read a show's progress, mark episodes and movies watched, set a show's status, and list
-upcoming and up-next episodes, as you.
+upcoming episodes and the watch list, as you. In the app, **Learn more** under **Profile › Settings › API tokens**
+walks through these steps with this server's address filled in.
 
-1. In MinTrack, open **Profile → API tokens**, name a token after the assistant and copy it: it is shown only once.
-   Revoke it there when you no longer use it.
+1. In MinTrack, open **Profile › Settings › API tokens**, name a token after the assistant and copy it: it is shown
+   only once. Revoke it there when you no longer use it.
 2. Give the assistant the address `https://mintrack.example.com/mcp` and the header
    `Authorization: Bearer <token>`. With Claude Code:
 
@@ -267,8 +299,8 @@ stopped worker is retried after 10 minutes. With `MINTRACK__SERVER__RUN_WORKER=t
 
 ### Imports from the command line
 
-The import card of the profile takes a Yamtrack CSV export or a TV Time GDPR export. An admin can run the same import
-for any user from the folder of `docker-compose.yml`, and see the report at once:
+The import card of **Profile › Settings** takes a Yamtrack CSV export or a TV Time GDPR export. An admin can run the
+same import for any user from the folder of `docker-compose.yml`, and see the report at once:
 
 ```bash
 docker compose run --rm -v "$PWD/export.zip:/import/export.zip:ro" server mintrack import alice tvtime /import/export.zip
@@ -278,8 +310,8 @@ The source is `yamtrack` or `tvtime`; the command prints what was imported and e
 
 ### Backups
 
-Everything MinTrack knows is in PostgreSQL. Keep `.env` with it: its secret key encrypts stored credentials. A backup,
-from the folder of `docker-compose.yml`:
+Everything MinTrack knows is in PostgreSQL. Keep `docker-compose.yml` with it: its secret key encrypts stored
+credentials. A backup, from the folder of `docker-compose.yml`:
 
 ```bash
 (umask 077; docker compose exec -T db pg_dump -U mintrack -Fc mintrack > mintrack-$(date +%F).dump)
@@ -300,9 +332,10 @@ A fresh database, rather than `pg_restore --clean` over the current one, leaves 
 
 ### Upgrades and rollback
 
-`MINTRACK_VERSION` in `.env` picks the image: `latest` (the default) follows every release, `1.4` follows the patch
-releases of 1.4, and `1.4.2` stays on that release. Releases are listed on the
-[packages page](https://github.com/aberrier/mintrack/pkgs/container/mintrack). To upgrade, take a backup, then:
+The image line of `docker-compose.yml` picks the version: `ghcr.io/aberrier/mintrack:latest` follows every release,
+`ghcr.io/aberrier/mintrack:1.4` the patch releases of 1.4, and `ghcr.io/aberrier/mintrack:1.4.2` stays on that
+release. Releases are listed on the [packages page](https://github.com/aberrier/mintrack/pkgs/container/mintrack);
+**Profile › Settings** shows the version running. To upgrade, take a backup, then:
 
 ```bash
 docker compose pull
@@ -313,7 +346,7 @@ docker compose up -d
 and an older version refuses to start on a database a newer one migrated. To roll back:
 
 1. Stop MinTrack: `docker compose stop server worker`.
-2. Pin the version you came from, such as `MINTRACK_VERSION=1.4.2` in `.env`.
+2. Pin the version you came from in the image line, such as `ghcr.io/aberrier/mintrack:1.4.2`.
 3. Restore the backup taken before the upgrade into a fresh database, as in [Backups](#backups), which ends with
    `docker compose up -d`.
 
@@ -337,8 +370,13 @@ Keep the old volume until MinTrack works on the new one; `docker volume rm mintr
 ## Releases
 
 1. On a clean, up-to-date `master`, run `just release 1.4.2`: it sets the version, commits it and tags `v1.4.2`.
-2. Push as it prints: `git push --atomic origin master v1.4.2`.
+   A release candidate, `just release 1.4.2-rc.1`, can be cut from any branch: it publishes only the image
+   `1.4.2-rc.1`, with a GitHub pre-release.
+2. Push as it prints: `git push --atomic origin master v1.4.2`. Push tags one at a time: GitHub starts no workflow
+   for a push of more than three tags.
 3. The Release workflow checks the tag against the version, publishes the image and creates the GitHub release.
+4. After the very first publish only: in the package's settings on GitHub, change its visibility to Public (anonymous
+   `docker pull` fails otherwise) and connect it to this repository.
 
 ## Stack
 

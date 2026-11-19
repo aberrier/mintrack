@@ -1,15 +1,27 @@
 name: mintrack
 
+# Edit the four values marked EDIT, then `docker compose up -d`. Keep this file private (chmod 600): it holds the
+# secrets. Every other setting and its default is in the README, under Configuration.
+
+x-database-password: &database-password change-me # EDIT: the output of `openssl rand -hex 32`, before the first start
+
 # Settings shared by the MinTrack services, which run the same image.
 x-mintrack: &mintrack
-  # A release (1.4.2), a release line (1.4) or latest, set by MINTRACK_VERSION in .env.
-  image: ghcr.io/aberrier/mintrack:${MINTRACK_VERSION:-latest}
+  # latest follows every release; a release line (1.4) or a release (1.4.2) pins it.
+  image: ghcr.io/aberrier/mintrack:latest
   restart: unless-stopped
-  env_file: .env
   environment: &mintrack-environment
+    # EDIT: the address you open MinTrack at, the root of an origin. Installing the app and push need https://.
+    MINTRACK__PROJECT__PUBLIC_URL: http://localhost:8000
+    # EDIT: the output of `openssl rand -hex 32`. Back it up: it encrypts the stored Jellyfin tokens.
+    MINTRACK__SECURITY__SECRET_KEY: change-me-to-the-output-of-openssl-rand-hex-32
+    # EDIT: your TMDB API key (free, https://www.themoviedb.org/settings/api). Empty: no search and no new pages.
+    MINTRACK__TMDB__API_KEY: ""
+    # Behind a reverse proxy on this host: the gateway of the network below, from which the proxy connects.
+    # MINTRACK__SERVER__FORWARDED_ALLOW_IPS: 172.30.0.1
     MINTRACK__DATABASE__HOST: db
     MINTRACK__DATABASE__USER: mintrack
-    MINTRACK__DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+    MINTRACK__DATABASE__PASSWORD: *database-password
     MINTRACK__DATABASE__NAME: mintrack
   read_only: true
   tmpfs: [/tmp]
@@ -24,7 +36,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: mintrack
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_PASSWORD: *database-password
       POSTGRES_DB: mintrack
     volumes:
       - db:/var/lib/postgresql
@@ -54,7 +66,8 @@ services:
       <<: *mintrack-environment
       MINTRACK__SERVER__RUN_WORKER: "false"
     ports:
-      - "${MINTRACK_BIND:-0.0.0.0}:8000:8000"
+      # Behind a reverse proxy on this host: "127.0.0.1:8000:8000", so only the proxy reaches it.
+      - "0.0.0.0:8000:8000"
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -71,12 +84,12 @@ services:
 
 networks:
   default:
-    name: mintrack
-    # A proxy on the host reaches MinTrack from the gateway address. Change both when the range is taken on the host.
+    # A proxy on the host reaches MinTrack from the gateway address. Change both when the range is taken on the host,
+    # as by a second MinTrack.
     ipam:
       config:
-        - subnet: ${MINTRACK_SUBNET:-172.30.0.0/24}
-          gateway: ${MINTRACK_GATEWAY:-172.30.0.1}
+        - subnet: 172.30.0.0/24
+          gateway: 172.30.0.1
 
 volumes:
   db:

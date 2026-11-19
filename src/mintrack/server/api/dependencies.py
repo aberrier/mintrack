@@ -82,7 +82,7 @@ async def get_current_session(
     if found is None:
         raise _unauthenticated()
     user_session, user = found
-    if AccountManager.touch_session(user_session, now=utc_now()):
+    if AccountManager.touch_session(user_session, user, now=utc_now()):
         await db.commit()
         set_session_cookies(response, token, request.cookies.get(XSRF_COOKIE))
     return CurrentSession(user=user, session_id=user_session.id)

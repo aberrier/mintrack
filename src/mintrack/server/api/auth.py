@@ -5,7 +5,6 @@ import uuid
 import fastapi
 import pydantic
 
-from mintrack.config import get_config
 from mintrack.core.accounts.devices import device_label
 from mintrack.core.accounts.managers import (
     USERNAME_PATTERN,
@@ -15,6 +14,7 @@ from mintrack.core.accounts.managers import (
     SetupClosedError,
     available_timezones,
     database_timezone,
+    timezone_choices,
 )
 from mintrack.core.accounts.passwords import PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH
 from mintrack.db.dependencies import DbSessionDepType
@@ -49,6 +49,8 @@ def _check_timezone(value: str) -> str:
 
 
 Timezone = typing.Annotated[str, pydantic.AfterValidator(_check_timezone)]
+# The zone a browser reports: one the server does not know is ignored rather than refused.
+BrowserTimezone = typing.Annotated[str, pydantic.Field(max_length=64, pattern=WITHOUT_NUL)]
 NewPassword = typing.Annotated[str, pydantic.Field(min_length=PASSWORD_MIN_LENGTH, max_length=PASSWORD_MAX_LENGTH)]
 AnyPassword = typing.Annotated[str, pydantic.Field(max_length=PASSWORD_MAX_LENGTH)]
 Token = typing.Annotated[str, pydantic.Field(max_length=128)]
@@ -75,7 +77,7 @@ class SetupResponse(pydantic.BaseModel):
 class SetupRequest(pydantic.BaseModel):
     username: typing.Annotated[str, pydantic.Field(pattern=USERNAME_PATTERN)]
     password: NewPassword
-    timezone: Timezone | None = None
+    timezone: BrowserTimezone | None = None
 
 
 class PasswordLinkRequest(pydantic.BaseModel):
@@ -89,11 +91,17 @@ class PasswordLinkResponse(pydantic.BaseModel):
 class UseLinkRequest(pydantic.BaseModel):
     token: Token
     password: NewPassword
-    timezone: Timezone | None = None
+    timezone: BrowserTimezone | None = None
 
 
 class UpdateMeRequest(pydantic.BaseModel):
     timezone: Timezone
+
+
+class TimezoneResponse(pydantic.BaseModel):
+    name: str
+    # Older names of the same zone (Asia/Calcutta for Asia/Kolkata), which some browsers still use.
+    aliases: list[str]
 
 
 class SessionResponse(pydantic.BaseModel):
@@ -145,7 +153,7 @@ async def login(
 @public_router.get("/setup")
 async def setup_state(db: DbSessionDepType) -> SetupResponse:
     """Whether the first admin can still be created from the browser."""
-    return SetupResponse(open=get_config().accounts.setup and await AccountManager(db).setup_is_open())
+    return SetupResponse(open=await AccountManager(db).setup_is_open())
 
 
 @public_router.post(
@@ -160,17 +168,10 @@ async def set_up(
     body: SetupRequest, request: fastapi.Request, response: fastapi.Response, db: DbSessionDepType
 ) -> UserResponse:
     """Create the first admin, signed in at once; refused as soon as any user exists."""
-    if not get_config().accounts.setup:
-        raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, SETUP_CLOSED)
-    # A browser's zone PostgreSQL does not know is ignored: the default stays.
-    timezone = await database_timezone(db, body.timezone) if body.timezone else None
+    manager, now = AccountManager(db), utc_now()
     try:
-        user, token = await AccountManager(db).create_first_admin(
-            body.username,
-            body.password,
-            address=_client_address(request),
-            now=utc_now(),
-            user_agent=request.headers.get("user-agent"),
+        user = await manager.create_first_admin(
+            body.username, body.password, address=_client_address(request), now=now, timezone=body.timezone
         )
     except LoginRateLimitedError:
         raise fastapi.HTTPException(fastapi.status.HTTP_429_TOO_MANY_REQUESTS, RATE_LIMITED) from None
@@ -178,8 +179,7 @@ async def set_up(
         # The failure is recorded for the rate limit.
         await db.commit()
         raise fastapi.HTTPException(fastapi.status.HTTP_409_CONFLICT, SETUP_CLOSED) from None
-    if timezone is not None:
-        user.timezone = timezone
+    token = await manager.create_session(user, now=now, user_agent=request.headers.get("user-agent"))
     await db.commit()
     set_session_cookies(response, token)
     return UserResponse.model_validate(user)
@@ -217,6 +217,12 @@ async def me(user: CurrentUserDepType, request: fastapi.Request, response: fasta
     if XSRF_COOKIE not in request.cookies:
         set_xsrf_cookie(response)
     return UserResponse.model_validate(user)
+
+
+@router.get("/timezones")
+async def timezones() -> list[TimezoneResponse]:
+    """The time zones a user can choose, UTC first."""
+    return [TimezoneResponse(name=name, aliases=aliases) for name, aliases in timezone_choices().items()]
 
 
 @router.patch("/me", responses={fastapi.status.HTTP_422_UNPROCESSABLE_CONTENT: {"description": "Unknown time zone"}})

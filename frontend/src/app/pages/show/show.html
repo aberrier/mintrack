@@ -63,14 +63,17 @@
     @if ($next(); as next) {
       <section aria-labelledby="watch-next" class="flex flex-col">
         <h2 id="watch-next" class="section-label">{{ translate('app.show.watchNext') }}</h2>
-        <app-episode-card
-          class="enter mx-4"
-          [episode]="next.card"
-          [showTitle]="false"
-          [checkable]="true"
-          [watched]="isWatched(show, next.episode)"
-          (check)="mark(show, [next.episode], true)"
-          data-testid="watch-next" />
+        <!-- One card per episode: once checked, the next episode rises in as a new card. -->
+        @for (card of [next]; track card.episode.id) {
+          <app-episode-card
+            class="enter mx-4"
+            [episode]="card.card"
+            [showTitle]="false"
+            [checkable]="true"
+            [watched]="isWatched(show, card.episode)"
+            (check)="checkNext(show)"
+            data-testid="watch-next" />
+        }
       </section>
     }
     <section aria-labelledby="all-episodes" class="flex flex-col">

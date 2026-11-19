@@ -225,11 +225,39 @@ describe('TrackingStore', () => {
   it('marks a title added from the results at once, and unmarks it when the server refuses', async () => {
     const added = store.addFromResults('movie', 9);
 
-    expect(store.added()['movie:9']).toBe(true);
+    expect(store.added()['movie:9']).toBe('saving');
     http.expectOne('/api/movies/9').flush('down', { status: 500, statusText: 'Server Error' });
 
     expect(await added).toBe(false);
-    expect(store.added()['movie:9']).toBe(false);
+    expect(store.added()['movie:9']).toBeUndefined();
+  });
+
+  it('says when a show added from the results is saved', async () => {
+    const shows: number[] = [];
+    store.showAdded$.subscribe((tmdbId) => shows.push(tmdbId));
+    const added = store.addFromResults('tv', 7);
+
+    http.expectOne('/api/shows/7').flush(SHOW);
+    expect(store.added()['tv:7']).toBe('saving');
+    expect(shows).toEqual([]);
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'not_started', watched: {} });
+
+    expect(await added).toBe(true);
+    expect(store.added()['tv:7']).toBe('saved');
+    expect(shows).toEqual([7]);
+  });
+
+  it('no longer shows a title as added once it is removed from the library', async () => {
+    const added = store.addFromResults('tv', 7);
+    http.expectOne('/api/shows/7').flush(SHOW);
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'not_started', watched: {} });
+    await added;
+
+    const removed = store.untrackShow(7);
+
+    expect(store.added()['tv:7']).toBeUndefined();
+    http.expectOne('/api/shows/7/tracking').flush(null);
+    expect(await removed).toBe(true);
   });
 
   it('keeps each library view apart, by type, sort and progress', () => {

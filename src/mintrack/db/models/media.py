@@ -49,6 +49,8 @@ class Media(DatabaseModel):
     tvdb_id: Mapped[int | None]
     tvmaze_id: Mapped[int | None]
     refreshed_at: Mapped[dt.datetime]
+    # The TMDB language of its texts (MINTRACK__TMDB__LANGUAGE then); None when unknown. Another one makes it stale.
+    language: Mapped[str | None]
 
 
 class Season(DatabaseModel):

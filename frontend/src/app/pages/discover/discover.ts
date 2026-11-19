@@ -112,6 +112,11 @@ export default class Discover {
     return result.tracking_status !== null || !!this.store.added()[resultKey(result.media_type, result.tmdb_id)];
   }
 
+  /** The add was tapped and the server has not answered yet. */
+  protected saving(result: Model.Http.SearchResult): boolean {
+    return this.store.added()[resultKey(result.media_type, result.tmdb_id)] === 'saving';
+  }
+
   protected detail(result: Model.Http.SearchResult): string | null {
     const status = result.tracking_status;
     return [result.year, status && this.statusLabel(status)].filter(Boolean).join(' · ') || null;

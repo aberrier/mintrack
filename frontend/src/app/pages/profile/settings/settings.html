@@ -12,17 +12,19 @@
       <mat-form-field appearance="outline" subscriptSizing="dynamic">
         <mat-label>{{ translate('app.profile.timezone.label') }}</mat-label>
         <input
+          #zoneField
           matInput
           [formControl]="timezone"
           [matAutocomplete]="zones"
           (input)="$timezoneQuery.set(timezone.value)"
           (keydown.enter)="commitTypedTimezone()"
+          (blur)="timezoneBlurred()"
           autocomplete="off" />
         <mat-autocomplete
           #zones
           [displayWith]="zoneLabel"
           (optionSelected)="saveTimezone($event.option.value)"
-          (closed)="resetTimezone()">
+          (closed)="timezonePanelClosed(zoneField)">
           @for (option of $timezones(); track option.zone) {
             <mat-option [value]="option.zone">{{ option.label }}</mat-option>
           }
@@ -81,4 +83,10 @@
       </div>
     </div>
   </section>
+
+  @if (about.value(); as server) {
+    <p class="px-4 text-on-surface-variant [font:var(--mat-sys-body-medium)] tabular-nums" data-testid="version">
+      {{ translate('app.profile.version', { version: server.version }) }}
+    </p>
+  }
 </section>
