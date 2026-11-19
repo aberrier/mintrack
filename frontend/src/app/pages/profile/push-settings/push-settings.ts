@@ -1,31 +1,38 @@
 import { ChangeDetectionStrategy, Component, computed, inject } from '@angular/core';
 import { MatButton } from '@angular/material/button';
 import { MatSlideToggle, MatSlideToggleChange } from '@angular/material/slide-toggle';
+import { RouterLink } from '@angular/router';
+import { appRoutes } from '../../../app.paths';
 import { injectTranslator, TranslationPath } from '../../../core/i18n';
 import { PushState, PushStore } from '../../../core/push/push.store';
 
-const HINTS: Partial<Record<PushState, TranslationPath<'app'>>> = {
-  install: 'app.push.hints.install',
-  unsupported: 'app.push.hints.unsupported',
-  unconfigured: 'app.push.hints.unconfigured',
-  blocked: 'app.push.hints.blocked',
+/** One short line per state, read with the switch; while loading, the line of a switch that is off. */
+const STATUS: Record<PushState, TranslationPath<'app'>> = {
+  loading: 'app.push.status.off',
+  off: 'app.push.status.off',
+  on: 'app.push.status.on',
+  install: 'app.push.status.install',
+  unsupported: 'app.push.status.unsupported',
+  unconfigured: 'app.push.status.unconfigured',
+  blocked: 'app.push.status.blocked',
 };
 
-/** The notifications switch for this device, its test button and, read with the switch, why it may be unavailable. */
+/** The notifications switch for this device with its state, its test button and the link to the guide. */
 @Component({
   selector: 'app-push-settings',
-  imports: [MatSlideToggle, MatButton],
+  imports: [MatSlideToggle, MatButton, RouterLink],
   templateUrl: './push-settings.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PushSettings {
   protected readonly translate = injectTranslator('app');
+  protected readonly appRoutes = appRoutes;
   protected readonly store = inject(PushStore);
 
   protected readonly $canToggle = computed(
     () => !this.store.$busy() && (this.store.$state() === 'on' || this.store.$state() === 'off'),
   );
-  protected readonly $hint = computed(() => HINTS[this.store.$state()] ?? null);
+  protected readonly $status = computed(() => STATUS[this.store.$state()]);
 
   protected async toggle(event: MatSlideToggleChange): Promise<void> {
     await (event.checked ? this.store.enable() : this.store.disable());

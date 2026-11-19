@@ -6,6 +6,7 @@ import {
   collectionSearch,
   libraryOfThree,
   mcpHelp,
+  notificationsGuide,
   openAndGoBack,
   profile,
   reload,
@@ -60,6 +61,19 @@ test('Learn more explains how to connect an assistant to this server', async ({ 
   expect(shown.command).toBe(
     `claude mcp add --transport http mintrack ${shown.url} --header "Authorization: Bearer YOUR_TOKEN"`,
   );
+});
+
+test('the notifications guide shows the steps for this phone first, then the other', async ({
+  viewer,
+  browserName,
+}) => {
+  const sections = await notificationsGuide(viewer);
+
+  const android = 'Android (Chrome)';
+  const iphone = 'iPhone (iOS 16.4 or later)';
+  // Chromium runs as an Android phone or a desktop, WebKit as an iPhone.
+  const phones = browserName === 'webkit' ? [iphone, android] : [android, iphone];
+  expect(sections).toEqual([...phones, 'Check it', 'Requirements']);
 });
 
 test('See all opens a grid sorted and filtered by progress, both kept in the address', async ({ viewer }) => {

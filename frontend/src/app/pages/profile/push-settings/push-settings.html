@@ -1,18 +1,22 @@
 <div class="flex flex-col gap-2" data-testid="push-settings">
-  @let hint = $hint();
-  <mat-slide-toggle
-    class="min-h-12"
-    [checked]="store.$state() === 'on'"
-    [disabled]="!$canToggle()"
-    [aria-describedby]="hint ? 'push-hint' : ''"
-    (change)="toggle($event)">
-    {{ translate('app.push.toggle') }}
-  </mat-slide-toggle>
-  @if (hint) {
-    <p id="push-hint" class="text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="push-hint">
-      {{ translate(hint) }}
-    </p>
-  } @else if (store.$state() === 'on') {
+  <div class="flex min-h-12 items-center gap-4">
+    <div class="flex min-w-0 grow flex-col">
+      <span id="push-label" class="[font:var(--mat-sys-title-medium)]">{{ translate('app.push.toggle') }}</span>
+      <span
+        id="push-status"
+        class="text-on-surface-variant [font:var(--mat-sys-body-medium)]"
+        data-testid="push-status">
+        {{ translate($status()) }}
+      </span>
+    </div>
+    <mat-slide-toggle
+      aria-labelledby="push-label"
+      aria-describedby="push-status"
+      [checked]="store.$state() === 'on'"
+      [disabled]="!$canToggle()"
+      (change)="toggle($event)" />
+  </div>
+  @if (store.$state() === 'on') {
     <button
       matButton="outlined"
       type="button"
@@ -22,4 +26,7 @@
       {{ translate('app.push.test.button') }}
     </button>
   }
+  <a matButton class="-ms-3 min-h-12 self-start" [routerLink]="appRoutes.pushHelp()">
+    {{ translate('app.push.howTo') }}
+  </a>
 </div>

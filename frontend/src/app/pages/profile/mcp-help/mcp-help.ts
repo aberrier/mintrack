@@ -32,29 +32,7 @@ const TOOLS: { name: string; description: TranslationPath<'app'> }[] = [
   selector: 'app-mcp-help',
   imports: [BackButton, MatButton, RouterLink, LoadError],
   templateUrl: './mcp-help.html',
-  styles: `
-    h2 {
-      font: var(--mat-sys-title-medium);
-    }
-    p {
-      color: var(--mat-sys-on-surface-variant);
-      font: var(--mat-sys-body-large);
-    }
-    /* Code wraps rather than scrolls, so a phone shows all of it. */
-    pre {
-      padding: 12px;
-      white-space: pre-wrap;
-      overflow-wrap: anywhere;
-      border-radius: var(--mat-sys-corner-small);
-      background: var(--mat-sys-surface-container-high);
-      font:
-        400 14px / 20px ui-monospace,
-        monospace;
-    }
-    code {
-      font-family: ui-monospace, monospace;
-    }
-  `,
+  styleUrl: '../help-page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export default class McpHelp {

@@ -425,6 +425,18 @@ export class AppDriver {
     await expect(this.heading()).toHaveText('Connect an AI assistant');
   }
 
+  /** The notifications guide, from its link in the Notifications settings. */
+  async openPushHelp(): Promise<void> {
+    await this.openSettings();
+    await this.page.getByTestId('push-settings').getByRole('link', { name: 'How to get notifications' }).click();
+    await expect(this.heading()).toHaveText('Get notifications');
+  }
+
+  /** The notifications guide's sections, in order: Android's and iPhone's, then the others. */
+  async pushHelpSections(): Promise<string[]> {
+    return (await this.page.getByRole('heading', { level: 2 }).allInnerTexts()).map((text) => text.trim());
+  }
+
   /** A code sample of the MCP help page: the server address, the JSON configuration or the Claude Code command. */
   async mcpSample(sample: 'url' | 'json' | 'command'): Promise<string> {
     return (await this.page.getByTestId(`mcp-${sample}`).innerText()).trim();

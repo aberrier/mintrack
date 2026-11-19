@@ -10,6 +10,7 @@ export const appRoutes = {
   collection: (rp = '/') => `${rp}profile/collection`,
   settings: (rp = '/') => `${rp}profile/settings`,
   mcpHelp: (rp = '/') => `${rp}profile/settings/mcp`,
+  pushHelp: (rp = '/') => `${rp}profile/settings/notifications`,
   admin: (rp = '/') => `${rp}admin`,
   show: (tmdbId: number | string, rp = '/') => `${rp}shows/${tmdbId}`,
   movie: (tmdbId: number | string, rp = '/') => `${rp}movies/${tmdbId}`,

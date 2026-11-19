@@ -50,8 +50,8 @@ test('the settings explain that this server does not send notifications over pla
   await new Navigation(page).openSettings();
 
   const settings = page.getByTestId('push-settings');
-  await expect(settings.getByRole('switch', { name: 'Notify me on this device when an episode airs' })).toBeDisabled();
-  await expect(settings.getByTestId('push-hint')).toHaveText('Notifications are not set up on this server.');
+  await expect(settings.getByRole('switch', { name: 'Notify me on this device' })).toBeDisabled();
+  await expect(settings.getByTestId('push-status')).toHaveText('This server needs an https address.');
 });
 
 test.describe('in a Safari tab on iPhone', () => {
@@ -68,9 +68,7 @@ test.describe('in a Safari tab on iPhone', () => {
     await new Navigation(page).openSettings();
 
     const settings = page.getByTestId('push-settings');
-    await expect(
-      settings.getByRole('switch', { name: 'Notify me on this device when an episode airs' }),
-    ).toBeDisabled();
-    await expect(settings.getByTestId('push-hint')).toContainText('add MinTrack to the Home Screen');
+    await expect(settings.getByRole('switch', { name: 'Notify me on this device' })).toBeDisabled();
+    await expect(settings.getByTestId('push-status')).toHaveText('Add MinTrack to the Home Screen first.');
   });
 });
