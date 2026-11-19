@@ -181,8 +181,9 @@ async def logout(current: CurrentSessionDepType, response: fastapi.Response, db:
 
 @router.get("/sessions")
 async def sessions(current: CurrentSessionDepType, db: DbSessionDepType) -> list[SessionResponse]:
-    """The devices signed in to the user's account, the most recently active first."""
+    """The devices signed in to the user's account: this one, then the most recently active first."""
     found = await AccountManager(db).list_sessions(current.user.id, now=utc_now())
+    found.sort(key=lambda user_session: user_session.id != current.session_id)
     return [
         SessionResponse(
             id=user_session.id,
