@@ -151,6 +151,23 @@ test.describe('Watch list', () => {
     await expect.poll(() => nextEpisodeOf(viewer, show)).toBe('S01|E03+2');
   });
 
+  test('a check says which episode was watched, and Undo brings its card back', async ({ viewer }) => {
+    // Given a show watched up to its first episode
+    const show = await showWatchedUpTo(viewer, 'Second Guess', 1, 1);
+    await openWatchList(viewer);
+
+    // When they check its card, then use Undo
+    await check(viewer, show);
+    await expect.poll(() => nextEpisodeOf(viewer, show)).toBe('S01|E03+2');
+    const message = await undo(viewer);
+
+    // Then the card offers the second episode again, also once loaded again
+    expect(message).toContain('S01E02 watched');
+    await expect.poll(() => nextEpisodeOf(viewer, show)).toBe('S01|E02+3');
+    await reopenWatchList(viewer);
+    await expect.poll(() => nextEpisodeOf(viewer, show)).toBe('S01|E02+3');
+  });
+
   test('a show up to date leaves the list once its last aired episode is checked', async ({ viewer }) => {
     const show = await showWatchedUpTo(viewer, 'Caught Up', 2, 1);
     await openWatchList(viewer);

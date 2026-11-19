@@ -6,11 +6,13 @@ import { MatAutocomplete, MatAutocompleteTrigger, MatOption } from '@angular/mat
 import { MatButton } from '@angular/material/button';
 import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
+import { MatSlideToggle } from '@angular/material/slide-toggle';
 import { firstValueFrom } from 'rxjs';
 import { appRoutes } from '../../../app.paths';
 import { ApiService } from '../../../core/api/api.service';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { zoneWithOffset } from '../../../core/dates';
+import { Haptics } from '../../../core/haptics';
 import { injectTranslator } from '../../../core/i18n';
 import { injectNotify } from '../../../core/notify';
 import { PushStore } from '../../../core/push/push.store';
@@ -37,8 +39,8 @@ function zoneLabel(zone: string): string {
 }
 
 /**
- * The user's settings in groups: account, notifications, integrations, import history, then the devices signed in,
- * with logging out.
+ * The user's settings in groups: account, notifications, vibration where the device can vibrate, integrations, import
+ * history, then the devices signed in, with logging out.
  */
 @Component({
   selector: 'app-settings',
@@ -59,6 +61,7 @@ function zoneLabel(zone: string): string {
     ImportCard,
     ApiTokens,
     Devices,
+    MatSlideToggle,
   ],
   templateUrl: './settings.html',
   styles: `
@@ -83,6 +86,7 @@ export default class Settings {
   private readonly api = inject(ApiService);
   private readonly store = inject(AuthStore);
   private readonly push = inject(PushStore);
+  protected readonly haptics = inject(Haptics);
   private readonly notify = injectNotify();
   private readonly forms = inject(NonNullableFormBuilder);
 

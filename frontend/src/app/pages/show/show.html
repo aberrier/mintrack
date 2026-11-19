@@ -60,19 +60,23 @@
       </dl>
     </section>
   } @else {
-    @if ($next(); as next) {
+    @if ($next() || $nextPending()) {
       <section aria-labelledby="watch-next" class="flex flex-col">
         <h2 id="watch-next" class="section-label">{{ translate('app.show.watchNext') }}</h2>
-        <!-- One card per episode: once checked, the next episode rises in as a new card. -->
-        @for (card of [next]; track card.episode.id) {
-          <app-episode-card
-            class="enter mx-4"
-            [episode]="card.card"
-            [showTitle]="false"
-            [checkable]="true"
-            [watched]="isWatched(show, card.episode)"
-            (check)="checkNext(show)"
-            data-testid="watch-next" />
+        @if ($next(); as next) {
+          <!-- One card per episode: once checked, the next episode rises in as a new card. -->
+          @for (card of [next]; track card.episode.id) {
+            <app-episode-card
+              class="enter mx-4"
+              [episode]="card.card"
+              [showTitle]="false"
+              [checkable]="true"
+              [watched]="isWatched(show, card.episode)"
+              (check)="checkNext(show)"
+              data-testid="watch-next" />
+          }
+        } @else {
+          <app-skeleton kind="cards" [count]="1" data-testid="watch-next-pending" />
         }
       </section>
     }

@@ -20,7 +20,7 @@ import { LoadError } from '../../shared/load-error';
     <div class="row">
       <button
         type="button"
-        class="toggle"
+        class="toggle state-layer"
         [attr.aria-expanded]="expanded()"
         [attr.aria-controls]="listId()"
         (click)="toggle.emit()">

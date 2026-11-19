@@ -20,7 +20,7 @@ import { TrackingStore } from '../../core/tracking/tracking.store';
 import { CHECKED_PAUSE_MS } from '../../core/tracking/watch-list.store';
 import { BackButton } from '../../shared/back-button';
 import { injectConfirm } from '../../shared/confirm-dialog';
-import { CardEpisode, EpisodeCard, showEpisodeCard } from '../../shared/episode-card/episode-card';
+import { CardEpisode, EpisodeCard, episodeCode, showEpisodeCard } from '../../shared/episode-card/episode-card';
 import { LoadError } from '../../shared/load-error';
 import { MediaHeader } from '../../shared/media-header';
 import { loadMediaPage } from '../../shared/media-page';
@@ -29,6 +29,9 @@ import { injectStatusLabel } from '../../shared/status';
 import { SeasonRow } from './season-row';
 
 type ShowTab = 'episodes' | 'about';
+
+/** Statuses whose show page offers no episode to watch next. */
+const NO_NEXT_EPISODE: readonly Model.Http.TrackingStatus[] = ['stopped', 'watch_later', 'finished'];
 
 /**
  * A show: its header, then About (the overview and facts) or Episodes, where the next episode, each season and each
@@ -94,6 +97,15 @@ export default class Show {
     const show = this.$show();
     const next = show?.next_episode;
     return next ? { episode: next, card: showEpisodeCard(show, next, next.remaining) } : null;
+  });
+
+  /**
+   * A show in progress without a Watch next card while a write to it is on its way: the card's place is kept from the
+   * tap, so the seasons do not move down when the server's next episode arrives.
+   */
+  protected readonly $nextPending = computed(() => {
+    const status = this.$show()?.tracking?.status;
+    return !!status && !!this.store.saving()[this.tmdbId()] && !NO_NEXT_EPISODE.includes(status);
   });
 
   /** Open or close a season; its episodes load the first time it opens. */
@@ -188,12 +200,22 @@ export default class Show {
     void this.store.setWatched(show.tmdb_id, episodes, watched);
   }
 
-  /** Check the Watch next card: it stays checked for a moment, then the next episode rises in; taps meanwhile wait. */
+  /**
+   * Check the Watch next card: it stays checked for a moment, then the next episode rises in; taps meanwhile wait. A
+   * snackbar offers to undo it.
+   */
   protected checkNext(show: Model.Http.Show): void {
     const next = this.$next();
     if (!next || this.$checked()) return;
     this.$checked.set(next);
     this.mark(show, [next.episode], true);
     setTimeout(() => this.$checked.set(null), CHECKED_PAUSE_MS);
+    const { season_number, episode_number } = next.episode;
+    this.notify(
+      this.translate('app.watchList.checked', { episode: episodeCode(season_number, episode_number, true) }),
+      this.translate('app.watchList.undo'),
+    )
+      .onAction()
+      .subscribe(() => this.mark(show, [next.episode], false));
   }
 }

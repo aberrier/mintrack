@@ -183,6 +183,40 @@ describe('Show', () => {
     expect(code(page)).toBe('S02|E01');
   });
 
+  it('offers to undo a Watch next check, unmarking the episode', async () => {
+    const undo = new Subject<void>();
+    const page = await open(show(['1x1'], 'Returning Series', { ...EPISODES[1][1], remaining: 1 }));
+    snackBar.open.mockReturnValue({ onAction: () => undo, afterDismissed: () => new Subject() });
+
+    button(page, 'Mark season 1 episode 2 of Show watched')!.click();
+    expect(snackBar.open).toHaveBeenCalledWith('S01E02 watched', 'Undo', { duration: 10_000 });
+    watched(['1x2'], 'watching');
+    undo.next();
+
+    expect(sentIds(false)).toEqual(['1x2']);
+  });
+
+  it('keeps the Watch next card’s place from adding the show until the server says which episode', async () => {
+    const page = await open({ ...show([]), tracking: null });
+    const pending = () => !!page.querySelector('[data-testid="watch-next-pending"]');
+    expect(pending()).toBe(false);
+
+    button(page, 'Add to library')!.click();
+    await fixture.whenStable();
+    expect(pending()).toBe(true);
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'not_started', watched: {} });
+    await fixture.whenStable();
+    expect(pending()).toBe(true);
+    http.expectOne('/api/shows/7').flush({
+      ...show([], 'Ended', { ...EPISODES[1][0], remaining: 1 }),
+      tracking: { status: 'not_started', watched: {} },
+    });
+    await fixture.whenStable();
+
+    expect(pending()).toBe(false);
+    expect(code(page)).toBe('S01|E01+1');
+  });
+
   it('offers the earlier unwatched episodes, counting seasons not loaded, and marks them on request', async () => {
     const accept = new Subject<void>();
     const page = await open(show([], 'Returning Series'));

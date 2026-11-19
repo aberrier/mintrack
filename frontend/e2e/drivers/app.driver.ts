@@ -374,13 +374,56 @@ export class AppDriver {
     return text;
   }
 
+  /** The snackbar on screen, not the one it replaced, which leaves meanwhile. */
   snackBar(): Locator {
-    return this.page.locator('mat-snack-bar-container');
+    return this.page.locator('mat-snack-bar-container:not(.mat-snack-bar-container-exit)');
   }
 
   /** The snackbar's action, such as Undo. */
   async snackBarAction(name: string): Promise<void> {
     await this.snackBar().getByRole('button', { name }).click();
+  }
+
+  /** Whether the browser has the Vibration API, as Android's does and iOS's does not. */
+  canVibrate(): Promise<boolean> {
+    return this.page.evaluate(() => typeof navigator.vibrate === 'function');
+  }
+
+  /** Load the app again, its vibrations recorded instead of felt. */
+  async recordVibrations(): Promise<void> {
+    await this.page.addInitScript(() => {
+      if (typeof navigator.vibrate !== 'function') return;
+      const recorded: VibratePattern[] = [];
+      Object.assign(window, { recordedVibrations: recorded });
+      navigator.vibrate = (pattern) => recorded.push(pattern as VibratePattern) > 0;
+    });
+    await this.reload();
+  }
+
+  /** The vibrations since the app loaded, oldest first. */
+  vibrations(): Promise<VibratePattern[]> {
+    return this.page.evaluate(
+      () => (window as unknown as { recordedVibrations?: VibratePattern[] }).recordedVibrations ?? [],
+    );
+  }
+
+  vibrationSwitch(): Locator {
+    return this.page.getByRole('switch', { name: 'Vibrate on taps' });
+  }
+
+  /** The show page's Watch next place while the server has not said which episode it holds. */
+  watchNextPending(): Locator {
+    return this.page.getByTestId('watch-next-pending');
+  }
+
+  /** How far down the screen the show page's list of seasons starts. */
+  async seasonsTop(): Promise<number> {
+    return (await this.page.getByRole('heading', { name: 'All episodes' }).boundingBox())!.y;
+  }
+
+  /** The open show's or movie's TMDB id, from the address. */
+  mediaId(): string {
+    return new URL(this.page.url()).pathname.split('/').at(-1)!;
   }
 
   /** The Profile tab's row of shows, movies or shows to watch later. */

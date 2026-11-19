@@ -3,6 +3,7 @@ import { HttpTestingController, provideHttpClientTesting } from '@angular/common
 import { TestBed } from '@angular/core/testing';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { Confetti } from '../../shared/confetti';
+import { Haptics } from '../haptics';
 import { EpisodeRef, TrackingStore } from './tracking.store';
 
 const SHOW: Model.Http.Show = {
@@ -43,15 +44,18 @@ describe('TrackingStore', () => {
   let store: TrackingStore;
   let http: HttpTestingController;
   let snackBar: { open: ReturnType<typeof vi.fn> };
+  let haptics: { tap: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     snackBar = { open: vi.fn() };
+    haptics = { tap: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: MatSnackBar, useValue: snackBar },
         { provide: Confetti, useValue: { launch: vi.fn() } },
+        { provide: Haptics, useValue: haptics },
       ],
     });
     store = TestBed.inject(TrackingStore);
@@ -87,6 +91,30 @@ describe('TrackingStore', () => {
 
     http.expectOne('/api/shows/7/watched').flush({ status: 'up_to_date', watched: { a: '2026-01-01T00:00:00Z' } });
     expect(tracking()).toEqual({ status: 'up_to_date', watched: { a: '2026-01-01T00:00:00Z' } });
+  });
+
+  it('vibrates on adding a show and on each mark or unmark, not on putting it aside', () => {
+    void store.trackShow(7, 'watching');
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'not_started', watched: {} });
+    void store.trackShow(7, 'stopped');
+    expect(haptics.tap).toHaveBeenCalledOnce();
+
+    void store.setWatched(7, [ref('a')], true);
+    void store.setWatched(7, [ref('a')], false);
+
+    expect(haptics.tap).toHaveBeenCalledTimes(3);
+  });
+
+  it('says a show is saving from the tap until it is loaded again', async () => {
+    void store.trackShow(7, 'watching');
+    expect(store.saving()[7]).toBe(true);
+
+    http.expectOne('/api/shows/7/tracking').flush({ status: 'not_started', watched: {} });
+    await new Promise((resolve) => setTimeout(resolve));
+    expect(store.saving()[7]).toBe(true);
+    http.expectOne('/api/shows/7').flush({ ...SHOW, tracking: { status: 'not_started', watched: {} } });
+
+    expect(store.saving()[7]).toBeUndefined();
   });
 
   it('sends writes to the same show one after the other', () => {

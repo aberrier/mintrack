@@ -40,6 +40,7 @@ export default {
       failed: 'Cannot load your history.',
       start: 'The start of your watch history',
     },
+    checked: '{episode} watched',
   },
   episodeCard: {
     check: 'Mark {episode} of {show} watched',
@@ -226,5 +227,10 @@ export default {
     ready: 'A new version of MinTrack is available',
     broken: 'MinTrack needs to reload to keep working',
     reload: 'Reload',
+  },
+  haptics: {
+    title: 'Vibration',
+    toggle: 'Vibrate on taps',
+    hint: 'On this device, a short vibration when you check an episode or a season, or add a title. Never while the system reduces motion.',
   },
 };

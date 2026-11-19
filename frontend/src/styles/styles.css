@@ -221,6 +221,13 @@ body {
   transform: none;
 }
 
+/* Material's pressed state layer, in the content's colour, for tabs, full-width rows and swipe actions; drawn as an inset
+   shadow so it shows over any background. */
+.tab:active,
+.state-layer:active {
+  box-shadow: inset 0 0 0 100vmax color-mix(in srgb, currentColor 12%, transparent);
+}
+
 .tab:focus-visible {
   outline: 2px solid var(--mat-sys-primary);
   outline-offset: -4px;
