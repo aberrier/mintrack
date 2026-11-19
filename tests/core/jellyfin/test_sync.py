@@ -386,6 +386,8 @@ async def test_jellyfin_is_asked_a_series_seasons_once_and_only_to_guess_an_abso
         ([(7, (2, 2, 2)), (6, (3, 3)), (5, (1, 5))], 3, {(1399, 1, 5, DAY_1)}),
         # Jellyfin's season 2 has 4 episodes.
         ([(6, (3, 3))], 4, set()),
+        # Jellyfin's season 2 holds episodes 2 to 4: three episodes, but not the first three.
+        ([(6, (3, 3))], range(2, 5), set()),
         # Only a story arc group, which is no season split.
         ([(5, (3, 3))], 3, set()),
         # Jellyfin's split comes after the first ten groups.
@@ -400,7 +402,7 @@ async def test_a_season_tmdb_merged_into_season_1_is_matched_through_its_episode
     tmdb: TMDBClient,
     fake_tmdb: FakeTMDB,
     groups: list[tuple[int, tuple[int, ...]]],
-    season_2: int,
+    season_2: int | range,
     expected: set[tuple[int, int, int, dt.datetime]],
 ) -> None:
     fake_tmdb.single_season.add(1399)
@@ -412,6 +414,24 @@ async def test_a_season_tmdb_merged_into_season_1_is_matched_through_its_episode
     await JellyfinManager(db_session).sync(account, tmdb, NOW)
 
     assert await watched(db_session, user) == expected
+
+
+async def test_jellyfin_is_asked_a_series_episodes_once_for_its_group_votes(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient, fake_tmdb: FakeTMDB
+) -> None:
+    fake_tmdb.single_season.add(1399)
+    fake_tmdb.episode_groups[1399] = [(6, (3, 3))]
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1, 2))
+    jellyfin.play_episode(bob, show, 2, 1, DAY_1)
+    jellyfin.play_episode(bob, show, 2, 2, DAY_2)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == {(1399, 1, 4, DAY_1), (1399, 1, 5, DAY_2)}
+    assert [str(request.url) for request in jellyfin.requests if request.url.path.endswith("/Episodes")] == [
+        f"{SERVER_URL}/Shows/{show}/Episodes?userId=user-bob&isMissing=false&enableImages=false"
+    ]
 
 
 @pytest.mark.parametrize(

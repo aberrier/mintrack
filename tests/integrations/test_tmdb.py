@@ -179,3 +179,12 @@ def test_an_episode_group_gives_seasons_only_when_its_orders_number_seasons_from
     )
 
     assert group.seasons() == expected
+
+
+def test_an_episode_group_season_lists_its_episodes_by_their_order_in_the_group() -> None:
+    episodes = [
+        {"season_number": 1, "episode_number": number, "order": order} for number, order in ((6, 2), (7, 0), (5, 1))
+    ]
+    group = TMDBEpisodeGroup.model_validate({"groups": [{"order": 1, "episodes": episodes}]})
+
+    assert group.seasons() == {1: ((1, 7), (1, 5), (1, 6))}

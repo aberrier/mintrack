@@ -135,8 +135,8 @@ class FakeJellyfinSeasons:
     async def regular_count(self, series_id: str) -> int:
         return self.count
 
-    async def episode_count(self, series_id: str, season: int) -> int | None:
-        return self.sizes.get(season)
+    async def season_sizes(self, series_id: str) -> dict[int, int]:
+        return self.sizes
 
 
 def jellyfin_seasons(count: int, sizes: dict[int, int] | None = None) -> JellyfinSeasons:
@@ -267,6 +267,7 @@ async def test_an_episode_without_usable_numbers_is_matched_by_its_own_ids(
         ("Show AB12E345", JellyfinUnmatchedReason.NO_NUMBERS),
         # A code only in brackets, two codes, a multi-episode file, a year.
         ("[Group] Show (S01E02)", JellyfinUnmatchedReason.NO_NUMBERS),
+        ("[Group] Show [S01E02]", JellyfinUnmatchedReason.NO_NUMBERS),
         ("Show S01E02 S01E03", JellyfinUnmatchedReason.NO_NUMBERS),
         ("Show S01E02E03", JellyfinUnmatchedReason.NO_NUMBERS),
         ("Show 2024E01", JellyfinUnmatchedReason.NO_NUMBERS),
@@ -276,6 +277,19 @@ async def test_an_episode_without_numbers_is_matched_by_the_one_episode_code_in_
     catalog: FakeCatalog, name: str, expected: WatchEvent | JellyfinUnmatchedReason
 ) -> None:
     assert await match(episode(None, None, name=name), AT, series({"Tmdb": "1399"}), catalog) == expected
+
+
+async def test_the_episode_code_in_a_name_is_only_read_for_a_known_series(catalog: FakeCatalog) -> None:
+    gone_series = episode(None, None, name="Show S02E03")
+
+    assert await match(gone_series, AT, {}, catalog) is JellyfinUnmatchedReason.NO_NUMBERS
+
+
+async def test_a_regular_episode_matches_its_jellyfin_numbering_before_its_own_ids(catalog: FakeCatalog) -> None:
+    # Its IMDb id names TMDB's S01E01.
+    regular = episode(1, 2, {"Imdb": "tt1480055"})
+
+    assert await match(regular, AT, series({"Tmdb": "1399"}), catalog) == episode_watch(1, 2)
 
 
 @pytest.mark.parametrize(
@@ -297,23 +311,27 @@ async def test_an_episode_without_numbers_or_a_special_is_matched_by_its_own_ids
     ("groups", "sizes", "expected"),
     [
         # The one group splitting the show as Jellyfin does: S02E02 is TMDB's S01E05.
-        ([split(3, 3)], {2: 3}, WatchEvent(MediaType.TV, ANIME, AT, 1, 5)),
+        ([split(3, 3)], {1: 3, 2: 3}, WatchEvent(MediaType.TV, ANIME, AT, 1, 5)),
         # Outvoting a group that numbers the same seasons differently, while splits into cours do not vote.
         (
-            [split(3, 3), split(3, 3), {1: ((1, 1),), 2: ((1, 6), (1, 2), (1, 3))}, split(2, 2, 2)],
-            {2: 3},
+            [split(3, 3), split(3, 3), {1: split(3)[1], 2: ((1, 6), (1, 2), (1, 3))}, split(2, 2, 2)],
+            {1: 3, 2: 3},
             WatchEvent(MediaType.TV, ANIME, AT, 1, 5),
         ),
         # A single group whose season 2 is not Jellyfin's.
-        ([split(2, 4)], {2: 3}, None),
+        ([split(2, 4)], {1: 3, 2: 3}, None),
+        # A group whose season 2 has Jellyfin's size but season 1 does not.
+        ([split(2, 3)], {1: 3, 2: 3}, None),
         # Many broadcast splits, none with Jellyfin's season 2.
-        ([split(2, 2, 2), split(1, 5), split(4, 2), split(5, 1)], {2: 3}, None),
+        ([split(2, 2, 2), split(1, 5), split(4, 2), split(5, 1)], {1: 3, 2: 3}, None),
         # Two groups splitting as Jellyfin does disagree.
-        ([split(3, 3), {1: ((1, 1),), 2: ((1, 6), (1, 2), (1, 3))}], {2: 3}, None),
+        ([split(3, 3), {1: split(3)[1], 2: ((1, 6), (1, 2), (1, 3))}], {1: 3, 2: 3}, None),
         # A group naming an episode TMDB does not have.
-        ([{1: ((1, 1),), 2: ((1, 7), (1, 8), (1, 9))}], {2: 3}, None),
+        ([{1: split(3)[1], 2: ((1, 7), (1, 8), (1, 9))}], {1: 3, 2: 3}, None),
+        # Jellyfin has only the first two episodes of its season 2: still airing or downloading.
+        ([split(3, 3)], {1: 3, 2: 2}, None),
         # Jellyfin cannot tell the size of its season 2.
-        ([split(3, 3)], {}, None),
+        ([split(3, 3)], {1: 3}, None),
     ],
 )
 async def test_a_season_tmdb_merged_into_season_1_is_matched_through_the_groups_splitting_it_as_jellyfin_does(
@@ -325,6 +343,14 @@ async def test_a_season_tmdb_merged_into_season_1_is_matched_through_the_groups_
     found = await match(jellyfin_episode, AT, series({"Tmdb": str(ANIME)}), catalog, jellyfin_seasons(2, sizes))
 
     assert found == (JellyfinUnmatchedReason.EPISODE_NOT_FOUND if expected is None else expected)
+
+
+async def test_an_episode_past_the_size_of_its_jellyfin_season_gets_no_group_vote(catalog: FakeCatalog) -> None:
+    catalog.groups[ANIME] = [split(3, 3)]
+
+    found = await match(episode(2, 4), AT, series({"Tmdb": str(ANIME)}), catalog, jellyfin_seasons(2, {1: 3, 2: 3}))
+
+    assert found is JellyfinUnmatchedReason.EPISODE_NOT_FOUND
 
 
 async def test_episode_groups_are_only_read_for_a_show_tmdb_lists_in_one_season(catalog: FakeCatalog) -> None:
