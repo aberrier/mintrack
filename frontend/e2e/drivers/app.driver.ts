@@ -272,9 +272,12 @@ export class AppDriver {
     return this.page.getByRole('button', { name: 'Mark watched', exact: true });
   }
 
-  /** The show page's tabs, About and Episodes. */
+  /** Open one of the show page's tabs, About and Episodes, once its content is on screen. */
   async openShowTab(name: 'About' | 'Episodes'): Promise<void> {
-    await this.page.getByRole('navigation', { name: 'Show sections' }).getByRole('link', { name }).click();
+    const link = this.page.getByRole('navigation', { name: 'Show sections' }).getByRole('link', { name });
+    await link.click();
+    await expect(link).toHaveAttribute('aria-current', 'page');
+    await this.rendered();
   }
 
   /** The show page's text, where the About tab lists facts such as the network. */
