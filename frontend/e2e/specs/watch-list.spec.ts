@@ -29,6 +29,7 @@ import {
   toggleSection,
   toggleView,
   undo,
+  undoHeight,
   watchedShows,
   welcomeShown,
   welcomeSteps,
@@ -224,6 +225,8 @@ test.describe('Watch list', () => {
 
     // When one is put to watch later then brought back with Undo
     await takeOut(viewer, kept, 'Watch later');
+    // Its Undo is a full 48px tap target, once the snackbar has grown in.
+    await expect.poll(() => undoHeight(viewer)).toBe(48);
     expect(await undo(viewer)).toContain('Moved to Watch later');
 
     // Then it is on the list again, also once loaded again

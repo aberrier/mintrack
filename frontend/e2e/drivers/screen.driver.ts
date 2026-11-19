@@ -36,6 +36,23 @@ export class ScreenDriver {
     });
   }
 
+  /** The visible Material icon buttons not drawn 48×48px, as "name (width×height)". */
+  async misSizedIconButtons(): Promise<string[]> {
+    return this.page.evaluate(() => {
+      const misSized: string[] = [];
+      for (const button of document.querySelectorAll<HTMLElement>('.mat-mdc-icon-button')) {
+        if (button.closest('[inert], [aria-hidden="true"]')) continue;
+        const box = button.getBoundingClientRect();
+        if (box.width === 0 || box.height === 0) continue;
+        if (Math.abs(box.width - 48) > 0.5 || Math.abs(box.height - 48) > 0.5) {
+          const name = button.getAttribute('aria-label') ?? button.tagName;
+          misSized.push(`${name} (${Math.round(box.width)}×${Math.round(box.height)})`);
+        }
+      }
+      return misSized;
+    });
+  }
+
   /** The visible icons drawn off the centre of the button that holds only them by more than 1px, as "name (dx, dy)". */
   async offCentreIcons(): Promise<string[]> {
     return this.page.evaluate(() => {

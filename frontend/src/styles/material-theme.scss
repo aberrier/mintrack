@@ -30,8 +30,8 @@ html {
     )
   );
 
-  // Icon buttons draw their state layer over the whole 48px tap target; Material derives the padding that centres
-  // the icon from this size.
+  // Icon buttons are drawn 48px, the size of their tap target, instead of Material's 40px. Material centres the icon
+  // with its own padding, so a button is never resized with a size utility, which would leave the icon off centre.
   @include mat.icon-button-overrides(
     (
       state-layer-size: 48px,

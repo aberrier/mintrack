@@ -140,6 +140,10 @@ export async function smallTargets(page: Page): Promise<string[]> {
   return new ScreenDriver(page).smallTargets();
 }
 
+export async function misSizedIconButtons(page: Page): Promise<string[]> {
+  return new ScreenDriver(page).misSizedIconButtons();
+}
+
 export async function offCentreIcons(page: Page): Promise<string[]> {
   return new ScreenDriver(page).offCentreIcons();
 }
