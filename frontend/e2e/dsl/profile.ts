@@ -39,10 +39,10 @@ export async function addMovie(viewer: Viewer, title: string): Promise<void> {
   await viewer.api.addMovie(title);
 }
 
-/** What the Profile tab shows: the user's name, the titles of each row, and its settings. */
+/** What the Profile tab shows: the user's name, the titles of each row, and whether it holds settings. */
 export async function profile(
   viewer: Viewer,
-): Promise<{ name: string; shows: string[]; movies: string[]; settings: string[] }> {
+): Promise<{ name: string; shows: string[]; movies: string[]; hasSettings: boolean }> {
   await viewer.app.openTab('Profile');
   const shows = await viewer.app.profileTitles('Shows');
   const movies = await viewer.app.profileTitles('Movies');
@@ -50,7 +50,24 @@ export async function profile(
     name: (await viewer.app.heading().innerText()).trim(),
     shows,
     movies,
-    settings: await viewer.app.settings(),
+    hasSettings: (await viewer.app.logOutButtons().count()) > 0,
+  };
+}
+
+/** The Settings page, from the Profile tab's gear: its headings and buttons, in order. */
+export async function settings(viewer: Viewer): Promise<string[]> {
+  await viewer.app.openSettings();
+  await viewer.app.settingsLoaded();
+  return viewer.app.settings();
+}
+
+/** Open the MCP help from the API tokens settings; returns its server address, configuration and command. */
+export async function mcpHelp(viewer: Viewer): Promise<{ url: string; json: string; command: string }> {
+  await viewer.app.openMcpHelp();
+  return {
+    url: await viewer.app.mcpSample('url'),
+    json: await viewer.app.mcpSample('json'),
+    command: await viewer.app.mcpSample('command'),
   };
 }
 

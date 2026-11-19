@@ -16,6 +16,8 @@ export class ApiService {
     updateMe: (timezone: string) => this.http.patch<Model.Http.User>('/api/auth/me', { timezone }),
     logout: () => this.http.post<void>('/api/auth/logout', null),
     logoutEverywhere: () => this.http.post<void>('/api/auth/logout-all', null),
+    sessions: () => this.http.get<Model.Http.Session[]>('/api/auth/sessions'),
+    deleteSession: (id: string) => this.http.delete<void>(`/api/auth/sessions/${id}`),
     changePassword: (currentPassword: string, newPassword: string) =>
       this.http.post<void>('/api/auth/password', { current_password: currentPassword, new_password: newPassword }),
     describeLink: (token: string) => this.http.post<Model.Http.PasswordLink>('/api/auth/password-link', { token }),

@@ -1,6 +1,13 @@
-<header class="flex items-center gap-4 px-4 pt-8">
+<header class="flex items-center gap-4 ps-4 pe-1 pt-8">
   <span class="avatar" aria-hidden="true">{{ $initial() }}</span>
-  <h1 class="min-w-0 truncate [font:var(--mat-sys-headline-small)] font-semibold!">{{ $user()?.username }}</h1>
+  <h1 class="min-w-0 flex-1 truncate [font:var(--mat-sys-headline-small)] font-semibold!">{{ $user()?.username }}</h1>
+  <a
+    matIconButton
+    class="size-12!"
+    [routerLink]="appRoutes.settings()"
+    [attr.aria-label]="translate('app.profile.settings')">
+    <mat-icon svgIcon="settings" aria-hidden="true" />
+  </a>
 </header>
 
 @for (row of rows; track row.id) {
@@ -38,75 +45,3 @@
     </section>
   }
 }
-
-<section class="flex max-w-xl flex-col gap-8 px-4 pt-12 pb-8" aria-labelledby="settings-title">
-  <h2 id="settings-title" class="[font:var(--mat-sys-title-large)] font-semibold!">
-    {{ translate('app.profile.settings') }}
-  </h2>
-
-  <section class="group" aria-labelledby="settings-account">
-    <h3 id="settings-account" class="group-title">{{ translate('app.profile.account') }}</h3>
-    <div class="settings-card">
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>{{ translate('app.profile.timezone.label') }}</mat-label>
-        <input
-          matInput
-          [formControl]="timezone"
-          [matAutocomplete]="zones"
-          (input)="$timezoneQuery.set(timezone.value)"
-          (keydown.enter)="commitTypedTimezone()"
-          autocomplete="off" />
-        <mat-autocomplete #zones (optionSelected)="saveTimezone($event.option.value)" (closed)="resetTimezone()">
-          @for (zone of $timezones(); track zone) {
-            <mat-option [value]="zone">{{ zone }}</mat-option>
-          }
-        </mat-autocomplete>
-        <mat-hint>{{ translate('app.profile.timezone.hint') }}</mat-hint>
-      </mat-form-field>
-    </div>
-
-    <form class="settings-card" [formGroup]="password" (ngSubmit)="changePassword()">
-      <h4 class="[font:var(--mat-sys-title-medium)]">{{ translate('app.profile.password.title') }}</h4>
-      <input type="text" class="hidden" autocomplete="username" [value]="$user()?.username" readonly />
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>{{ translate('app.profile.password.current') }}</mat-label>
-        <input matInput type="password" formControlName="current" autocomplete="current-password" required />
-      </mat-form-field>
-      @if ($wrongPassword()) {
-        <p role="alert" class="text-error">{{ translate('app.profile.password.wrong') }}</p>
-      }
-      <mat-form-field appearance="outline" subscriptSizing="dynamic">
-        <mat-label>{{ translate('app.profile.password.new') }}</mat-label>
-        <input matInput type="password" formControlName="new" autocomplete="new-password" required />
-        <mat-hint>{{ translate('app.common.passwordHint') }}</mat-hint>
-        <mat-error>{{ translate('app.common.passwordHint') }}</mat-error>
-      </mat-form-field>
-      <button matButton="tonal" type="submit" class="min-h-12">{{ translate('app.profile.password.submit') }}</button>
-    </form>
-  </section>
-
-  <section class="group" aria-labelledby="settings-notifications">
-    <h3 id="settings-notifications" class="group-title">{{ translate('app.push.title') }}</h3>
-    <app-push-settings class="settings-card" />
-  </section>
-
-  <section class="group" aria-labelledby="settings-integrations">
-    <h3 id="settings-integrations" class="group-title">{{ translate('app.profile.integrations') }}</h3>
-    <app-jellyfin-accounts class="settings-card" />
-    <app-api-tokens class="settings-card" />
-  </section>
-
-  <section class="group" aria-labelledby="settings-imports">
-    <h3 id="settings-imports" class="group-title">{{ translate('app.profile.imports.title') }}</h3>
-    <app-import-card class="settings-card" />
-  </section>
-
-  <div class="flex flex-col gap-2">
-    <button matButton="outlined" type="button" class="min-h-12" (click)="logout(false)">
-      {{ translate('app.profile.logout') }}
-    </button>
-    <button matButton="outlined" type="button" class="min-h-12" (click)="logout(true)">
-      {{ translate('app.profile.logoutEverywhere') }}
-    </button>
-  </div>
-</section>

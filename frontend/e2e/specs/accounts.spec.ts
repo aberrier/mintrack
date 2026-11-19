@@ -2,6 +2,7 @@ import {
   acceptLink,
   account,
   canDisable,
+  connectedDevices,
   disable,
   invite,
   isLinkRefused,
@@ -13,6 +14,7 @@ import {
   newLink,
   openSignedOut,
   profileShows,
+  signOutOtherDevice,
   tabNames,
   tryLogIn,
 } from '../dsl/accounts';
@@ -60,6 +62,23 @@ test.describe('Accounts', () => {
 
     // Then the other device is signed out too
     expect(await isSignedInAfterReload(otherPage)).toBe(false);
+  });
+
+  test('user sees their connected devices and signs one out', async ({ admin, otherPage }) => {
+    // Given the admin is also signed in on another device
+    await openSignedOut(otherPage);
+    await logIn(otherPage, admin.account);
+
+    // When they open their connected devices
+    const devices = await connectedDevices(admin.page);
+
+    // Then this device comes first, then the other one with when it was last active
+    expect(devices).toEqual([expect.stringMatching(/ This device$/), expect.stringMatching(/ Last active /)]);
+
+    // And signing the other one out ends its session only
+    await signOutOtherDevice(admin.page);
+    expect(await isSignedInAfterReload(otherPage)).toBe(false);
+    expect(await isSignedInAfterReload(admin.page)).toBe(true);
   });
 
   test('the next person to log in on the same tab sees nothing of the previous one', async ({

@@ -1,10 +1,15 @@
 <section class="flex flex-col gap-3" aria-labelledby="api-tokens-title">
-  <h4 id="api-tokens-title" class="[font:var(--mat-sys-title-medium)]">
+  <h3 id="api-tokens-title" class="[font:var(--mat-sys-title-medium)]">
     {{ translate('app.profile.apiTokens.title') }}
-  </h4>
-  <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
-    {{ translate('app.profile.apiTokens.description') }}
-  </p>
+  </h3>
+  <div class="flex flex-col items-start gap-1">
+    <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+      {{ translate('app.profile.apiTokens.description') }}
+    </p>
+    <a matButton class="-ms-3 min-h-12" [routerLink]="appRoutes.mcpHelp()">
+      {{ translate('app.profile.apiTokens.learnMore') }}
+    </a>
+  </div>
 
   <form class="flex items-start gap-2" (submit)="$event.preventDefault(); create()">
     <mat-form-field class="min-w-0 grow" subscriptSizing="dynamic">

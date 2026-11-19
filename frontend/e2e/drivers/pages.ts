@@ -11,7 +11,18 @@ export class Navigation {
 
   async openProfile(): Promise<void> {
     await this.bar().getByRole('link', { name: 'Profile' }).click();
-    await expect(this.page.getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
+    await expect(this.settingsLink()).toBeVisible();
+  }
+
+  /** The Settings page, from the gear of the Profile tab. */
+  async openSettings(): Promise<void> {
+    await this.openProfile();
+    await this.settingsLink().click();
+    await expect(this.page.getByRole('heading', { level: 1, name: 'Settings' })).toBeVisible();
+  }
+
+  settingsLink() {
+    return this.page.getByRole('link', { name: 'Settings', exact: true });
   }
 
   /** The Admin tab, shown to admins only. */
@@ -91,9 +102,9 @@ export class ProfilePage {
   constructor(private readonly page: Page) {}
 
   async isShown(): Promise<boolean> {
-    const logOut = this.page.getByRole('button', { name: 'Log out', exact: true });
-    await expect(logOut.or(this.page.getByTestId('watch-list'))).toBeVisible();
-    return logOut.isVisible();
+    const settings = new Navigation(this.page).settingsLink();
+    await expect(settings.or(this.page.getByTestId('watch-list'))).toBeVisible();
+    return settings.isVisible();
   }
 
   async logOutEverywhere(): Promise<void> {
@@ -112,6 +123,33 @@ export class ProfilePage {
     const items = row.getByTestId('profile-item');
     await expect(items.first().or(row.getByText('No shows yet'))).toBeVisible();
     return (await row.innerText()).trim();
+  }
+}
+
+/** The Connected devices section of the settings. */
+export class DevicesSection {
+  constructor(private readonly page: Page) {}
+
+  private devices() {
+    return this.page.getByTestId('device');
+  }
+
+  /** Each device as listed: its name, then "This device" or when it was last active. */
+  async list(): Promise<string[]> {
+    await expect(this.devices().first()).toBeVisible();
+    return (await this.devices().allInnerTexts()).map((text) =>
+      text.replace(/\s+/g, ' ').replace(' Sign out', '').trim(),
+    );
+  }
+
+  /** Sign out the first device other than this one. */
+  async signOutAnother(): Promise<void> {
+    const count = await this.devices().count();
+    await this.devices()
+      .getByRole('button', { name: /^Sign out / })
+      .first()
+      .click();
+    await expect(this.devices()).toHaveCount(count - 1);
   }
 }
 

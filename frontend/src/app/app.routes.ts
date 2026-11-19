@@ -53,6 +53,18 @@ const routesConfig: Routes = [
     loadComponent: () => import('./pages/profile/collection/collection'),
   },
   {
+    path: appRoutes.settings(''),
+    title: title('app.profile.settings'),
+    canActivate: [signedInGuard],
+    loadComponent: () => import('./pages/profile/settings/settings'),
+  },
+  {
+    path: appRoutes.mcpHelp(''),
+    title: title('app.mcpHelp.title'),
+    canActivate: [signedInGuard],
+    loadComponent: () => import('./pages/profile/mcp-help/mcp-help'),
+  },
+  {
     path: appRoutes.admin(''),
     title: title('app.nav.admin'),
     canActivate: [signedInGuard, adminGuard],

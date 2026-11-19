@@ -5,7 +5,7 @@ test('linking a Jellyfin server MinTrack cannot reach says so and links nothing'
   admin: { page },
   consoleErrors,
 }) => {
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
   const jellyfin = new JellyfinSection(page);
   await jellyfin.waitShown();
 
@@ -24,7 +24,7 @@ test('linking a Jellyfin server MinTrack cannot reach says so and links nothing'
 test('Quick Connect shows a code to approve in Jellyfin, then links the account without a password', async ({
   admin: { page },
 }) => {
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
   const jellyfin = new JellyfinSection(page);
   await jellyfin.waitShown();
   await jellyfin.serveQuickConnect({ username: 'bob', server_url: 'https://jellyfin.example.com' });

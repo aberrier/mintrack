@@ -8,7 +8,7 @@ test('someone connects an assistant with an API token, then revokes it', async (
   const name = unique('Assistant');
   const mcp = new McpDriver(request);
   const tokens = new ApiTokensSection(page);
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
 
   const token = await tokens.create(name);
 
@@ -25,7 +25,7 @@ test('someone connects an assistant with an API token, then revokes it', async (
 });
 
 test('the API tokens section fits a phone, with tap targets of at least 48px', async ({ admin: { page } }) => {
-  await new Navigation(page).openProfile();
+  await new Navigation(page).openSettings();
 
   const create = await new ApiTokensSection(page).createButton().boundingBox();
 

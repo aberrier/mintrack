@@ -1,10 +1,17 @@
-import { dayIn, formatDate, formatDay, formatMonth, formatTime } from './dates';
+import { dayIn, formatDate, formatDay, formatMonth, formatTime, zoneWithOffset } from './dates';
 
 // A Wednesday.
 const NOW = new Date('2026-11-18T12:00:00Z');
 const TODAY = '2026-11-18';
 
 describe('dates', () => {
+  it('names a time zone with its offset from GMT at that time', () => {
+    expect(zoneWithOffset('Europe/Paris', NOW)).toBe('Europe/Paris (GMT+1)');
+    expect(zoneWithOffset('Europe/Paris', new Date('2026-07-01T12:00:00Z'))).toBe('Europe/Paris (GMT+2)');
+    expect(zoneWithOffset('America/St_Johns', NOW)).toBe('America/St_Johns (GMT-3:30)');
+    expect(zoneWithOffset('UTC', NOW)).toBe('UTC (GMT+0)');
+  });
+
   it('formats a date without the year this year, with it another year', () => {
     expect(formatDate('2026-05-01', 'UTC', NOW)).toBe('1 May');
     expect(formatDate('2020-05-01', 'UTC', NOW)).toBe('1 May 2020');

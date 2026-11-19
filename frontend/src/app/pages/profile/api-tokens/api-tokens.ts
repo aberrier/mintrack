@@ -4,7 +4,9 @@ import { FormControl, ReactiveFormsModule } from '@angular/forms';
 import { MatButton } from '@angular/material/button';
 import { MatFormField, MatLabel } from '@angular/material/form-field';
 import { MatInput } from '@angular/material/input';
+import { RouterLink } from '@angular/router';
 import { switchMap } from 'rxjs';
+import { appRoutes } from '../../../app.paths';
 import { ApiService } from '../../../core/api/api.service';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { injectCopy } from '../../../core/copy';
@@ -16,12 +18,13 @@ import { injectConfirm } from '../../../shared/confirm-dialog';
 /** The user's API tokens for the MCP server: create one (shown once), list them, revoke one. */
 @Component({
   selector: 'app-api-tokens',
-  imports: [ReactiveFormsModule, MatButton, MatFormField, MatLabel, MatInput],
+  imports: [ReactiveFormsModule, RouterLink, MatButton, MatFormField, MatLabel, MatInput],
   templateUrl: './api-tokens.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ApiTokens {
   protected readonly translate = injectTranslator('app');
+  protected readonly appRoutes = appRoutes;
   private readonly api = inject(ApiService);
   private readonly timeZone = inject(AuthStore).$timeZone;
   private readonly confirm = injectConfirm();

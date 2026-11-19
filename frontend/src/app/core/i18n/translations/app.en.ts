@@ -101,6 +101,16 @@ export default {
     },
     logout: 'Log out',
     logoutEverywhere: 'Log out everywhere',
+    devices: {
+      title: 'Connected devices',
+      unknown: 'Unknown device',
+      current: 'This device',
+      lastActive: 'Last active {date}',
+      signOut: 'Sign out',
+      signOutLabel: 'Sign out {device}',
+      signOutFailed: 'Could not sign out this device',
+      loadFailed: 'Could not load your devices.',
+    },
     jellyfin: {
       title: 'Jellyfin',
       empty: 'No Jellyfin account linked. Once linked, what you watch there shows up here within 15 minutes.',
@@ -204,6 +214,41 @@ export default {
       confirmTitle: 'Revoke this token?',
       confirmText: '“{name}” stops working: assistants using it lose access immediately.',
       empty: 'No tokens yet.',
+      learnMore: 'Learn more',
+    },
+  },
+  mcpHelp: {
+    title: 'Connect an AI assistant',
+    what: {
+      title: 'What is MCP?',
+      text: 'MCP (Model Context Protocol) lets an AI assistant use tools from other apps. With MinTrack’s MCP server, an assistant such as Claude can look up your shows and movies and mark what you watched, with your permission.',
+    },
+    token: {
+      title: '1. Create a token',
+      text: 'In Settings, API tokens, give the token a name and tap Create. Copy it at once: it is shown only once. Revoke it there to cut the assistant off.',
+    },
+    url: {
+      title: '2. The server address',
+      text: 'Assistants reach MinTrack at this address. Most of them need HTTPS.',
+    },
+    copyUrl: 'Copy address',
+    copied: 'Address copied',
+    config: {
+      title: '3. Add MinTrack to the assistant',
+      json: 'Most assistants take a configuration like this one; replace YOUR_TOKEN with your token:',
+      claudeCode: 'In Claude Code, one command adds it:',
+    },
+    tools: {
+      title: 'What the assistant can do',
+      searchMedia: 'Search movies and TV shows on TMDB by title.',
+      getShowProgress: 'Read a show’s status and, per season, the episodes aired and watched.',
+      markEpisodeWatched: 'Mark an episode watched.',
+      unmarkEpisodeWatched: 'Remove the watch of an episode.',
+      markMovieWatched: 'Mark a movie watched.',
+      unmarkMovieWatched: 'Remove the watch of a movie; it stays in your library to watch later.',
+      setShowStatus: 'Follow a show, put it aside to watch later, stop it or resume it.',
+      listUpcoming: 'List your episodes airing over the coming weeks.',
+      listUpNext: 'List your watch list: the next episode to watch of each show.',
     },
   },
   admin: {

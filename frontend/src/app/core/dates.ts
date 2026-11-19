@@ -2,7 +2,7 @@
  * Days and times as the app shows them, always in the user's time zone and in the app's English, whatever the device's
  * language. A day (YYYY-MM-DD) has no zone of its own: it is formatted as is.
  */
-export { LOCALE, dayIn, formatDate, formatDateTime, formatDay, formatMonth, formatTime, nextDay };
+export { LOCALE, dayIn, formatDate, formatDateTime, formatDay, formatMonth, formatTime, nextDay, zoneWithOffset };
 
 /** The app's texts are English: dates read "24 November", "Tuesday". */
 const LOCALE = 'en-GB';
@@ -77,6 +77,14 @@ function formatDay(day: string, today: string): string {
     year: other ? 'numeric' : undefined,
     timeZone: 'UTC',
   }).format(date);
+}
+
+/** A time zone with its current offset from GMT, such as "Europe/Paris (GMT+1)" or "UTC (GMT)". */
+function zoneWithOffset(timeZone: string, now = new Date()): string {
+  const offset = new Intl.DateTimeFormat(LOCALE, { timeZone, timeZoneName: 'shortOffset' })
+    .formatToParts(now)
+    .find((part) => part.type === 'timeZoneName')?.value;
+  return offset ? `${timeZone} (${offset})` : timeZone;
 }
 
 /** The month of a day, such as "December", with another year's year: "January 2027". */
