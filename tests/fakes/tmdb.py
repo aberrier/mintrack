@@ -2,10 +2,10 @@
 
 A search for any query returns one show and one movie titled after the query, with ids derived from it, so each test
 gets its own media; a search of one type returns the one of that type. Trending lists one show and one movie per
-title of `trending`. A show has two seasons of three episodes and one special, dated relative to today: the last episode
-airs in a week, unless the title starts with "Ended" (it aired) or "Undated" (no date yet). A title starting with
-"Daily" has 10,000 episodes in its first season. A movie titled "Digital..." has digital releases (see
-`release_dates`). Run it for browser tests with
+title of `trending`. A show (Drama, Mystery) has two seasons of three 45-minute episodes and one special without a
+runtime, dated relative to today: the last episode airs in a week, unless the title starts with "Ended" (it aired) or
+"Undated" (no date yet). A title starting with "Daily" has 10,000 episodes in its first season. A movie (Drama, Action)
+lasts 118 minutes; one titled "Digital..." has digital releases (see `release_dates`). Run it for browser tests with
 `uv run uvicorn tests.fakes.tmdb:app --host 0.0.0.0 --port 8001`.
 """
 
@@ -24,6 +24,8 @@ INVALID_KEY = "rejected-4f1c9e-key"
 MAX_ID = 10_000_000
 DAILY_EPISODES = 10_000
 TRENDING = ("Trending One", "Trending Two")
+EPISODE_RUNTIME = 45
+MOVIE_RUNTIME = 118
 
 
 def media_id(kind: str, query: str) -> int:
@@ -64,6 +66,8 @@ class FakeTMDB:
                 "vote_average": 7.5,
                 "vote_count": 12 * number,
                 "air_date": "" if offset is None else (today + dt.timedelta(days=offset)).isoformat(),
+                # Specials without a runtime, as TMDB often has them.
+                "runtime": None if season == 0 else EPISODE_RUNTIME,
             }
             for number, offset in enumerate(offsets, start=1)
             if (tmdb_id, season, number) not in self.dropped
@@ -93,6 +97,7 @@ class FakeTMDB:
             "seasons": [{"season_number": number} for number in (0, 1, 2)],
             "vote_average": 8.25,
             "vote_count": 1234,
+            "genres": [{"id": 18, "name": "Drama"}, {"id": 9648, "name": "Mystery"}],
         }
         for item in appended:
             if item == "external_ids":
@@ -109,12 +114,13 @@ class FakeTMDB:
             "overview": "",
             "poster_path": None,
             "backdrop_path": f"/backdrop-{tmdb_id}.jpg",
-            "runtime": 118,
+            "runtime": MOVIE_RUNTIME,
             "release_date": "2020-05-01",
             "status": "Released",
             # TMDB's answer for a movie nobody voted for.
             "vote_average": 0,
             "vote_count": 0,
+            "genres": [{"id": 18, "name": "Drama"}, {"id": 28, "name": "Action"}],
         }
         if "release_dates" in appended:
             data["release_dates"] = {"results": self.release_dates(title)}

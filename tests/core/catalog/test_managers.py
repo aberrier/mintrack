@@ -9,7 +9,7 @@ from mintrack.core.tracking.managers import ShowTrackingChoice, TrackingManager
 from mintrack.db.models import Media, MediaType, Season, TrackingStatus, User, UserMedia
 from mintrack.integrations.tmdb.client import TMDBClient
 from tests.conftest import cached_media, episodes_of
-from tests.fakes.tmdb import DAILY_EPISODES, MAX_ID, FakeTMDB, media_id
+from tests.fakes.tmdb import DAILY_EPISODES, EPISODE_RUNTIME, MAX_ID, MOVIE_RUNTIME, FakeTMDB, media_id
 
 NOW = dt.datetime(2026, 6, 1, tzinfo=dt.UTC)
 
@@ -65,10 +65,11 @@ async def test_a_first_visit_stores_the_show_its_seasons_and_episodes(
     show = await cached_media(db_session, tmdb, "Lighthouse Nights")
 
     seasons = await db_session.scalars(sa.select(Season.season_number).where(Season.media_id == show.id))
+    episodes = await episodes_of(db_session, show)
     assert (show.title, show.tmdb_status, show.tvdb_id) == ("Lighthouse Nights", "Returning Series", show.tmdb_id)
     assert (show.vote_average, show.vote_count) == (8.25, 1234)
+    assert show.genres == ["Drama", "Mystery"]
     assert sorted(seasons) == [0, 1, 2]
-    episodes = await episodes_of(db_session, show)
     assert len(episodes) == 7
     second = episodes[1, 2]
     assert (second.overview, second.still_path, second.vote_average, second.vote_count) == (
@@ -77,6 +78,13 @@ async def test_a_first_visit_stores_the_show_its_seasons_and_episodes(
         7.5,
         24,
     )
+    assert (episodes[1, 1].runtime, episodes[0, 1].runtime) == (EPISODE_RUNTIME, None)
+
+
+async def test_a_movie_is_stored_with_its_runtime_and_genres(db_session: AsyncSession, tmdb: TMDBClient) -> None:
+    movie = await cached_media(db_session, tmdb, "Harbour Lights", MediaType.MOVIE)
+
+    assert (movie.runtime, movie.genres) == (MOVIE_RUNTIME, ["Drama", "Action"])
 
 
 async def test_later_visits_read_the_cache(db_session: AsyncSession, tmdb: TMDBClient, fake_tmdb: FakeTMDB) -> None:
