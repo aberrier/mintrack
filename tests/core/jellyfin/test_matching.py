@@ -328,8 +328,16 @@ async def test_an_episode_without_numbers_or_a_special_is_matched_by_its_own_ids
         ([split(3, 3), {1: split(3)[1], 2: ((1, 6), (1, 2), (1, 3))}], {1: 3, 2: 3}, None),
         # A group naming an episode TMDB does not have.
         ([{1: split(3)[1], 2: ((1, 7), (1, 8), (1, 9))}], {1: 3, 2: 3}, None),
-        # Jellyfin has only the first two episodes of its season 2: still airing or downloading.
-        ([split(3, 3)], {1: 3, 2: 2}, None),
+        # Jellyfin has only the first two episodes of its last season, which the group still airs as its last.
+        ([split(3, 3)], {1: 3, 2: 2}, WatchEvent(MediaType.TV, ANIME, AT, 1, 5)),
+        # A group with a season after it has the season complete: Jellyfin's partial copy is not its size.
+        ([split(3, 3, 2)], {1: 3, 2: 2}, None),
+        # A partial season that is not Jellyfin's last needs the group's exact size.
+        ([split(3, 3)], {1: 3, 2: 2, 3: 1}, None),
+        # A group listing fewer episodes than Jellyfin has of its last season.
+        ([split(3, 1)], {1: 3, 2: 2}, None),
+        # A group whose last season could hold Jellyfin's partial one but whose season 1 differs.
+        ([split(2, 4)], {1: 3, 2: 2}, None),
         # Jellyfin cannot tell the size of its season 2.
         ([split(3, 3)], {1: 3}, None),
     ],
