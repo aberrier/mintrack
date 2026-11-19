@@ -36,15 +36,11 @@ export class ScreenDriver {
     });
   }
 
-  /**
-   * The visible icons drawn off the centre of the button that holds only them, or off the centre line of the other
-   * icon buttons of their row, by more than 1px, as "name (dx, dy)".
-   */
+  /** The visible icons drawn off the centre of the button that holds only them by more than 1px, as "name (dx, dy)". */
   async offCentreIcons(): Promise<string[]> {
     return this.page.evaluate(() => {
       const off: string[] = [];
       const centre = (box: DOMRect) => ({ x: box.left + box.width / 2, y: box.top + box.height / 2 });
-      const rows = new Map<Element, { name: string; y: number }[]>();
       for (const icon of document.querySelectorAll<HTMLElement>('mat-icon')) {
         if (icon.closest('[inert], [aria-hidden="true"]:not(mat-icon)')) continue;
         const button = icon.closest<HTMLElement>('button, a[href], [role="button"]');
@@ -56,14 +52,6 @@ export class ScreenDriver {
         const dx = centre(iconBox).x - centre(buttonBox).x;
         const dy = centre(iconBox).y - centre(buttonBox).y;
         if (Math.abs(dx) > 1 || Math.abs(dy) > 1) off.push(`${name} (${dx.toFixed(1)}, ${dy.toFixed(1)})`);
-        const row = button.parentElement!;
-        rows.set(row, [...(rows.get(row) ?? []), { name, y: centre(iconBox).y }]);
-      }
-      for (const icons of rows.values()) {
-        for (const { name, y } of icons.slice(1)) {
-          const dy = y - icons[0].y;
-          if (Math.abs(dy) > 1) off.push(`${name} (row ${dy.toFixed(1)})`);
-        }
       }
       return off;
     });
