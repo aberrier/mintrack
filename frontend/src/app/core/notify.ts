@@ -3,7 +3,6 @@ import { MatSnackBar, MatSnackBarRef, TextOnlySnackBar } from '@angular/material
 import { NavigationEnd, Router } from '@angular/router';
 import { filter, first, takeUntil } from 'rxjs';
 import { injectTranslator } from './i18n';
-import { episodeCode } from './tracking/episodes';
 
 const INFO_MS = 4000;
 /** Long enough to read the message and reach its action. */
@@ -37,12 +36,4 @@ export function injectNotifyUndo(): (message: string, undo: () => void) => void 
   const notify = injectNotify();
   const translate = injectTranslator('app');
   return (message, undo) => notify(message, translate('app.common.undo')).onAction().subscribe(undo);
-}
-
-/** Say which episode a check marked watched, with an Undo action that runs `undo`. */
-export function injectNotifyChecked(): (season: number, episode: number, undo: () => void) => void {
-  const notifyUndo = injectNotifyUndo();
-  const translate = injectTranslator('app');
-  return (season, episode, undo) =>
-    notifyUndo(translate('app.common.checked', { episode: episodeCode(season, episode, true) }), undo);
 }
