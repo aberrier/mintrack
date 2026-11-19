@@ -1,6 +1,9 @@
 import { HttpClient } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 
+/** What a rating is about, as its API path: `shows/{tmdbId}`, `movies/{tmdbId}` or `episodes/{id}`. */
+export type RatingPath = string;
+
 /**
  * The MinTrack API, one group of endpoints per domain.
  * URLs are relative: the backend serves this app, so the API is always on the same origin.
@@ -78,6 +81,20 @@ export class ApiService {
       this.http.get<Model.Http.HistoryResponse>('/api/history', {
         params: before ? { before: before.watched_at, before_id: before.id } : {},
       }),
+  };
+
+  readonly episodes = {
+    get: (id: string) => this.http.get<Model.Http.EpisodeDetail>(`/api/episodes/${id}`),
+    /** Date the user's watch of the episode differently; answers the show's tracking. */
+    setWatchedAt: (id: string, watchedAt: string) =>
+      this.http.put<Model.Http.ShowTracking>(`/api/episodes/${id}/watched`, { watched_at: watchedAt }),
+  };
+
+  /** The user's ratings, by path: `shows/{tmdbId}`, `movies/{tmdbId}` or `episodes/{id}`. */
+  readonly ratings = {
+    save: (path: RatingPath, rating: Model.Http.RatingRequest) =>
+      this.http.put<Model.Http.Rating>(`/api/${path}/rating`, rating),
+    remove: (path: RatingPath) => this.http.delete<void>(`/api/${path}/rating`),
   };
 
   readonly upcoming = {

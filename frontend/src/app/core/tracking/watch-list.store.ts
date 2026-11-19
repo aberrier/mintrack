@@ -193,6 +193,23 @@ export class WatchListStore {
     });
   }
 
+  /**
+   * An episode changed from its sheet: its history entry takes its new date or rating, or leaves once unwatched
+   * (`watched_at` null), and a watch list on screen is loaded again when the episode was marked or unmarked.
+   */
+  episodeChanged(id: string, change: { watched_at?: string | null; rating?: number | null }): void {
+    const { watched_at, ...rest } = change;
+    this.$history.update((history) =>
+      watched_at === null
+        ? history.filter((entry) => entry.id !== id)
+        : history
+            .map((entry) => (entry.id === id ? { ...entry, ...rest, ...(watched_at ? { watched_at } : {}) } : entry))
+            .sort((a, b) => Date.parse(b.watched_at) - Date.parse(a.watched_at)),
+    );
+    if ('watched_at' in change && this.$episodes() !== undefined && this.writes === 0)
+      this.load().subscribe({ error: () => undefined });
+  }
+
   /** Start the history over, as when the watch list opens afresh. */
   resetHistory(): void {
     this.$history.set([]);
@@ -271,5 +288,6 @@ function historyEntry(episode: Model.Http.WatchListEpisode, watchedAt: Date): Mo
     watched_at: watchedAt.toISOString(),
     // The server says whether the show is finished when the history loads again.
     finished: false,
+    rating: null,
   };
 }

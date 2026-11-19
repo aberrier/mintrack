@@ -4,6 +4,7 @@ import { formatDate } from '../../core/dates';
 import { injectTranslator } from '../../core/i18n';
 import { isUpcoming, isWatched, seasonProgress } from '../../core/tracking/episodes';
 import { CheckButton } from '../../shared/check-button';
+import { injectEpisodeSheet } from '../../shared/episode-sheet';
 import { LoadError } from '../../shared/load-error';
 
 /**
@@ -50,8 +51,8 @@ import { LoadError } from '../../shared/load-error';
           @for (episode of list; track episode.id) {
             @let watched = isWatched(show(), episode);
             <li class="episode enter" [style.--i]="$index">
-              <div class="flex min-w-0 flex-col">
-                <span class="truncate [font:var(--mat-sys-body-large)]">
+              <button type="button" class="open" (click)="openSheet(episode.id)" data-testid="episode-open">
+                <span class="w-full truncate [font:var(--mat-sys-body-large)]">
                   <span class="tabular-nums">{{ episode.episode_number }}.</span> {{ episode.title }}
                 </span>
                 @if (episode.air_date) {
@@ -59,7 +60,7 @@ import { LoadError } from '../../shared/load-error';
                     formatDate(episode.air_date, timeZone())
                   }}</span>
                 }
-              </div>
+              </button>
               <button
                 type="button"
                 appCheckButton
@@ -155,9 +156,29 @@ import { LoadError } from '../../shared/load-error';
     .episode:only-child {
       border-radius: var(--mat-sys-corner-large);
     }
-    .toggle:focus-visible {
+    .toggle:focus-visible,
+    .open:focus-visible {
       outline: 2px solid var(--mat-sys-primary);
       outline-offset: -2px;
+    }
+    /* The episode's number, title and date as a button opening its sheet. */
+    .open {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      justify-content: center;
+      align-self: stretch;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--mat-sys-on-surface);
+      text-align: start;
+      cursor: pointer;
+      transition: transform var(--duration-short) var(--ease-standard);
+    }
+    .open:active {
+      transform: scale(0.98);
     }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -167,6 +188,7 @@ export class SeasonRow {
   protected readonly isWatched = isWatched;
   protected readonly isUpcoming = isUpcoming;
   protected readonly formatDate = formatDate;
+  protected readonly openSheet = injectEpisodeSheet();
 
   readonly show = input.required<Model.Http.Show>();
   readonly season = input.required<Model.Http.Season>();

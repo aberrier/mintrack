@@ -25,6 +25,7 @@ import { CardEpisode, EpisodeCard, showEpisodeCard } from '../../shared/episode-
 import { LoadError } from '../../shared/load-error';
 import { MediaHeader } from '../../shared/media-header';
 import { loadMediaPage } from '../../shared/media-page';
+import { RatingForm, tmdbScore } from '../../shared/rating-form';
 import { Skeleton } from '../../shared/skeleton';
 import { injectStatusLabel } from '../../shared/status';
 import { SeasonRow } from './season-row';
@@ -40,13 +41,13 @@ const NO_NEXT_EPISODE: readonly Model.Http.TrackingStatus[] = ['stopped', 'watch
  */
 @Component({
   selector: 'app-show',
-  imports: [RouterLink, MatButton, EpisodeCard, MediaHeader, SeasonRow, Skeleton, LoadError, BackButton],
+  imports: [RouterLink, MatButton, EpisodeCard, MediaHeader, SeasonRow, Skeleton, LoadError, BackButton, RatingForm],
   templateUrl: './show.html',
   styleUrl: './show.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export default class Show {
-  private readonly store = inject(TrackingStore);
+  protected readonly store = inject(TrackingStore);
   private readonly notify = injectNotify();
   private readonly notifyChecked = injectNotifyChecked();
   private readonly confirm = injectConfirm();
@@ -84,6 +85,8 @@ export default class Show {
       show.network,
     ].filter((fact): fact is string => !!fact);
   });
+
+  protected readonly $tmdbScore = computed(() => tmdbScore(this.translate, this.$show()));
 
   protected readonly $firstAired = computed(() => {
     const date = this.$show()?.release_date;

@@ -11,8 +11,10 @@ export {
   formatDay,
   formatMonth,
   formatTime,
+  localDateTime,
   nextDay,
   zoneWithOffset,
+  zonedInstant,
 };
 
 /** The app's texts are English: dates read "24 November", "Tuesday". */
@@ -112,6 +114,32 @@ function formatMonth(day: string, today: string): string {
     year: other ? 'numeric' : undefined,
     timeZone: 'UTC',
   }).format(new Date(`${day}T00:00:00Z`));
+}
+
+/** An instant as a date-time input shows it in a time zone: "2026-11-13T20:05". */
+function localDateTime(instant: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat(LOCALE, {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  })
+    .formatToParts(instant)
+    .reduce<Record<string, string>>((found, part) => ({ ...found, [part.type]: part.value }), {});
+  return `${parts['year']}-${parts['month']}-${parts['day']}T${parts['hour']}:${parts['minute']}`;
+}
+
+/** The instant a date-time input's value ("2026-11-13T20:05") names in a time zone. */
+function zonedInstant(local: string, timeZone: string): Date {
+  const wanted = Date.parse(`${local}:00Z`);
+  // The zone's offset at a first guess, then at the result, which differs only across a clock change.
+  let instant = wanted;
+  for (let pass = 0; pass < 2; pass++)
+    instant = wanted - (Date.parse(`${localDateTime(new Date(instant), timeZone)}:00Z`) - instant);
+  return new Date(instant);
 }
 
 function year(date: Date, zone: string, timeZone: string, now: Date): Intl.DateTimeFormatOptions {

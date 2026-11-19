@@ -28,6 +28,8 @@ import refresh from '@material-symbols/svg-400/outlined/refresh.svg';
 import schedule from '@material-symbols/svg-400/outlined/schedule.svg';
 import search from '@material-symbols/svg-400/outlined/search.svg';
 import settings from '@material-symbols/svg-400/outlined/settings.svg';
+import star_fill from '@material-symbols/svg-400/outlined/star-fill.svg';
+import star from '@material-symbols/svg-400/outlined/star.svg';
 import view_agenda from '@material-symbols/svg-400/outlined/view_agenda.svg';
 
 /**
@@ -62,6 +64,8 @@ const icons = {
   schedule,
   search,
   settings,
+  star,
+  star_fill,
   view_agenda,
 } as const;
 

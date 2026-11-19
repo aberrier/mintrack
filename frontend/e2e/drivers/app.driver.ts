@@ -598,7 +598,7 @@ export class AppDriver {
   }
 
   upcomingEpisode(day: Locator, name: string): Locator {
-    return day.getByRole('link', { name });
+    return day.getByRole('button', { name });
   }
 
   watchList(): Locator {
@@ -628,7 +628,7 @@ export class AppDriver {
   card(show: string): Locator {
     return this.watchList()
       .getByTestId('episode')
-      .filter({ has: this.page.getByRole('link', { name: show }) });
+      .filter({ has: this.page.getByRole('link', { name: show }).or(this.page.getByLabel(show)) });
   }
 
   /** The episode a list card shows, such as "S01 | E02+3". */
@@ -655,11 +655,11 @@ export class AppDriver {
   }
 
   /**
-   * Reach a card's menu with the keyboard only (Tab from its link), open it with Enter, move to the action with the
+   * Reach a card's menu with the keyboard only (Tab from its episode), open it with Enter, move to the action with the
    * arrow keys and pick it with Enter. Returns whether a focus ring showed around the menu button while focused.
    */
   async cardActionByKeyboard(show: string, action: string): Promise<boolean> {
-    await this.card(show).getByRole('link').first().focus();
+    await this.card(show).locator('button.open').focus();
     await this.page.keyboard.press('Tab');
     const menuButton = this.card(show).getByRole('button', { name: `More for ${show}` });
     await expect(menuButton).toBeFocused();
@@ -744,6 +744,88 @@ export class AppDriver {
   /** Scroll the content back to its top, as when reading further up the history. */
   async scrollToTop(): Promise<void> {
     await this.content().evaluate((element) => element.scrollTo({ top: 0 }));
+  }
+
+  /** Open an episode's sheet from its row on the show page. */
+  async openEpisodeSheet(season: number, episode: number): Promise<void> {
+    await this.openSeason(season);
+    await this.page
+      .getByTestId('episode-open')
+      .filter({ hasText: new RegExp(`^\\s*${episode}\\.`) })
+      .first()
+      .click();
+    await expect(this.episodeSheet().getByTestId('sheet-title')).toBeVisible();
+  }
+
+  /** Open the sheet of a card's episode, such as one of the watch list's. */
+  async openCardSheet(card: Locator): Promise<void> {
+    await card.locator('button.open, button.open-tile').click();
+    await expect(this.episodeSheet().getByTestId('sheet-title')).toBeVisible();
+  }
+
+  episodeSheet(): Locator {
+    return this.page.locator('mat-bottom-sheet-container');
+  }
+
+  async closeEpisodeSheet(): Promise<void> {
+    await this.page.keyboard.press('Escape');
+    await expect(this.episodeSheet()).toHaveCount(0);
+  }
+
+  /** The sheet's or the page's line by its test id, such as `sheet-watched` or `tmdb-score`. */
+  async textOf(testId: string): Promise<string> {
+    const element = this.page.getByTestId(testId);
+    await expect(element).toBeVisible();
+    return (await element.innerText()).replace(/\s+/g, ' ').trim();
+  }
+
+  /** The show's or the movie's line giving TMDB's score. */
+  tmdbScoreLine(): Locator {
+    return this.page.getByTestId('tmdb-score');
+  }
+
+  /** The sheet's check, marking or unmarking its episode. */
+  sheetCheck(): Locator {
+    return this.episodeSheet().getByRole('button', { name: 'Mark watched', exact: true });
+  }
+
+  /** Type a watch date and time into the sheet, as its picker would set it. */
+  async setWatchDate(local: string): Promise<void> {
+    await this.episodeSheet().getByLabel('Watched on').fill(local);
+  }
+
+  /** The rating form of the sheet, or else of the page. */
+  private ratingForm(): Locator {
+    return this.page.locator('app-rating-form').last();
+  }
+
+  /** Pick stars, write a review and save; waits for the server's answer. */
+  async rate(stars: number, review: string): Promise<void> {
+    const form = this.ratingForm();
+    await form.getByRole('button', { name: `${stars} out of 5`, exact: true }).click();
+    await form.getByLabel('Review').fill(review);
+    const saved = this.nextResponse('/rating');
+    await form.getByRole('button', { name: 'Save', exact: true }).click();
+    await saved;
+  }
+
+  async removeRating(): Promise<void> {
+    const removed = this.nextResponse('/rating');
+    await this.ratingForm().getByRole('button', { name: 'Remove', exact: true }).click();
+    await removed;
+  }
+
+  /** The stars picked in the rating form (0 for none) and its review. */
+  async ratingShown(): Promise<{ stars: number; review: string }> {
+    const form = this.ratingForm();
+    await expect(form).toBeVisible();
+    const pressed = await form
+      .locator('button[aria-pressed="true"]')
+      .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
+    return {
+      stars: pressed.length ? Number(pressed[0]!.split(' ')[0]) : 0,
+      review: await form.getByLabel('Review').inputValue(),
+    };
   }
 
   /** The shell's content area, the only element that scrolls. */
