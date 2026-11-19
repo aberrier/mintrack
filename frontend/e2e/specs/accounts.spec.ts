@@ -6,8 +6,11 @@ import {
   disable,
   invite,
   isLinkRefused,
+  isLogInOffered,
   isOnProfile,
   isSignedInAfterReload,
+  linkPreviewed,
+  linkRefusal,
   logIn,
   logOut,
   logOutEverywhere,
@@ -24,15 +27,32 @@ import { uniqueTitle } from '../dsl/tracking';
 
 test.describe('Accounts', () => {
   test('an invited user sets a password and lands on the watch list', async ({ admin, otherPage }) => {
-    // Given an admin invited a user
+    // Given an admin invited a user and sent the link in a messaging app, which previewed it
     const invitation = await invite(admin.page);
+    await linkPreviewed(invitation.link);
 
-    // When the user opens the link and sets a password
-    const shownAccount = await acceptLink(otherPage, invitation.link);
+    // When the user opens the link, the page loads again, and they set a password
+    const shownAccount = await acceptLink(otherPage, invitation.link, { reloaded: true });
 
     // Then the link named their account, and they are signed in, also after coming back
     expect(shownAccount).toBe(invitation.username);
     expect(await isSignedInAfterReload(otherPage)).toBe(true);
+  });
+
+  test('a link that no longer works says why', async ({ admin, otherPage }) => {
+    // Given an admin invited a user, then sent them a new link
+    const invitation = await invite(admin.page);
+    const latest = await newLink(admin.page, invitation.username);
+
+    // When the user opens the first link
+    // Then the page says a newer link replaced it
+    expect(await linkRefusal(otherPage, invitation.link)).toContain('A newer link replaced this one');
+
+    // When they use the latest link, then open it again
+    await acceptLink(otherPage, latest);
+    // Then the page says it was already used and offers to log in
+    expect(await linkRefusal(otherPage, latest)).toContain('This link was already used');
+    expect(await isLogInOffered(otherPage)).toBe(true);
   });
 
   test('admin resets and disables a user', async ({ admin, otherPage }) => {

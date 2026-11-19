@@ -83,7 +83,15 @@ export default {
   password: {
     title: 'Set your password',
     loading: 'Checking the link…',
-    invalid: 'This link is invalid or has expired. Ask your admin for a new one.',
+    problems: {
+      invalid: 'This link is not valid. Check that you opened the whole link, or ask your admin for a new one.',
+      expired: 'This link has expired. Ask your admin for a new one.',
+      used: 'This link was already used. Log in with your password, or ask your admin for a new link.',
+      replaced: 'A newer link replaced this one. Open the latest link your admin sent, or ask them for a new one.',
+      missing: 'This page needs the whole link your admin sent. Open it again from their message.',
+    },
+    unreachable: 'MinTrack cannot be reached. Check your connection and try again.',
+    logIn: 'Log in',
     account: 'Account',
     password: 'New password',
     submit: 'Set password and log in',
@@ -102,6 +110,7 @@ export default {
     },
     link: {
       intro: 'Send this link to {username}. It is shown only once.',
+      validity: 'Valid until {date}. A new link replaces this one.',
       copy: 'Copy link',
       copied: 'Link copied',
     },
@@ -114,6 +123,8 @@ export default {
     admin: 'Admin',
     lastSeen: 'Last seen {date}',
     neverSeen: 'Never signed in',
+    invitedUntil: 'Invitation valid until {date}',
+    invitationExpiredOn: 'Invitation expired on {date}: send a new link',
     newLink: 'New link',
     disable: 'Disable',
     enable: 'Enable',
