@@ -1,9 +1,9 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { rxResource, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormGroupDirective, NonNullableFormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { MatButton, MatIconButton } from '@angular/material/button';
-import { MatError, MatFormField, MatHint, MatLabel } from '@angular/material/form-field';
+import { MatError, MatFormField, MatHint, MatLabel, MatPrefix } from '@angular/material/form-field';
 import { MatIcon } from '@angular/material/icon';
 import { MatInput } from '@angular/material/input';
 import { firstValueFrom } from 'rxjs';
@@ -36,6 +36,7 @@ interface ShownLink {
     MatButton,
     MatIconButton,
     MatIcon,
+    MatPrefix,
     LoadError,
   ],
   templateUrl: './admin.html',
@@ -82,6 +83,13 @@ export default class Admin {
     disabled: 'app.admin.status.disabled',
   };
   protected readonly users = rxResource({ stream: () => this.api.adminUsers.list() });
+  /** The search field's text: the list keeps the users whose name contains it, ignoring case. */
+  protected readonly $search = signal('');
+  protected readonly $shownUsers = computed(() => {
+    const search = this.$search().trim().toLowerCase();
+    const users = this.users.value() ?? [];
+    return search ? users.filter((user) => user.username.toLowerCase().includes(search)) : users;
+  });
   protected readonly $shownLink = signal<ShownLink | null>(null);
   protected readonly $taken = signal(false);
   protected readonly $busy = signal(false);

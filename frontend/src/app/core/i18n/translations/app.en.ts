@@ -255,6 +255,8 @@ export default {
   admin: {
     title: 'Admin',
     users: 'Users',
+    search: 'Search users',
+    noMatch: 'No user named “{search}”.',
     inviteTitle: 'Invite someone',
     create: {
       username: 'Username',

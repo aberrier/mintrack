@@ -47,8 +47,25 @@
     @if (users.error() && !users.hasValue()) {
       <app-load-error class="px-0!" [message]="translate('app.admin.loadFailed')" (retry)="users.reload()" />
     }
+    <mat-form-field appearance="outline" subscriptSizing="dynamic">
+      <mat-icon matPrefix svgIcon="search" aria-hidden="true" />
+      <mat-label>{{ translate('app.admin.search') }}</mat-label>
+      <input
+        #searchField
+        matInput
+        type="search"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        (input)="$search.set(searchField.value)" />
+    </mat-form-field>
+    @if (users.hasValue() && $search().trim() && !$shownUsers().length) {
+      <p class="text-on-surface-variant [font:var(--mat-sys-body-medium)]" data-testid="no-user">
+        {{ translate('app.admin.noMatch', { search: $search().trim() }) }}
+      </p>
+    }
     <ul class="flex flex-col gap-3" data-testid="users">
-      @for (user of users.value() ?? []; track user.id) {
+      @for (user of $shownUsers(); track user.id) {
         <li class="user enter" [style.--i]="$index" [attr.data-username]="user.username">
           <div class="flex flex-col gap-1">
             <div class="flex flex-wrap items-center gap-2">

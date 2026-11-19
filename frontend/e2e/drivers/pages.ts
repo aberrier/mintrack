@@ -179,6 +179,14 @@ export class AdminUsersPage {
     return (await this.row(username).getByRole('button', { name: 'Disable' }).count()) > 0;
   }
 
+  /** Type in the user search; returns the names listed once the list follows. */
+  async search(text: string): Promise<string[]> {
+    await this.page.getByLabel('Search users').fill(text);
+    const rows = this.page.getByTestId('users').getByRole('listitem');
+    await expect(rows.first().or(this.page.getByTestId('no-user'))).toBeVisible();
+    return rows.evaluateAll((items) => items.map((item) => item.getAttribute('data-username')!));
+  }
+
   private row(username: string) {
     return this.page.locator(`[data-username="${username}"]`);
   }
