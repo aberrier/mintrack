@@ -378,6 +378,96 @@ async def test_jellyfin_is_asked_a_series_seasons_once_and_only_to_guess_an_abso
     assert seasons_requests(jellyfin) == [f"{SERVER_URL}/Shows/{anime}/Seasons?userId=user-bob&isMissing=false"]
 
 
+async def test_seasons_jellyfin_only_knows_from_metadata_do_not_prevent_an_absolute_number(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
+) -> None:
+    # The metadata lists a season 2 the server has no file of.
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1,), missing_seasons=(2,))
+    jellyfin.play_episode(bob, show, 1, 4, DAY_1)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == {(1399, 2, 1, DAY_1)}
+
+
+@pytest.mark.parametrize(
+    ("groups", "expected"),
+    [
+        # Two season splits agree on 3 + 3 episodes, a split into cours disagrees: S02E02 is TMDB's S01E05.
+        ([(6, (3, 3)), (7, (2, 2, 2)), (7, (3, 3)), (5, (1, 5))], {(1399, 1, 5, DAY_1)}),
+        # No majority.
+        ([(6, (3, 3)), (7, (2, 2, 2))], set()),
+        # Only a story arc group, which is no season split.
+        ([(5, (3, 3))], set()),
+    ],
+)
+async def test_a_season_tmdb_merged_into_season_1_is_matched_through_its_episode_groups(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    fake_tmdb: FakeTMDB,
+    groups: list[tuple[int, tuple[int, ...]]],
+    expected: set[tuple[int, int, int, dt.datetime]],
+) -> None:
+    fake_tmdb.single_season.add(1399)
+    fake_tmdb.episode_groups[1399] = groups
+    show = jellyfin.add_series({"Tmdb": "1399"}, seasons=(1, 2))
+    jellyfin.play_episode(bob, show, 2, 2, DAY_1, name="[Group] Show - S02E02")
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == expected
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [
+        ("SHOW02E03 Ice and Fire", {(1399, 2, 3, DAY_1)}),
+        ("[Group] Show - s01e02 (1080p) [A1E2B3C4]", {(1399, 1, 2, DAY_1)}),
+        # A code only in the brackets, or two codes.
+        ("[Group] Show (S01E02)", set()),
+        ("Show S01E02 S01E03", set()),
+    ],
+)
+async def test_an_episode_jellyfin_gave_no_numbers_is_matched_by_the_code_in_its_name(
+    db_session: AsyncSession,
+    user: User,
+    jellyfin: FakeJellyfin,
+    bob: str,
+    tmdb: TMDBClient,
+    name: str,
+    expected: set[tuple[int, int, int, dt.datetime]],
+) -> None:
+    show = jellyfin.add_series({"Tmdb": "1399"})
+    jellyfin.play_episode(bob, show, None, None, DAY_1, name=name)
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == expected
+    assert [item["reason"] for item in account.last_sync_unmatched or []] == (
+        [] if expected else [JellyfinUnmatchedReason.NO_NUMBERS]
+    )
+
+
+async def test_a_special_jellyfin_numbers_0_inside_a_season_is_matched_by_its_own_ids(
+    db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient, fake_tmdb: FakeTMDB
+) -> None:
+    # TMDB's /find answer for such a special: the show's season 0.
+    fake_tmdb.external_episode_ids[("imdb_id", "tt0000007")] = (1399, 0, 1)
+    show = jellyfin.add_series({"Tmdb": "1399"})
+    jellyfin.play_episode(bob, show, 2, 0, DAY_1, {"Imdb": "tt0000007"}, name="Digression")
+    account = await link(db_session, user)
+
+    await JellyfinManager(db_session).sync(account, tmdb, NOW)
+
+    assert await watched(db_session, user) == {(1399, 0, 1, DAY_1)}
+
+
 async def test_a_series_whose_seasons_jellyfin_cannot_give_gets_no_guess_and_the_sync_goes_on(
     db_session: AsyncSession, user: User, jellyfin: FakeJellyfin, bob: str, tmdb: TMDBClient
 ) -> None:

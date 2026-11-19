@@ -3,7 +3,7 @@ import datetime as dt
 
 import pytest
 
-from mintrack.core.jellyfin.matching import Found, RegularSeasons, WatchEvent, match, unmatched_item
+from mintrack.core.jellyfin.matching import Found, RegularSeasons, SeasonGroup, WatchEvent, match, unmatched_item
 from mintrack.db.models import JellyfinUnmatchedReason, MediaType
 from mintrack.integrations.jellyfin.client import Item
 from mintrack.integrations.tmdb.client import ExternalSource
@@ -65,6 +65,9 @@ class FakeCatalog:
 
     async def listed_episode_numbers(self, show_id: int) -> collections.abc.Set[tuple[int, int]]:
         return THRONES_EPISODES if show_id == THRONES else frozenset()
+
+    async def season_groups(self, show_id: int) -> collections.abc.Sequence[SeasonGroup]:
+        return []
 
 
 @pytest.fixture
@@ -212,6 +215,15 @@ async def test_an_episode_falls_back_on_its_own_ids(
     jellyfin_numbering = episode(5, 9, provider_ids)
 
     assert await match(jellyfin_numbering, AT, series_items, catalog) == expected
+
+
+@pytest.mark.parametrize(("season", "number"), [(1, 0), (None, None)])
+async def test_an_episode_without_usable_numbers_is_matched_by_its_own_ids(
+    catalog: FakeCatalog, season: int | None, number: int | None
+) -> None:
+    special = episode(season, number, {"Imdb": "tt1480055"})
+
+    assert await match(special, AT, series({"Tmdb": "1399"}), catalog) == episode_watch(1, 1)
 
 
 @pytest.mark.parametrize(

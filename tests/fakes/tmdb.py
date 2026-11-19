@@ -5,13 +5,15 @@ gets its own media; a search of one type returns the one of that type. Trending 
 title of `trending`. A show (Drama, Mystery) has two seasons of three 45-minute episodes and one special without a
 runtime, dated relative to today: the last episode airs in a week, unless the title starts with "Ended" (it aired) or
 "Undated" (no date yet). A title starting with "Daily" has 10,000 episodes in its first season. A movie (Drama, Action)
-lasts 118 minutes; one titled "Digital..." has digital releases (see `release_dates`). Run it for browser tests with
-`uv run uvicorn tests.fakes.tmdb:app --host 0.0.0.0 --port 8001`.
+lasts 118 minutes; one titled "Digital..." has digital releases (see `release_dates`). A show of `single_season` lists
+its six regular episodes in season 1, and `episode_groups` gives a show TMDB's episode groups. Run it for browser
+tests with `uv run uvicorn tests.fakes.tmdb:app --host 0.0.0.0 --port 8001`.
 """
 
 import collections.abc
 import dataclasses
 import datetime as dt
+import itertools
 import typing
 import zlib
 
@@ -46,6 +48,10 @@ class FakeTMDB:
     trending: tuple[str, ...] = TRENDING
     # Title -> release year of the search results with that title; the others have none (movies) or 2024 (shows).
     release_years: dict[str, int] = dataclasses.field(default_factory=dict)
+    # Shows listing all their regular episodes in season 1, as TMDB does for many anime.
+    single_season: set[int] = dataclasses.field(default_factory=set)
+    # Show id -> its episode groups: (TMDB group type, number of episodes of each group, from order 1).
+    episode_groups: dict[int, list[tuple[int, tuple[int, ...]]]] = dataclasses.field(default_factory=dict)
 
     def title(self, tmdb_id: int, kind: str) -> str:
         return self.titles.get(tmdb_id, f"{kind} {tmdb_id}")
@@ -55,6 +61,8 @@ class FakeTMDB:
         title = self.title(tmdb_id, "Show")
         last = {"Ended": -1, "Undated": None}.get(title.split(" ")[0], 7)
         by_season: dict[int, list[int | None]] = {0: [-20], 1: [-30, -29, -28], 2: [-7, -1, last]}
+        if tmdb_id in self.single_season:
+            by_season = {0: by_season[0], 1: by_season[1] + by_season[2]}
         offsets = by_season[season]
         if season == 1 and title.startswith("Daily"):
             offsets = [-1] * DAILY_EPISODES
@@ -97,7 +105,9 @@ class FakeTMDB:
             "networks": [{"id": 1, "name": "Channel Nine"}],
             "first_air_date": self.episodes(tmdb_id, 1)[0]["air_date"],
             "status": "Ended" if title.startswith("Ended") else "Returning Series",
-            "seasons": [{"season_number": number} for number in (0, 1, 2)],
+            "seasons": [
+                {"season_number": number} for number in ((0, 1) if tmdb_id in self.single_season else (0, 1, 2))
+            ],
             "vote_average": 8.25,
             "vote_count": 1234,
             "genres": [{"id": 18, "name": "Drama"}, {"id": 9648, "name": "Mystery"}],
@@ -108,6 +118,27 @@ class FakeTMDB:
             elif item.startswith("season/"):
                 data[item] = self.season(tmdb_id, int(item.removeprefix("season/")))
         return data
+
+    def episode_group(self, group_id: str) -> dict[str, typing.Any]:
+        """TMDB's answer for an episode group, whose id is "<show id>-<index>": its groups number the show's season 1
+        episodes in order."""
+        show_id, index = (int(part) for part in group_id.split("-"))
+        group_type, sizes = self.episode_groups[show_id][index]
+        start = itertools.accumulate(sizes, initial=0)
+        groups = [
+            {
+                "id": f"{group_id}-{order}",
+                "name": f"Season {order}",
+                "order": order,
+                "locked": True,
+                "episodes": [
+                    {"id": number, "show_id": show_id, "season_number": 1, "episode_number": number, "order": place}
+                    for place, number in enumerate(range(first + 1, first + size + 1))
+                ],
+            }
+            for order, (first, size) in enumerate(zip(start, sizes, strict=False), start=1)
+        ]
+        return {"id": group_id, "name": "Seasons", "type": group_type, "groups": groups}
 
     def movie(self, tmdb_id: int, appended: list[str]) -> dict[str, typing.Any]:
         title = self.title(tmdb_id, "Movie")
@@ -197,12 +228,31 @@ class FakeTMDB:
                 raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND)
             return self.show(tmdb_id, append_to_response.split(","))
 
+        self.add_episode_group_routes(app)
+
         @app.get("/3/movie/{tmdb_id}")
         def movie(tmdb_id: int, append_to_response: str = "") -> dict[str, typing.Any]:
             if tmdb_id > MAX_ID:
                 raise fastapi.HTTPException(fastapi.status.HTTP_404_NOT_FOUND)
             return self.movie(tmdb_id, append_to_response.split(","))
 
+        self.add_find_route(app)
+        return app
+
+    def add_episode_group_routes(self, app: fastapi.FastAPI) -> None:
+        @app.get("/3/tv/{tmdb_id}/episode_groups")
+        def episode_groups(tmdb_id: int) -> dict[str, typing.Any]:
+            results = [
+                {"id": f"{tmdb_id}-{index}", "type": group_type, "group_count": len(sizes), "episode_count": sum(sizes)}
+                for index, (group_type, sizes) in enumerate(self.episode_groups.get(tmdb_id, []))
+            ]
+            return {"id": tmdb_id, "results": results}
+
+        @app.get("/3/tv/episode_group/{group_id}")
+        def episode_group(group_id: str) -> dict[str, typing.Any]:
+            return self.episode_group(group_id)
+
+    def add_find_route(self, app: fastapi.FastAPI) -> None:
         @app.get("/3/find/{external_id}")
         def find(external_id: str, external_source: str) -> dict[str, typing.Any]:
             results: dict[str, list[dict[str, typing.Any]]] = {
@@ -219,8 +269,6 @@ class FakeTMDB:
                     {"show_id": show_id, "season_number": season, "episode_number": number}
                 )
             return results
-
-        return app
 
 
 fake = FakeTMDB()

@@ -1,6 +1,8 @@
+import collections
 import collections.abc
 import dataclasses
 import datetime as dt
+import re
 import typing
 import unicodedata
 
@@ -29,6 +31,10 @@ class Found:
     episodes: tuple[tuple[int, int, int], ...] = ()
 
 
+# One way of splitting a show into seasons: season number -> TMDB (season, episode) of its episodes, in order.
+type SeasonGroup = collections.abc.Mapping[int, collections.abc.Sequence[tuple[int, int]]]
+
+
 class Catalog(typing.Protocol):
     """The TMDB lookups matching needs."""
 
@@ -47,9 +53,17 @@ class Catalog(typing.Protocol):
         """(season, episode) of the episodes TMDB lists now for a show `exists` found."""
         ...
 
+    async def season_groups(self, show_id: int) -> collections.abc.Sequence[SeasonGroup]:
+        """TMDB's episode groups splitting a show `exists` found into seasons."""
+        ...
+
 
 # Jellyfin provider keys tried in order after Tmdb: the TMDB id is then looked up from the external id.
 EXTERNAL_PROVIDERS = (("Imdb", ExternalSource.IMDB), ("Tvdb", ExternalSource.TVDB))
+# An episode code in a name Jellyfin gave no numbers to: S03E04, s3e4, or after a show's initials (ANTM14E07).
+EPISODE_CODE = re.compile(r"(?<!\d)S?(\d{1,2})E(\d{1,3})(?![0-9A-Za-z])", re.IGNORECASE)
+# Bracketed parts of a file name (release group, checksum, video format), where a code is never meant.
+BRACKETED = re.compile(r"\[[^\]]*\]|\([^)]*\)")
 # Years a title search accepts between Jellyfin's production year and TMDB's release, after the exact year.
 YEAR_TOLERANCE = 1
 # The number of regular seasons (specials aside) Jellyfin has for a series, by its Jellyfin id; None when unknown.
@@ -64,20 +78,38 @@ async def match(
     regular_seasons: RegularSeasons | None = None,
 ) -> WatchEvent | JellyfinUnmatchedReason:
     """The watch a played movie or episode stands for, or why none was found. Without `regular_seasons`, an episode
-    is never matched by its absolute number."""
+    is never matched by its absolute number.
+
+    An episode without usable numbers (none, or an episode 0 Jellyfin files a special under) is matched by its own
+    ids, else by an episode code in its name when its series is known."""
     if item.type == "Movie":
         tmdb_id = await _media_id(item, MediaType.MOVIE, catalog)
         return JellyfinUnmatchedReason.NOT_FOUND if tmdb_id is None else WatchEvent(MediaType.MOVIE, tmdb_id, played_at)
     if item.type != "Episode":
         return JellyfinUnmatchedReason.UNSUPPORTED
-    season, number = item.parent_index_number, item.index_number
-    if season is None or number is None or season < 0 or number < 1:
-        return JellyfinUnmatchedReason.NO_NUMBERS
-    found = await _episode(item, series.get(item.series_id or ""), (season, number), catalog, regular_seasons)
+    show = series.get(item.series_id or "")
+    numbering = _numbering(item.parent_index_number, item.index_number)
+    if numbering is None:
+        if (own := await _own_episode(item, catalog)) is not None:
+            return WatchEvent(MediaType.TV, own[0], played_at, own[1], own[2])
+        numbering = None if show is None else _name_code(item.name)
+        if numbering is None:
+            return JellyfinUnmatchedReason.NO_NUMBERS
+    found = await _episode(item, show, numbering, catalog, regular_seasons)
     if isinstance(found, JellyfinUnmatchedReason):
         return found
     show_id, season, number = found
     return WatchEvent(MediaType.TV, show_id, played_at, season, number)
+
+
+def _numbering(season: int | None, number: int | None) -> tuple[int, int] | None:
+    return None if season is None or number is None or season < 0 or number < 1 else (season, number)
+
+
+def _name_code(name: str) -> tuple[int, int] | None:
+    """The season and number of the one episode code in a name, outside its bracketed parts."""
+    codes = EPISODE_CODE.findall(BRACKETED.sub(" ", name))
+    return None if len(codes) != 1 else _numbering(int(codes[0][0]), int(codes[0][1]))
 
 
 def unmatched_item(
@@ -131,22 +163,22 @@ async def _episode(
     regular_seasons: RegularSeasons | None,
 ) -> tuple[int, int, int] | JellyfinUnmatchedReason:
     """The TMDB show, season and number of an episode: Jellyfin's numbering in the series TMDB knows, else what TMDB
-    finds under the episode's own ids, else its absolute number in that series when Jellyfin keeps the whole series
-    in one regular season."""
+    finds under the episode's own ids, else its place in the seasons TMDB's episode groups split a show it lists in
+    one season into, else its absolute number in that series when Jellyfin keeps the whole series in one regular
+    season."""
     season, number = numbering
     show_id = None if show is None else await _media_id(show, MediaType.TV, catalog)
     numbers = frozenset() if show_id is None else await catalog.episode_numbers(show_id)
     if show_id is not None and (season, number) in numbers:
         return show_id, season, number
-    for provider, source in EXTERNAL_PROVIDERS:
-        if external_id := item.provider_ids.get(provider):
-            for found_show, found_season, found_number in (await catalog.find(source, external_id)).episodes:
-                if await catalog.exists(MediaType.TV, found_show) and (found_season, found_number) in (
-                    await catalog.episode_numbers(found_show)
-                ):
-                    return found_show, found_season, found_number
+    if (own := await _own_episode(item, catalog)) is not None:
+        return own
     if show_id is None:
         return JellyfinUnmatchedReason.NOT_FOUND
+    if season > 1 and {listed_season for listed_season, _ in numbers if listed_season >= 1} == {1}:
+        grouped = _grouped(await catalog.season_groups(show_id), season, number)
+        if grouped is not None and grouped in numbers:
+            return show_id, *grouped
     if season == 1 and item.series_id and regular_seasons is not None:
         absolute = _absolute(await catalog.listed_episode_numbers(show_id), number)
         # The cache may not have an episode TMDB added since it was refreshed. A season 2 in Jellyfin means its
@@ -154,6 +186,30 @@ async def _episode(
         if absolute is not None and absolute in numbers and await regular_seasons(item.series_id) == 1:
             return show_id, *absolute
     return JellyfinUnmatchedReason.EPISODE_NOT_FOUND
+
+
+async def _own_episode(item: Item, catalog: Catalog) -> tuple[int, int, int] | None:
+    """The TMDB show, season and number TMDB finds under the episode's own IMDb or TVDB id."""
+    for provider, source in EXTERNAL_PROVIDERS:
+        if external_id := item.provider_ids.get(provider):
+            for show_id, season, number in (await catalog.find(source, external_id)).episodes:
+                if await catalog.exists(MediaType.TV, show_id) and (season, number) in (
+                    await catalog.episode_numbers(show_id)
+                ):
+                    return show_id, season, number
+    return None
+
+
+def _grouped(groups: collections.abc.Sequence[SeasonGroup], season: int, number: int) -> tuple[int, int] | None:
+    """The TMDB numbers more than half of the groups covering this episode give it: a group splitting the show into
+    cours rather than seasons is outvoted, and no majority means no match."""
+    votes = collections.Counter(
+        group[season][number - 1] for group in groups if season in group and number <= len(group[season])
+    )
+    if not votes:
+        return None
+    (episode, count), *_ = votes.most_common(1)
+    return episode if count * 2 > votes.total() else None
 
 
 def _absolute(listed: collections.abc.Set[tuple[int, int]], number: int) -> tuple[int, int] | None:
