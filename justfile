@@ -54,3 +54,20 @@ e2e-stop:
 # Build the Docker image as ghcr.io/aberrier/mintrack:edge, which docker-compose.yml runs with MINTRACK_VERSION=edge
 image:
     docker build --tag ghcr.io/aberrier/mintrack:edge --build-arg COMMIT=$(git rev-parse --short HEAD) .
+
+# Set the version on a clean master, commit it and tag vX.Y.Z locally (`just release 1.4.2`); pushing is up to you
+[positional-arguments]
+release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    version=$1
+    fail() { echo "$1" >&2; exit 1; }
+    [[ "$version" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] || fail "The version is X.Y.Z, such as 1.4.2."
+    [[ "$(git branch --show-current)" == master ]] || fail "Releases are cut from master."
+    [[ -z "$(git status --porcelain --untracked-files=no)" ]] || fail "Commit or stash the changes first."
+    ! git rev-parse --quiet --verify "refs/tags/v$version" > /dev/null || fail "The tag v$version exists."
+    uv version --no-sync "$version"
+    (cd frontend && npm version "$version" --no-git-tag-version > /dev/null)
+    git commit --quiet --message "chore: release $version" -- pyproject.toml uv.lock frontend/package.json frontend/package-lock.json
+    git tag --annotate "v$version" --message "MinTrack $version"
+    echo "Tagged v$version. Publish it with: git push --atomic origin master v$version"
