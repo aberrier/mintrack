@@ -28,14 +28,20 @@
               <dd>{{ report.unmatched_count }}</dd>
             </dl>
             @if (report.unmatched.length) {
-              <ul class="flex flex-col gap-1 text-on-surface-variant [font:var(--mat-sys-body-medium)]">
-                @for (item of report.unmatched; track $index) {
-                  <li>{{ item.title }}: {{ translate(`app.profile.imports.reasons.${item.reason}`) }}</li>
-                }
-                @if ($unlisted()) {
-                  <li>{{ $unlisted() }} {{ translate('app.profile.imports.report.more') }}</li>
-                }
-              </ul>
+              <details class="warnings" data-testid="import-warnings">
+                <summary>
+                  <mat-icon svgIcon="expand_more" class="chevron" aria-hidden="true" />
+                  {{ translate('app.profile.imports.report.warnings', { count: report.unmatched_count.toString() }) }}
+                </summary>
+                <ul class="flex flex-col gap-1 pt-1 text-on-surface-variant [font:var(--mat-sys-body-medium)]">
+                  @for (item of report.unmatched; track $index) {
+                    <li>{{ item.title }}: {{ translate(`app.profile.imports.reasons.${item.reason}`) }}</li>
+                  }
+                  @if ($unlisted()) {
+                    <li>{{ $unlisted() }} {{ translate('app.profile.imports.report.more') }}</li>
+                  }
+                </ul>
+              </details>
             }
           }
         }

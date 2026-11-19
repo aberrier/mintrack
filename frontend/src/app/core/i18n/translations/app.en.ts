@@ -186,6 +186,7 @@ export default {
         alreadyPresent: 'Already there',
         unmatched: 'Not matched',
         more: 'more not listed',
+        warnings: 'Warnings ({count})',
       },
       reasons: {
         unsupported: 'not a movie or show on TMDB',

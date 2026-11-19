@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { MatButton } from '@angular/material/button';
 import { MatButtonToggle, MatButtonToggleGroup } from '@angular/material/button-toggle';
+import { MatIcon } from '@angular/material/icon';
 import { MatProgressBar } from '@angular/material/progress-bar';
 import { AuthStore } from '../../../core/auth/auth.store';
 import { formatDateTime } from '../../../core/dates';
@@ -13,9 +14,30 @@ import { ImportsStore } from '../../../core/imports/imports.store';
  */
 @Component({
   selector: 'app-import-card',
-  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, MatProgressBar],
+  imports: [MatButton, MatButtonToggleGroup, MatButtonToggle, MatProgressBar, MatIcon],
   providers: [ImportsStore],
   templateUrl: './import-card.html',
+  styles: `
+    /* What was not imported, folded under its count until asked for. */
+    .warnings summary {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 48px;
+      cursor: pointer;
+      font: var(--mat-sys-label-large);
+      list-style: none;
+    }
+    .warnings summary::-webkit-details-marker {
+      display: none;
+    }
+    .chevron {
+      transition: transform var(--duration-short) var(--ease-standard);
+    }
+    .warnings[open] .chevron {
+      transform: rotate(180deg);
+    }
+  `,
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class ImportCard {

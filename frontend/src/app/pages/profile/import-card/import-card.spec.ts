@@ -43,7 +43,7 @@ describe('ImportCard', () => {
     return fixture.nativeElement as HTMLElement;
   }
 
-  it('shows the report of the latest import with the unmatched titles and their reason', async () => {
+  it('shows the report of the latest import with the unmatched titles and their reason, folded as warnings', async () => {
     const card = await render(
       job({
         status: 'done',
@@ -63,6 +63,9 @@ describe('ImportCard', () => {
       cell.textContent?.trim(),
     );
     expect(report).toEqual(['Added', '12', 'Already there', '3', 'Not matched', '502']);
+    const warnings = card.querySelector<HTMLDetailsElement>('[data-testid="import-warnings"]')!;
+    expect(warnings.open).toBe(false);
+    expect(warnings.querySelector('summary')?.textContent?.trim()).toBe('Warnings (502)');
     const items = [...card.querySelectorAll('li')].map((item) => item.textContent?.trim());
     expect(items).toEqual([
       'Some Game: not a movie or show on TMDB',

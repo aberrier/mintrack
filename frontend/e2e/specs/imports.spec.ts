@@ -47,6 +47,10 @@ test('someone imports a Yamtrack export from their profile and reads the report'
 
   await expect(imports.status()).toContainText('Importing… 1 / 2');
   await expect(imports.report()).toContainText('Added1');
+  // What was not imported waits folded under its count, listed once opened.
+  await expect(imports.warnings()).toHaveText('Warnings (1)');
+  await expect(imports.line('Some Game: not a movie or show on TMDB')).toBeHidden();
+  await imports.warnings().click();
   await expect(imports.line('Some Game: not a movie or show on TMDB')).toBeVisible();
   expect(api.uploads[0]).toContain('name="source"\r\n\r\nyamtrack');
   expect(api.uploads[0]).toContain('filename="yamtrack.csv"');
