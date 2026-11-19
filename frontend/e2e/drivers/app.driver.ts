@@ -395,6 +395,11 @@ export class AppDriver {
     await this.snackBar().getByRole('button', { name }).click();
   }
 
+  /** The drawn height of the snackbar's action, in px. */
+  async snackBarActionHeight(name: string): Promise<number> {
+    return (await this.snackBar().getByRole('button', { name }).boundingBox())!.height;
+  }
+
   /** Whether this is a touch screen whose browser has the Vibration API, as Android's does and iOS's does not. */
   canVibrate(): Promise<boolean> {
     return this.page.evaluate(() => typeof navigator.vibrate === 'function' && matchMedia('(pointer: coarse)').matches);

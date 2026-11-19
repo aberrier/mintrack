@@ -88,6 +88,11 @@ export async function takeOutByKeyboard(viewer: Viewer, show: string, action: 'W
   return viewer.app.cardActionByKeyboard(show, action);
 }
 
+/** The height of the snackbar's Undo, a tap target, once a show is taken out. */
+export async function undoHeight(viewer: Viewer): Promise<number> {
+  return viewer.app.snackBarActionHeight('Undo');
+}
+
 /** The snackbar's message once a show is taken out, then its Undo used. */
 export async function undo(viewer: Viewer): Promise<string> {
   const message = (await viewer.app.snackBar().innerText()).trim();
