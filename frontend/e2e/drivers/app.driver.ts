@@ -831,10 +831,13 @@ export class AppDriver {
 
   /**
    * Tap the rating form's button where the screen shows it, as a finger would, without scrolling it into view first:
-   * whatever lies on top there gets the tap. Returns the rating request it sent, and the stars it saves.
+   * whatever lies on top there gets the tap. Taps once the button is enabled, as a finger would wait for it after
+   * picking stars. Returns the rating request it sent, and the stars it saves.
    */
   async tapRatingButton(name: 'Save' | 'Remove'): Promise<{ method: string; stars: number | null }> {
-    const box = (await this.ratingForm().getByRole('button', { name, exact: true }).boundingBox())!;
+    const button = this.ratingForm().getByRole('button', { name, exact: true });
+    await expect(button).toBeEnabled();
+    const box = (await button.boundingBox())!;
     const sent = this.page.waitForRequest((request) => new URL(request.url()).pathname.endsWith('/rating'));
     const answered = this.nextResponse('/rating');
     await this.page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
