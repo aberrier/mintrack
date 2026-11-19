@@ -78,6 +78,11 @@ jobs:
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    # The browser tests take most of the time: split them over three runners.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -111,21 +116,28 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
       - name: Install Playwright
         working-directory: frontend
-        # The tests run headless, which uses only the headless shell.
+        # The tests run headless, which uses only the headless shell; a cached browser is not downloaded again.
         run: npm ci && npx playwright install --with-deps --only-shell chromium
       - name: Browser tests
         working-directory: frontend
         env:
           MINTRACK_E2E_BASE_URL: http://localhost:8000
-        run: npx playwright test
+          SHARD: ${{ matrix.shard }}
+        run: npx playwright test --shard="$SHARD/3"
       - name: Logs
         if: failure()
         run: docker compose logs && cat fake-tmdb.log fake-tvmaze.log
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: frontend/playwright-report
           retention-days: 7
