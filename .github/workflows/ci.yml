@@ -135,7 +135,7 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - uses: actions/cache@v4 # zizmor: ignore[cache-poisoning]
+      - uses: actions/cache@v6 # zizmor: ignore[cache-poisoning]
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
